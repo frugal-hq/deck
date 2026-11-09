@@ -4,7 +4,7 @@ name: Release
 # version in package.json (tag v<version>), so a release always holds every
 # commit since "chore: bump version to <version>".
 
-# frugal: only notes for now; attach the installer here once Fase 7 builds one.
+# frugal: only notes for now; attach the installer here once Phase 7 builds one.
 
 on:
   push:
@@ -23,6 +23,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - run: npm ci
+      - run: npx install-electron
       - name: Run checks
         shell: bash
         env:
