@@ -1,6 +1,8 @@
 import { Terminal } from '../../node_modules/@xterm/xterm/lib/xterm.mjs';
 import { FitAddon } from '../../node_modules/@xterm/addon-fit/lib/addon-fit.mjs';
 import { matchSessions } from './palette.mjs';
+import { groupChats, buildTree } from './chats.mjs';
+import { trustPromptKey } from './trust.mjs';
 
 const $ = (id) => document.getElementById(id);
 const stage = $('stage');
@@ -26,40 +28,76 @@ const STATE_LABEL = {
   error: () => 'Failed to start',
 };
 
+function tabElement(chat) {
+  const tab = document.createElement('div');
+  tab.className = 'tab';
+  const open = document.createElement('button');
+  open.type = 'button';
+  open.className = 'tab__open';
+  const label = document.createElement('span');
+  label.className = 'tab__label';
+  open.append(icon('terminal'), label);
+  open.onclick = () => activate(chat.id);
+  const close = document.createElement('button');
+  close.type = 'button';
+  close.className = 'tab__close';
+  close.append(icon('x'));
+  close.onclick = () => closeChat(chat.id);
+  close.dataset.tip = 'Close this chat';
+  tab.addEventListener('auxclick', (event) => {
+    if (event.button !== 1) return;
+    event.preventDefault();
+    closeChat(chat.id);
+  });
+  tab.addEventListener('mousedown', (event) => {
+    if (event.button === 1) event.preventDefault();
+  });
+  tab.append(open, close);
+  return tab;
+}
+
+function fadeOut(element) {
+  element.classList.add('leaving');
+  Promise.allSettled(element.getAnimations().map((animation) => animation.finished)).then(() => element.remove());
+}
+
 function render() {
-  const tabs = $('tabs');
-  tabs.replaceChildren(...[...chats.values()].map((chat) => {
-    const tab = document.createElement('div');
-    tab.className = 'tab';
-    const open = document.createElement('button');
-    open.type = 'button';
-    open.className = 'tab__open';
-    const label = document.createElement('span');
-    label.className = 'tab__label';
-    label.textContent = chat.name;
-    open.append(icon('terminal'), label);
-    open.title = chat.cwd;
+  // Tabs persist between renders: rebuilding them would replay the fade-in on every state change.
+  for (const chat of chats.values()) {
+    chat.name = currentIndex?.sessions?.find((s) => s.id === chat.id)?.title ?? chat.name;
+    chat.tab ??= $('tabs').appendChild(tabElement(chat));
+    const [open, close] = chat.tab.children;
+    open.querySelector('.tab__label').textContent = chat.name;
+    open.dataset.tip = chat.cwd;
     if (chat.id === activeId) open.setAttribute('aria-current', 'true');
-    open.onclick = () => activate(chat.id);
-    const close = document.createElement('button');
-    close.type = 'button';
-    close.className = 'tab__close';
-    close.append(icon('x'));
+    else open.removeAttribute('aria-current');
     close.setAttribute('aria-label', `Close chat ${chat.name}`);
-    close.onclick = () => closeChat(chat.id);
-    tab.append(open, close);
-    return tab;
-  }));
+  }
 
   const chat = chats.get(activeId);
   $('empty').hidden = Boolean(chat);
   $('readout').hidden = !chat;
   $('notice').hidden = !chat?.error;
   $('notice').textContent = chat?.error ?? '';
+  const activeSession = currentIndex?.sessions?.find((s) => s.id === activeId);
+  $('link-chat').hidden = !activeSession;
+  const activeChat = activeSession && chatsById.get(activeSession.chatId);
+  const chatCount = activeChat ? activeChat.earlier.length + 1 : 0;
+  const historyButton = $('chat-history');
+  historyButton.hidden = chatCount < 2;
+  const historyLabel = historyButton.querySelector('span');
+  if (historyLabel) historyLabel.textContent = chatCount;
+  historyButton.dataset.tip = `${chatCount} sessions in this chat. Open another one`;
+  historyButton.setAttribute('aria-label', `${chatCount} sessions in this chat`);
+  const linked = Boolean(activeSession?.parentId);
+  const linkButton = $('link-chat');
+  linkButton.classList.toggle('is-linked', linked);
+  linkButton.querySelector('span').textContent = linked ? 'Linked' : 'Link';
+  linkButton.dataset.tip = linked ? 'Already linked to a chat. Click to move or unlink it' : 'Join this session to another chat';
   if (!chat) return;
   $('path').textContent = chat.cwd;
   $('session').textContent = chat.id.slice(0, 8);
-  $('session').title = chat.id;
+  $('session').dataset.tip = chat.id;
   $('state').textContent = STATE_LABEL[chat.state](chat);
   $('state').dataset.state = chat.state;
   drawMeters();
@@ -69,22 +107,42 @@ function render() {
 const limits = { fiveHour: null, sevenDay: null };
 const resetToday = new Intl.DateTimeFormat('en-US', { hour: '2-digit', minute: '2-digit' });
 const resetDay = new Intl.DateTimeFormat('en-US', { weekday: 'short', hour: '2-digit', minute: '2-digit' });
+const compact = new Intl.NumberFormat('en-US', { notation: 'compact' });
 
-function drawMeter(id, pct, resetsAt, format) {
+function drawMeter(id, pct, text) {
   const element = $(id);
   element.hidden = pct === null || pct === undefined;
   if (element.hidden) return;
   element.querySelector('meter').value = pct;
-  const reset = resetsAt ? format.format(resetsAt * 1000) : '';
-  element.querySelector('.measured').textContent = reset ? `${Math.round(pct)}% - ${reset}` : `${Math.round(pct)}%`;
-  element.title = reset ? `Resets: ${reset}` : '';
+  element.querySelector('.measured').textContent = text;
+}
+
+function resetText(limit, format) {
+  if (limit?.pct === null || limit?.pct === undefined) return '';
+  const reset = limit.resetsAt ? format.format(limit.resetsAt * 1000) : '';
+  return reset ? `${Math.round(limit.pct)}% - ${reset}` : `${Math.round(limit.pct)}%`;
 }
 
 // frugal: readings refresh with each status line, so an idle chat keeps the last one until its next turn.
 function drawMeters() {
-  drawMeter('meter-context', chats.get(activeId)?.context);
-  drawMeter('meter-five', limits.fiveHour?.pct, limits.fiveHour?.resetsAt, resetToday);
-  drawMeter('meter-week', limits.sevenDay?.pct, limits.sevenDay?.resetsAt, resetDay);
+  const chat = chats.get(activeId);
+  const context = chat?.context ?? null;
+  const contextText = context === null
+    ? ''
+    : chat.contextTokens !== null && chat.contextTokens !== undefined && chat.contextSize !== null && chat.contextSize !== undefined
+      ? `${Math.round(context)}% - ${compact.format(chat.contextTokens)} of ${compact.format(chat.contextSize)}`
+      : `${Math.round(context)}%`;
+  drawMeter('meter-context', context, contextText);
+  drawMeter('meter-five', limits.fiveHour?.pct, resetText(limits.fiveHour, resetToday));
+  drawMeter('meter-week', limits.sevenDay?.pct, resetText(limits.sevenDay, resetDay));
+  const tracksTokens = chat?.inputTokens !== null && chat?.inputTokens !== undefined || chat?.outputTokens !== null && chat?.outputTokens !== undefined;
+  const tokens = $('usage-tokens');
+  tokens.hidden = !tracksTokens;
+  if (tracksTokens) tokens.querySelector('.measured').textContent = `${compact.format(chat.inputTokens ?? 0)} in, ${compact.format(chat.outputTokens ?? 0)} out`;
+  const button = $('usage-open');
+  const reading = context !== null || limits.fiveHour !== null || limits.sevenDay !== null || tracksTokens;
+  button.hidden = !reading;
+  if (reading) button.textContent = context === null ? 'Usage' : `Context ${Math.round(context)}%`;
 }
 
 function markActiveSession() {
@@ -115,8 +173,8 @@ function syncSize(chat) {
 
 // Ctrl+_ is the undo key of the Claude Code prompt; its TUI has no redo action (2.1.287).
 const TUI_UNDO = '\x1f';
-// Ctrl+V itself: with no text on the clipboard the TUI looks for an image.
-const TUI_IMAGE_PASTE = '\x16';
+// chat:imagePaste of the Claude Code prompt: Alt+V on Windows, Ctrl+V elsewhere (2.1.287).
+const TUI_IMAGE_PASTE = navigator.platform === 'Win32' ? '\x1bv' : '\x16';
 
 function handleTerminalKey(chat, event) {
   if (event.type !== 'keydown' || !event.ctrlKey || event.altKey || event.shiftKey || event.metaKey) return true;
@@ -140,8 +198,8 @@ function handleTerminalKey(chat, event) {
 
 const folderName = (cwd) => cwd.split(/[\\/]/).filter(Boolean).pop() ?? cwd;
 
-function startChat(cwd) {
-  if (cwd) openChat({ id: crypto.randomUUID(), cwd, name: folderName(cwd), resume: false });
+function startChat(cwd, group) {
+  if (cwd) openChat({ id: crypto.randomUUID(), cwd, name: 'New chat', resume: false, group });
 }
 
 function resumeSession(session) {
@@ -149,7 +207,7 @@ function resumeSession(session) {
   else openChat({ id: session.id, cwd: session.cwd, name: session.title, resume: true });
 }
 
-async function openChat({ id, cwd, name, resume }) {
+async function openChat({ id, cwd, name, resume, group }) {
   const el = document.createElement('div');
   el.className = 'term';
   stage.append(el);
@@ -168,7 +226,7 @@ async function openChat({ id, cwd, name, resume }) {
   term.loadAddon(fit);
   term.open(el);
 
-  const chat = { id, cwd, name, el, term, fit, state: 'starting' };
+  const chat = { id, cwd, name, el, term, fit, state: 'starting', trustUntil: Date.now() + TRUST_PROMPT_MS };
   chats.set(id, chat);
   activate(id);
   chat.cols = term.cols;
@@ -176,7 +234,7 @@ async function openChat({ id, cwd, name, resume }) {
   term.onData((data) => deck.input(id, data));
   term.attachCustomKeyEventHandler((event) => handleTerminalKey(chat, event));
 
-  const result = await deck.start({ id, cwd, cols: term.cols, rows: term.rows, resume });
+  const result = await deck.start({ id, cwd, cols: term.cols, rows: term.rows, resume, group });
   if (result.error) {
     chat.state = 'error';
     chat.error = result.error;
@@ -184,13 +242,48 @@ async function openChat({ id, cwd, name, resume }) {
   }
 }
 
-function closeChat(id) {
+// The prompt comes before anything else, so a slower start just shows it and a resumed transcript is never read as one.
+const TRUST_PROMPT_MS = 15000;
+const alwaysTrusts = () => localStorage.getItem('alwaysTrust') === 'true';
+
+function answerTrustPrompt(chat) {
+  if (!chats.has(chat.id) || !alwaysTrusts() || Date.now() > chat.trustUntil) return;
+  const buffer = chat.term.buffer.active;
+  const lines = Array.from({ length: chat.term.rows }, (_, row) => buffer.getLine(buffer.viewportY + row)?.translateToString(true).trim() ?? '');
+  const key = trustPromptKey(lines);
+  if (!key || chat.trustSent === key) return;
+  chat.trustSent = key;
+  deck.input(chat.id, key);
+}
+
+const confirmsClose = () => localStorage.getItem('confirmClose') !== 'false';
+const setConfirmsClose = (on) => localStorage.setItem('confirmClose', on);
+
+function askToClose(chat) {
+  const dialog = $('close-dialog');
+  $('close-message').textContent = `Claude is still running in ${chat.name}. Closing this chat stops it.`;
+  $('close-skip').checked = false;
+  dialog.returnValue = ''; // Esc and the backdrop leave the last value in place.
+  dialog.showModal();
+  return new Promise((resolve) => {
+    dialog.addEventListener('close', () => {
+      const confirmed = dialog.returnValue === 'close';
+      // Only a confirmed close saves it: cancelling must not silence the next warning.
+      if (confirmed && $('close-skip').checked) setConfirmsClose(false);
+      resolve(confirmed);
+    }, { once: true });
+  });
+}
+
+async function closeChat(id) {
   const chat = chats.get(id);
+  if (!chat) return;
   const live = chat.state === 'starting' || chat.state === 'running';
-  if (live && !confirm(`Claude is still running in ${chat.name}. Close this chat?`)) return;
+  if (live && confirmsClose() && !await askToClose(chat)) return;
   if (live) deck.kill(id);
   chat.term.dispose();
   chat.el.remove();
+  fadeOut(chat.tab);
   chats.delete(id);
   if (activeId === id) activate([...chats.keys()].pop() ?? null);
   else render();
@@ -199,7 +292,7 @@ function closeChat(id) {
 deck.onData((id, data) => {
   const chat = chats.get(id);
   if (!chat) return;
-  chat.term.write(data);
+  chat.term.write(data, () => answerTrustPrompt(chat));
   if (chat.state === 'starting') {
     chat.state = 'running';
     render();
@@ -214,12 +307,21 @@ deck.onExit((id, code) => {
   render();
 });
 
-deck.onMeters((id, { context, fiveHour, sevenDay }) => {
+deck.onMeters((id, meters) => {
   const chat = chats.get(id);
-  if (chat && context !== null) chat.context = context;
-  limits.fiveHour = fiveHour ?? limits.fiveHour;
-  limits.sevenDay = sevenDay ?? limits.sevenDay;
+  if (chat) {
+    if (meters.context != null) chat.context = meters.context;
+    for (const key of ['contextTokens', 'contextSize', 'inputTokens', 'outputTokens']) {
+      if (meters[key] != null) chat[key] = meters[key];
+    }
+  }
+  limits.fiveHour = meters.fiveHour ?? limits.fiveHour;
+  limits.sevenDay = meters.sevenDay ?? limits.sevenDay;
   if (chats.has(activeId)) drawMeters();
+});
+
+$('usage').addEventListener('toggle', (event) => {
+  if (event.newState === 'closed') chats.get(activeId)?.term.focus();
 });
 
 let frame = 0;
@@ -234,6 +336,7 @@ new ResizeObserver(() => {
 
 const shortDate = new Intl.DateTimeFormat('en-US', { day: 'numeric', month: 'short' });
 const openGroups = new Set();
+let chatsById = new Map();
 let groupsDrawn = false;
 let drawnSignature = '';
 let currentIndex;
@@ -245,7 +348,7 @@ function sessionButton(session) {
   button.type = 'button';
   button.className = 'session';
   button.dataset.session = session.id;
-  button.title = `${session.title}\nRight-click to organize`;
+  button.dataset.tip = `${session.title}\nRight-click to organize`;
   const title = document.createElement('span');
   title.className = 'session__title';
   title.textContent = session.title;
@@ -272,29 +375,188 @@ function addFolderLabel(row, session) {
   const folder = document.createElement('span');
   folder.className = 'session__folder';
   folder.textContent = folderName(session.cwd);
-  folder.title = session.cwd;
+  folder.dataset.tip = session.cwd;
   row.querySelector('time').before(folder);
   return row;
 }
 
-function groupElement(key, sessions, byTopic) {
+function chatElement(chat, decorate) {
+  const row = sessionButton(chat);
+  const first = decorate ? decorate(row, chat) : row;
+  if (!chat.earlier.length) return first;
+  const container = document.createElement('div');
+  container.className = 'chat';
+  const history = document.createElement('details');
+  history.className = 'chat__history';
+  const key = `chat:${chat.chatId}`;
+  history.open = openGroups.has(key);
+  const n = chat.earlier.length;
+  const summary = document.createElement('summary');
+  summary.className = 'chat__more measured';
+  const syncSummary = () => {
+    const label = history.open ? 'Hide the earlier sessions of this chat' : `Show ${n} earlier session${n === 1 ? '' : 's'} of this chat`;
+    summary.textContent = history.open ? '\u2212' : `+${n}`;
+    summary.setAttribute('aria-label', label);
+    summary.dataset.tip = label;
+  };
+  syncSummary();
+  history.ontoggle = () => {
+    if (history.open) openGroups.add(key);
+    else openGroups.delete(key);
+    syncSummary();
+  };
+  history.append(summary, ...chat.earlier.map((session) => sessionButton(session)));
+  container.append(first, history);
+  return container;
+}
+
+function newChatButton(chats, group, label) {
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.className = 'btn btn--icon group__new';
+  button.append(icon('plus'));
+  const text = `New chat in ${label}`;
+  button.dataset.tip = text;
+  button.setAttribute('aria-label', text);
+  button.onclick = (event) => {
+    event.preventDefault();
+    startChat(chats[0].cwd, group);
+  };
+  return button;
+}
+
+function moreButton(label, items) {
+  const button = document.createElement('button');
+  button.type = 'button';
+  button.className = 'btn btn--icon group__new';
+  button.append(icon('more'));
+  const text = `Options for ${label}`;
+  button.dataset.tip = text;
+  button.setAttribute('aria-label', text);
+  button.onclick = (event) => {
+    event.preventDefault();
+    const { left, bottom } = button.getBoundingClientRect();
+    openMenu(left, bottom + 4, items());
+  };
+  return button;
+}
+
+function addMenu(summary, label, items) {
+  summary.append(moreButton(label, items));
+  summary.oncontextmenu = (event) => {
+    event.preventDefault();
+    openMenu(event.clientX, event.clientY, items());
+  };
+}
+
+function renameOpenKey(from, to) {
+  if (openGroups.delete(from)) openGroups.add(to);
+}
+
+function workspaceMenu(name) {
+  return [
+    { label: 'Rename', run: () => ask({
+      title: `Rename ${name}`,
+      text: 'Use the name of another workspace to merge them.',
+      value: name,
+      names: spaceNames.filter((other) => other !== name),
+      action: 'Rename',
+      run: (to) => {
+        if (to === name) return;
+        renameOpenKey(`workspace:${name}`, `workspace:${to}`);
+        deck.renameWorkspace(name, to);
+      },
+    }) },
+    { label: 'Delete', danger: true, run: () => ask({
+      title: `Delete ${name}?`,
+      text: 'Its groups and chats stay, outside any workspace.',
+      action: 'Delete',
+      danger: true,
+      run: () => deck.deleteWorkspace(name),
+    }) },
+  ];
+}
+
+const sessionsOfGroup = (key) => currentIndex.sessions.filter((s) => chatsById.get(s.chatId)?.topic === key).map((s) => s.id);
+
+function groupMenu(key, label, byTopic) {
+  const move = { label: 'Move to workspace', run: () => openWorkspace(key, label) };
+  if (!byTopic) return [move];
+  const workspace = currentIndex.workspaces?.[key];
+  return [
+    { label: 'Rename', run: () => ask({
+      title: `Rename ${label}`,
+      text: 'Use the name of another group to merge them.',
+      value: key,
+      names: groupNames.filter((other) => other !== key),
+      action: 'Rename',
+      run: (to) => {
+        if (to === key) return;
+        renameOpenKey(key, to);
+        deck.renameGroup(sessionsOfGroup(key), key, to);
+      },
+    }) },
+    move,
+    { label: 'Delete', danger: true, run: () => ask({
+      title: `Delete ${label}?`,
+      text: workspace ? `Its chats stay in ${workspace}, without a group.` : 'Its chats stay, outside any group.',
+      action: 'Delete',
+      danger: true,
+      run: () => deck.deleteGroup(sessionsOfGroup(key), key),
+    }) },
+  ];
+}
+
+function groupElement(key, chats, byTopic) {
   const group = document.createElement('details');
   group.className = 'group';
   group.open = openGroups.has(key);
   group.ontoggle = () => (group.open ? openGroups.add(key) : openGroups.delete(key));
   const summary = document.createElement('summary');
   summary.className = 'group__name';
-  summary.title = key;
+  summary.dataset.tip = key;
+  const label = byTopic ? key : folderName(key);
   const name = document.createElement('span');
   name.className = 'group__label';
-  name.textContent = byTopic ? key : folderName(key);
+  name.textContent = label;
   const count = document.createElement('span');
   count.className = 'group__count measured';
-  count.textContent = sessions.length;
+  count.textContent = chats.length;
   const chevron = icon('chevron');
   chevron.classList.add('group__chevron');
   summary.append(chevron, icon(byTopic ? 'topic' : 'folder'), name, count);
-  group.append(summary, ...sessions.map((session) => (byTopic ? addFolderLabel(sessionButton(session), session) : sessionButton(session))));
+  if (key !== NO_TOPIC) {
+    summary.append(newChatButton(chats, byTopic ? key : undefined, label));
+    addMenu(summary, label, () => groupMenu(key, label, byTopic));
+  }
+  group.append(summary, ...chats.map((chat) => chatElement(chat, byTopic ? addFolderLabel : null)));
+  return group;
+}
+
+function workspaceElement(workspace, byTopic) {
+  const key = `workspace:${workspace.name}`;
+  const group = document.createElement('details');
+  group.className = 'group group--workspace';
+  group.open = openGroups.has(key);
+  group.ontoggle = () => (group.open ? openGroups.add(key) : openGroups.delete(key));
+  const summary = document.createElement('summary');
+  summary.className = 'group__name';
+  summary.dataset.tip = workspace.name;
+  const name = document.createElement('span');
+  name.className = 'group__label';
+  name.textContent = workspace.name;
+  const count = document.createElement('span');
+  count.className = 'group__count measured';
+  count.textContent = workspace.chats.length + workspace.groups.reduce((total, [, list]) => total + list.length, 0);
+  const chevron = icon('chevron');
+  chevron.classList.add('group__chevron');
+  summary.append(chevron, icon('topic'), name, count);
+  addMenu(summary, workspace.name, () => workspaceMenu(workspace.name));
+  group.append(
+    summary,
+    ...workspace.groups.map(([groupKey, list]) => groupElement(groupKey, list, byTopic)),
+    ...workspace.chats.map((chat) => chatElement(chat, byTopic ? addFolderLabel : null)),
+  );
   return group;
 }
 
@@ -310,19 +572,27 @@ function pinnedElement(sessions) {
   const heading = document.createElement('h2');
   heading.className = 'pinned__title';
   heading.textContent = 'Pinned';
-  section.append(heading, ...sessions.map(sessionButton));
+  section.append(heading, ...sessions.map((chat) => chatElement(chat, null)));
   return section;
 }
 
-function drawSpaces(sessions) {
-  const names = [...new Set(sessions.map((s) => s.space).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'en-US'));
+function drawSpaces(sessions, index) {
+  const names = [...new Set([...sessions.map((s) => s.space), ...Object.values(index.workspaces ?? {})].filter(Boolean))].sort((a, b) => a.localeCompare(b, 'en-US'));
   const select = $('space-filter');
   const chosen = names.includes(select.value) ? select.value : '';
-  select.replaceChildren(new Option('All spaces', ''), ...names.map((name) => new Option(name, name)));
+  select.replaceChildren(new Option('All workspaces', ''), ...names.map((name) => new Option(name, name)));
   select.value = chosen;
   select.hidden = !names.length;
-  $('space-names').replaceChildren(...names.map((name) => new Option(name, name)));
+  spaceNames = names;
 }
+
+function drawGroupNames(index) {
+  groupNames = [...new Set(index.sessions.map((session) => session.topic).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'en-US'));
+}
+
+let drawnView;
+let spaceNames = [];
+let groupNames = [];
 
 function renderSessions(index) {
   currentIndex = index;
@@ -331,26 +601,46 @@ function renderSessions(index) {
   $('index-status').textContent = status;
 
   // Transcripts change every second during a turn; rebuilding only when the list changes keeps focus and scroll.
-  const signature = `${sessionView}\n${index.indexing}\n${$('space-filter').value}\n${index.sessions.map((s) => `${s.id}\n${s.title}\n${s.cwd}\n${shortDate.format(new Date(s.lastAt))}\n${s.pinned}\n${s.space}\n${s.tags}\n${s.topic}`).join('\n')}`;
+  const signature = `${sessionView}\n${index.indexing}\n${$('space-filter').value}\n${index.modelJoins}\n${index.modelWorkspaces}\n${JSON.stringify(index.workspaces ?? {})}\n${index.ambiguous.length}\n${index.sessions.map((s) => `${s.id}\n${s.chatId}\n${s.title}\n${s.cwd}\n${shortDate.format(new Date(s.lastAt))}\n${s.pinned}\n${s.space}\n${s.tags}\n${s.topic}\n${s.userGroup ?? ''}`).join('\n')}`;
   if (signature === drawnSignature) return;
   drawnSignature = signature;
   if (sortDialog.open) drawSortEstimate();
 
-  drawSpaces(index.sessions);
-  const space = $('space-filter').value;
-  const visible = space ? index.sessions.filter((s) => s.space === space) : index.sessions;
-  const pinned = visible.filter((s) => s.pinned);
+  const allChats = groupChats(index.sessions);
+  chatsById.clear();
+  for (const chat of allChats) chatsById.set(chat.chatId, chat);
+
+  drawSpaces(allChats, index);
+  drawGroupNames(index);
   const byTopic = sessionView === 'topics';
-  const grouped = Map.groupBy(visible.filter((s) => !s.pinned), (session) => (byTopic ? session.topic ?? NO_TOPIC : session.cwd));
-  const groups = [...grouped].sort(([a], [b]) => (a === NO_TOPIC) - (b === NO_TOPIC));
-  if (!groupsDrawn && groups.length && !index.indexing) {
+  const keyOf = (chat) => (byTopic ? chat.topic ?? NO_TOPIC : chat.cwd);
+  const space = $('space-filter').value;
+  const visible = space ? allChats.filter((c) => (c.space ?? index.workspaces?.[keyOf(c)]) === space) : allChats;
+  const pinned = visible.filter((c) => c.pinned);
+  const tree = buildTree(visible.filter((c) => !c.pinned), keyOf, index.workspaces ?? {});
+  tree.groups.sort(([a], [b]) => (a === NO_TOPIC) - (b === NO_TOPIC));
+  if (!groupsDrawn && (tree.workspaces.length || tree.groups.length) && !index.indexing) {
     groupsDrawn = true;
-    openGroups.add(groups[0][0]);
+    openGroups.add(tree.workspaces.length ? `workspace:${tree.workspaces[0].name}` : tree.groups[0][0]);
   }
   const focused = document.activeElement?.dataset?.session;
-  $('groups').replaceChildren(...(pinned.length ? [pinnedElement(pinned)] : []), ...groups.map(([key, sessions]) => groupElement(key, sessions, byTopic)));
+  const list = $('groups');
+  list.replaceChildren(
+    ...(pinned.length ? [pinnedElement(pinned)] : []),
+    ...tree.workspaces.map((workspace) => workspaceElement(workspace, byTopic)),
+    ...tree.groups.map(([key, chats]) => groupElement(key, chats, byTopic)),
+  );
+  // Only a change of view fades: the list also rebuilds while transcripts update.
+  const view = `${sessionView}\n${space}`;
+  if (view !== drawnView) {
+    drawnView = view;
+    list.classList.remove('fade-in');
+    void list.offsetWidth;
+    list.classList.add('fade-in');
+  }
   markActiveSession();
   if (focused) $('groups').querySelector(`[data-session="${focused}"]`)?.focus();
+  render();
 }
 
 const palette = $('palette');
@@ -358,6 +648,7 @@ const paletteQuery = $('palette-query');
 const paletteList = $('palette-list');
 let paletteSessions = [];
 let paletteRow = 0;
+let paletteChoose = null;
 
 function selectPaletteRow(index) {
   paletteRow = index;
@@ -373,7 +664,7 @@ function selectPaletteRow(index) {
 
 function chooseFromPalette(session) {
   palette.close();
-  resumeSession(session);
+  paletteChoose(session);
 }
 
 function paletteOption(session, index) {
@@ -382,7 +673,7 @@ function paletteOption(session, index) {
   row.role = 'option';
   row.tabIndex = -1;
   row.onclick = () => chooseFromPalette(session);
-  row.title = session.title;
+  row.dataset.tip = session.title;
   row.oncontextmenu = null;
   return addFolderLabel(row, session);
 }
@@ -394,15 +685,21 @@ function drawPalette() {
   selectPaletteRow(matches.length ? 0 : -1);
 }
 
-async function togglePalette() {
+async function showPalette(load, choose, placeholder = 'Search by title or folder') {
   if (palette.open) {
     palette.close();
     return;
   }
-  paletteSessions = await deck.getAllSessions();
+  paletteSessions = await load();
+  paletteChoose = choose;
+  paletteQuery.placeholder = placeholder;
   paletteQuery.value = '';
   palette.showModal();
   drawPalette();
+}
+
+async function togglePalette() {
+  await showPalette(deck.getAllSessions, resumeSession);
 }
 
 paletteQuery.oninput = drawPalette;
@@ -426,26 +723,193 @@ window.addEventListener('keydown', (event) => {
   if (!event.repeat) togglePalette();
 }, true);
 
+function showUndo(text) {
+  $('undo-text').textContent = text;
+  $('undo-bar').hidden = false;
+}
+
 const organize = $('organize');
+const workspaceDialog = $('workspace-dialog');
 let organizing = null;
+let movingGroup = null;
 
 function openOrganize(session) {
   organizing = session;
   $('organize-title').textContent = session.title;
-  $('organize-pinned').checked = session.pinned;
-  $('organize-space').value = session.space ?? '';
-  $('organize-tags').value = session.tags.join(', ');
+  const chat = chatsById.get(session.chatId) ?? session;
+  $('organize-pinned').checked = chat.pinned;
+  $('organize-space').value = chat.space ?? '';
+  const group = chat.userGroup ?? chat.topic ?? '';
+  $('organize-group').value = group;
+  $('organize-group').dataset.prefill = group;
+  $('organize-tags').value = chat.tags.join(', ');
+  $('organize-unlink').hidden = !session.parentId;
   organize.showModal();
 }
 
+function openWorkspace(key, label) {
+  movingGroup = key;
+  $('workspace-title').textContent = label;
+  $('workspace-name').value = currentIndex?.workspaces?.[key] ?? '';
+  workspaceDialog.showModal();
+}
+
 $('organize-form').onsubmit = () => {
-  deck.organize(organizing.id, {
+  const value = {
     pinned: $('organize-pinned').checked,
     space: $('organize-space').value,
     tags: $('organize-tags').value.split(','),
-  });
+  };
+  const group = $('organize-group').value;
+  const groupChanged = group !== $('organize-group').dataset.prefill;
+  for (const s of currentIndex.sessions) {
+    if (s.chatId === organizing.chatId) {
+      deck.organize(s.id, value);
+      if (groupChanged) deck.setGroup(s.id, group);
+    }
+  }
 };
+$('workspace-form').onsubmit = () => {
+  if (movingGroup) deck.setWorkspace(movingGroup, $('workspace-name').value);
+};
+$('workspace-cancel').onclick = () => workspaceDialog.close();
+
+const menu = $('menu');
+
+function openMenu(x, y, items) {
+  if (menu.matches(':popover-open')) menu.hidePopover();
+  menu.replaceChildren(...items.map(({ label, run, danger }) => {
+    const item = document.createElement('button');
+    item.type = 'button';
+    item.className = 'menu__item';
+    item.role = 'menuitem';
+    item.toggleAttribute('data-danger', Boolean(danger));
+    item.textContent = label;
+    item.onclick = () => {
+      menu.hidePopover();
+      run();
+    };
+    return item;
+  }));
+  menu.showPopover();
+  menu.style.left = `${Math.min(x, innerWidth - menu.offsetWidth - 8)}px`;
+  menu.style.top = `${Math.min(y, innerHeight - menu.offsetHeight - 8)}px`;
+  menu.firstChild.focus();
+}
+
+menu.onkeydown = (event) => {
+  if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return;
+  event.preventDefault();
+  const items = [...menu.children];
+  items[(items.indexOf(document.activeElement) + (event.key === 'ArrowDown' ? 1 : items.length - 1)) % items.length].focus();
+};
+
+const askDialog = $('ask-dialog');
+let askRun = null;
+let askNames = [];
+
+function ask({ title, text, value = null, names = [], action, danger = false, run }) {
+  const input = $('ask-value');
+  $('ask-title').textContent = title;
+  $('ask-text').textContent = text;
+  $('ask-field').hidden = value === null;
+  input.disabled = value === null;
+  input.value = value ?? '';
+  askNames = names;
+  askRun = run;
+  $('ask-submit').textContent = action;
+  $('ask-submit').classList.toggle('btn--danger', danger);
+  askDialog.showModal();
+  if (value !== null) input.select();
+}
+
+$('ask-form').onsubmit = () => askRun($('ask-value').value.trim());
+$('ask-cancel').onclick = () => askDialog.close();
+
+// The native datalist popup cannot be styled, so these fields share the app's list.
+function attachCombo(input, names) {
+  const list = document.createElement('div');
+  list.id = `${input.id}-list`;
+  list.className = 'menu combo';
+  list.popover = 'manual';
+  list.role = 'listbox';
+  input.closest('label').after(list);
+  input.style.anchorName = `--${list.id}`;
+  list.style.positionAnchor = `--${list.id}`;
+  input.role = 'combobox';
+  input.setAttribute('aria-controls', list.id);
+  input.setAttribute('aria-autocomplete', 'list');
+  input.setAttribute('aria-expanded', 'false');
+  let row = -1;
+  const isOpen = () => list.matches(':popover-open');
+  const close = () => {
+    if (isOpen()) list.hidePopover();
+    input.setAttribute('aria-expanded', 'false');
+    input.removeAttribute('aria-activedescendant');
+    row = -1;
+  };
+  const mark = (index) => {
+    row = index;
+    [...list.children].forEach((item, i) => item.setAttribute('aria-selected', String(i === index)));
+    if (index < 0) return input.removeAttribute('aria-activedescendant');
+    list.children[index].scrollIntoView({ block: 'nearest' });
+    input.setAttribute('aria-activedescendant', list.children[index].id);
+  };
+  const open = (query) => {
+    const matches = names().filter((name) => name.toLowerCase().includes(query));
+    list.replaceChildren(...matches.map((name, i) => {
+      const item = document.createElement('button');
+      item.type = 'button';
+      item.id = `${list.id}-${i}`;
+      item.className = 'menu__item';
+      item.role = 'option';
+      item.tabIndex = -1;
+      item.textContent = name;
+      item.onmousedown = (event) => event.preventDefault();
+      item.onclick = () => {
+        input.value = name;
+        close();
+      };
+      return item;
+    }));
+    if (!matches.length) return close();
+    if (!isOpen()) list.showPopover();
+    input.setAttribute('aria-expanded', 'true');
+    mark(-1);
+  };
+  input.addEventListener('click', () => (isOpen() ? close() : open('')));
+  input.addEventListener('input', () => open(input.value.trim().toLowerCase()));
+  input.addEventListener('blur', close);
+  input.addEventListener('keydown', (event) => {
+    if (event.key === 'ArrowDown' && !isOpen()) {
+      event.preventDefault();
+      open('');
+    } else if (!isOpen()) {
+      return;
+    } else if (event.key === 'Escape') {
+      event.preventDefault();
+      close();
+    } else if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+      event.preventDefault();
+      const count = list.children.length;
+      mark(event.key === 'ArrowDown' ? (row + 1) % count : (row <= 0 ? count : row) - 1);
+    } else if (event.key === 'Enter' && row >= 0) {
+      event.preventDefault();
+      list.children[row].click();
+    }
+  });
+}
+
+attachCombo($('organize-space'), () => spaceNames);
+attachCombo($('organize-group'), () => groupNames);
+attachCombo($('workspace-name'), () => spaceNames);
+attachCombo($('ask-value'), () => askNames);
 $('organize-cancel').onclick = () => organize.close();
+$('organize-unlink').onclick = () => {
+  organize.close();
+  deck.link(organizing.id, null);
+  showUndo('Session unlinked.');
+};
 $('space-filter').onchange = () => renderSessions(currentIndex);
 
 const viewRadios = document.querySelectorAll('input[name="session-view"]');
@@ -461,7 +925,13 @@ function setSessionView(view) {
 }
 
 function sortOptions() {
-  return { model: $('sort-model').value, effort: $('sort-effort').value, rename: $('sort-rename').checked };
+  return {
+    model: $('sort-model').value,
+    effort: $('sort-effort').value,
+    rename: $('sort-rename').checked,
+    notes: $('sort-notes').value,
+    resort: $('sort-resort').checked,
+  };
 }
 
 function sortStatus(text, failed = false) {
@@ -475,41 +945,146 @@ async function drawSortEstimate() {
   const { sessions, tokens } = await deck.estimateTopics(sortOptions());
   $('sort-run').disabled = !sessions;
   $('sort-warning').textContent = sessions
-    ? `This uses your Claude account: about ${tokens.toLocaleString('en-US')} tokens for ${sessions.toLocaleString('en-US')} session${sessions === 1 ? '' : 's'}. Only titles and folder names are sent.`
+    ? `This uses your Claude account: about ${tokens.toLocaleString('en-US')} tokens for ${sessions.toLocaleString('en-US')} session${sessions === 1 ? '' : 's'}. Only titles, folder names and your notes are sent.`
     : 'Every session already has what you asked for. Nothing to send.';
+  const join = await deck.estimateJoins();
+  $('join-row').hidden = join.sessions === 0;
+  if (join.sessions !== 0) {
+    $('join-text').textContent = `${join.sessions} continued session${join.sessions === 1 ? ' has' : 's have'} more than one possible origin. Claude can pick one: about ${join.tokens.toLocaleString('en-US')} tokens, titles and folder names only.`;
+  }
+  $('join-undo').hidden = !(currentIndex?.modelJoins > 0);
+  const workspaces = await deck.estimateWorkspaces();
+  $('workspace-row').hidden = workspaces.groups === 0;
+  if (workspaces.groups !== 0) {
+    $('workspace-text').textContent = `Claude can nest your ${workspaces.groups} groups into workspaces: about ${workspaces.tokens.toLocaleString('en-US')} tokens, group names, folder names, sample titles and your notes only.`;
+  }
+  $('workspace-undo').hidden = !(currentIndex?.modelWorkspaces > 0);
 }
 
 for (const radio of viewRadios) {
   radio.checked = radio.value === sessionView;
   radio.onchange = () => setSessionView(radio.value);
 }
+$('settings-open').onclick = () => {
+  $('settings-confirm-close').checked = confirmsClose();
+  $('settings-always-trust').checked = alwaysTrusts();
+  $('settings-dialog').showModal();
+};
+$('settings-confirm-close').onchange = (event) => setConfirmsClose(event.target.checked);
+$('settings-always-trust').onchange = (event) => {
+  if (!event.target.checked) {
+    localStorage.setItem('alwaysTrust', false);
+    return;
+  }
+  event.target.checked = false; // Stays off until the warning is accepted.
+  $('trust-dialog').returnValue = '';
+  $('trust-dialog').showModal();
+};
+$('trust-dialog').onclose = () => {
+  if ($('trust-dialog').returnValue !== 'trust') return;
+  localStorage.setItem('alwaysTrust', true);
+  $('settings-always-trust').checked = true;
+};
 $('search').onclick = togglePalette;
+$('chat-history').onclick = () => {
+  const session = currentIndex?.sessions?.find((s) => s.id === activeId);
+  if (!session) return;
+  showPalette(async () => currentIndex.sessions.filter((s) => s.chatId === session.chatId), resumeSession, 'Search this chat');
+};
+$('link-chat').onclick = () => {
+  const activeSession = currentIndex?.sessions?.find((s) => s.id === activeId);
+  if (!activeSession) return;
+  const otherChats = async () => groupChats(await deck.getAllSessions()).filter((c) => c.chatId !== activeSession.chatId);
+  if (!activeSession.parentId) {
+    showPalette(otherChats, linkTo, 'Link to which chat?');
+    return;
+  }
+  const { left, bottom } = $('link-chat').getBoundingClientRect();
+  openMenu(left, bottom + 4, [
+    { label: 'Move to another chat', run: () => showPalette(otherChats, (target) => {
+      deck.link(activeSession.id, target.id);
+      showUndo(`Moved to ${target.title}.`);
+    }, 'Move to which chat?') },
+    { label: 'Unlink from chat', run: () => {
+      deck.link(activeSession.id, null);
+      showUndo('Session unlinked.');
+    } },
+  ]);
+};
+async function linkTo(target) {
+  const activeSession = currentIndex?.sessions?.find((s) => s.id === activeId);
+  deck.link(activeSession.chatId, target.id);
+  showUndo(`Linked to ${target.title}.`);
+}
 $('sort').onclick = () => {
   sortDialog.showModal();
   drawSortEstimate();
 };
+$('sort-notes').value = localStorage.getItem('sortNotes') ?? '';
+$('sort-notes').oninput = (event) => localStorage.setItem('sortNotes', event.target.value);
 $('sort-rename').onchange = drawSortEstimate;
+$('sort-resort').onchange = drawSortEstimate;
 $('sort-close').onclick = () => sortDialog.close();
+$('undo-run').onclick = () => {
+  deck.undoLink();
+  $('undo-bar').hidden = true;
+};
+$('undo-close').onclick = () => {
+  $('undo-bar').hidden = true;
+};
 $('sort-restore').onclick = () => {
   deck.restoreTitles();
   sortStatus('Original titles restored.');
 };
+function lockSortDialog(locked) {
+  sorting = locked;
+  sortDialog.closedBy = locked ? 'none' : 'any';
+  for (const control of sortDialog.querySelector('form').elements) control.disabled = locked;
+  $('sort-run').setAttribute('aria-busy', locked);
+}
+
 $('sort-run').onclick = async () => {
-  if (sorting) {
-    deck.stopTopics();
-    return;
-  }
-  sorting = true;
-  $('sort-run').textContent = 'Stop';
+  lockSortDialog(true);
   sortStatus('Sending the first batch');
   setSessionView('topics');
-  const result = await deck.runTopics(sortOptions());
-  sorting = false;
-  $('sort-run').textContent = 'Find topics';
-  sortStatus(result.error ?? (result.stopped ? 'Stopped. What was done is saved.' : 'Done.'), Boolean(result.error));
-  drawSortEstimate();
+  const result = await deck.runTopics(sortOptions()).catch((error) => ({ error: error.message }));
+  lockSortDialog(false);
+  if (result.error) {
+    sortStatus(result.error, true);
+    drawSortEstimate();
+    return;
+  }
+  sortStatus('');
+  sortDialog.close();
 };
 deck.onTopicsProgress((done, total) => sortStatus(`Sorted ${done} of ${total}`));
+
+$('join-run').onclick = async () => {
+  lockSortDialog(true);
+  sortStatus('Asking Claude');
+  const result = await deck.runJoins(sortOptions()).catch((error) => ({ error: error.message }));
+  lockSortDialog(false);
+  if (result.error) sortStatus(result.error, true);
+  else sortStatus('');
+  drawSortEstimate();
+};
+$('join-undo').onclick = () => {
+  deck.clearJoins();
+  sortStatus("Claude's joins removed.");
+};
+$('workspace-run').onclick = async () => {
+  lockSortDialog(true);
+  sortStatus('Asking Claude');
+  const result = await deck.runWorkspaces(sortOptions()).catch((error) => ({ error: error.message }));
+  lockSortDialog(false);
+  if (result.error) sortStatus(result.error, true);
+  else sortStatus('');
+  drawSortEstimate();
+};
+$('workspace-undo').onclick = () => {
+  deck.clearWorkspaces();
+  sortStatus("Claude's workspaces removed.");
+};
 
 const startInSessions = async () => startChat(await deck.defaultFolder());
 const startInPicked = async () => startChat(await deck.pickFolder());
@@ -524,7 +1099,50 @@ for (const button of document.querySelectorAll('[data-window-action]')) {
 const maximizeButton = document.getElementById('window-maximize');
 deck.onMaximized((maximized) => {
   maximizeButton.setAttribute('aria-label', maximized ? 'Restore' : 'Maximize');
+  maximizeButton.dataset.tip = maximized ? 'Restore the window size' : 'Maximize the window';
   maximizeButton.querySelector('use').setAttribute('href', maximized ? '#i-window-restore' : '#i-window-maximize');
 });
 deck.onSessions(renderSessions);
 deck.getSessions().then(renderSessions);
+
+// One shared popover: it renders in the top layer, so the sidebar and dialogs cannot clip it.
+const tooltip = $('tooltip');
+const TOOLTIP_DELAY = 400;
+const TOOLTIP_GAP = 6;
+const TOOLTIP_EDGE = 8;
+let tooltipTarget = null;
+let tooltipTimer;
+
+function openTooltip() {
+  if (!tooltipTarget.isConnected) return;
+  tooltip.textContent = tooltipTarget.dataset.tip;
+  tooltipTarget.setAttribute('aria-describedby', 'tooltip');
+  tooltip.showPopover();
+  const anchor = tooltipTarget.getBoundingClientRect();
+  const { offsetWidth: width, offsetHeight: height } = tooltip;
+  const below = anchor.bottom + TOOLTIP_GAP;
+  tooltip.style.top = `${below + height > innerHeight - TOOLTIP_EDGE ? anchor.top - height - TOOLTIP_GAP : below}px`;
+  tooltip.style.left = `${Math.min(Math.max(TOOLTIP_EDGE, anchor.left + (anchor.width - width) / 2), innerWidth - width - TOOLTIP_EDGE)}px`;
+}
+
+function closeTooltip() {
+  clearTimeout(tooltipTimer);
+  if (tooltip.matches(':popover-open')) tooltip.hidePopover();
+}
+
+function aimTooltip(target) {
+  if (target === tooltipTarget) return;
+  tooltipTarget?.removeAttribute('aria-describedby');
+  closeTooltip();
+  tooltipTarget = target?.dataset.tip ? target : null;
+  if (tooltipTarget) tooltipTimer = setTimeout(openTooltip, TOOLTIP_DELAY);
+}
+
+document.addEventListener('pointerover', (event) => aimTooltip(event.target.closest('[data-tip]')));
+document.addEventListener('focusin', (event) => {
+  if (event.target.matches(':focus-visible')) aimTooltip(event.target.closest('[data-tip]'));
+});
+document.addEventListener('focusout', () => aimTooltip(null));
+document.documentElement.addEventListener('pointerleave', () => aimTooltip(null));
+document.addEventListener('pointerdown', closeTooltip, true);
+document.addEventListener('keydown', closeTooltip, true);

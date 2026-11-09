@@ -20,26 +20,34 @@
   <symbol id="i-topic" viewBox="0 0 16 16"><path d="M8 2.5 14 5.5 8 8.5 2 5.5zM2 10.5l6 3 6-3"/></symbol>
   <symbol id="i-chevron" viewBox="0 0 16 16"><path d="m6 3.5 4.5 4.5L6 12.5"/></symbol>
   <symbol id="i-folder" viewBox="0 0 16 16"><path d="M2 5.2c0-.9.7-1.6 1.6-1.6h2.6l1.5 1.7h4.7c.9 0 1.6.7 1.6 1.6v4.9c0 .9-.7 1.6-1.6 1.6H3.6c-.9 0-1.6-.7-1.6-1.6z"/></symbol>
+  <symbol id="i-settings" viewBox="0 0 16 16"><path d="M2.5 5h6m3 0h2M2.5 11h2m3 0h6"/><circle cx="10" cy="5" r="1.5"/><circle cx="6" cy="11" r="1.5"/></symbol>
   <symbol id="i-terminal" viewBox="0 0 16 16"><rect x="1.75" y="2.5" width="12.5" height="11" rx="2.5"/><path d="m4.5 6 2 2-2 2m4 .5h3"/></symbol>
+  <symbol id="i-more" viewBox="0 0 16 16"><path d="M3.5 8h.01M8 8h.01M12.5 8h.01" stroke-width="2"/></symbol>
+  <symbol id="i-link" viewBox="0 0 16 16"><rect x="2" y="5" width="5" height="6" rx="2"/><rect x="9" y="5" width="5" height="6" rx="2"/><path d="M7 8h2"/></symbol>
 </svg>
 <header class="bar">
   <span class="mark"><svg class="mark__logo" aria-hidden="true"><use href="#i-logo"/></svg>Frugal Deck</span>
   <nav id="tabs" class="tabs" aria-label="Open chats"></nav>
-  <button id="new" class="btn" type="button"><svg class="icon" aria-hidden="true"><use href="#i-plus"/></svg>New chat</button>
-  <button id="new-in-folder" class="btn btn--icon" type="button" aria-label="New chat in a folder" title="New chat in a folder"><svg class="icon" aria-hidden="true"><use href="#i-folder"/></svg></button>
+  <div class="bar__actions">
+    <button id="new" class="btn btn--bar btn--icon" type="button" aria-label="New chat" data-tip="Start a new chat in the default folder"><svg class="icon" aria-hidden="true"><use href="#i-plus"/></svg></button>
+    <button id="new-in-folder" class="btn btn--bar btn--icon" type="button" aria-label="New chat in a folder" data-tip="Choose a folder and start a chat there"><svg class="icon" aria-hidden="true"><use href="#i-folder"/></svg></button>
+    <button id="chat-history" class="btn btn--bar" type="button" hidden><svg class="icon" aria-hidden="true"><use href="#i-topic"/></svg><span class="measured"></span></button>
+    <button id="link-chat" class="btn btn--bar" type="button" hidden><svg class="icon" aria-hidden="true"><use href="#i-link"/></svg><span></span></button>
+    <button id="settings-open" class="btn btn--bar btn--icon" type="button" aria-label="Settings" data-tip="Open settings"><svg class="icon" aria-hidden="true"><use href="#i-settings"/></svg></button>
+  </div>
   <div class="window-controls" role="group" aria-label="Window">
-    <button class="window-control" type="button" data-window-action="minimize" aria-label="Minimize"><svg class="icon" aria-hidden="true"><use href="#i-window-minimize"/></svg></button>
-    <button id="window-maximize" class="window-control" type="button" data-window-action="maximize" aria-label="Maximize"><svg class="icon" aria-hidden="true"><use href="#i-window-maximize"/></svg></button>
-    <button class="window-control window-control--close" type="button" data-window-action="close" aria-label="Close"><svg class="icon" aria-hidden="true"><use href="#i-x"/></svg></button>
+    <button class="window-control" type="button" data-window-action="minimize" aria-label="Minimize" data-tip="Minimize the window"><svg class="icon" aria-hidden="true"><use href="#i-window-minimize"/></svg></button>
+    <button id="window-maximize" class="window-control" type="button" data-window-action="maximize" aria-label="Maximize" data-tip="Maximize the window"><svg class="icon" aria-hidden="true"><use href="#i-window-maximize"/></svg></button>
+    <button class="window-control window-control--close" type="button" data-window-action="close" aria-label="Close" data-tip="Close Frugal Deck"><svg class="icon" aria-hidden="true"><use href="#i-x"/></svg></button>
   </div>
 </header>
 <aside class="sidebar" aria-label="Sessions">
   <div class="sidebar__tools">
-    <button id="search" class="btn" type="button" title="Ctrl+Shift+K"><svg class="icon" aria-hidden="true"><use href="#i-search"/></svg>Search</button>
-    <button id="sort" class="btn" type="button"><svg class="icon" aria-hidden="true"><use href="#i-sort"/></svg>Organize</button>
+    <button id="search" class="btn" type="button" data-tip="Find a session by title or folder (Ctrl+Shift+K)"><svg class="icon" aria-hidden="true"><use href="#i-search"/></svg>Search</button>
+    <button id="sort" class="btn" type="button" data-tip="Group your sessions by folder or topic"><svg class="icon" aria-hidden="true"><use href="#i-sort"/></svg>Organize</button>
   </div>
   <p id="index-status" class="sidebar__status" role="status" hidden></p>
-  <select id="space-filter" class="space-filter" aria-label="Filter by space" hidden></select>
+  <select id="space-filter" class="space-filter" aria-label="Filter by workspace" hidden></select>
   <div id="groups"></div>
 </aside>
 <main id="stage" class="stage">
@@ -47,8 +55,8 @@
     <h1>Start a chat</h1>
     <p>New chats open in Frugal Deck/Sessions in your home folder. Choose a folder to work on a project.</p>
     <div class="empty__actions">
-      <button id="start" class="btn btn--primary" type="button"><svg class="icon" aria-hidden="true"><use href="#i-plus"/></svg>New chat</button>
-      <button id="pick" class="btn" type="button"><svg class="icon" aria-hidden="true"><use href="#i-folder"/></svg>Choose folder</button>
+      <button id="start" class="btn btn--primary" type="button" data-tip="Start a new chat in the default folder"><svg class="icon" aria-hidden="true"><use href="#i-plus"/></svg>New chat</button>
+      <button id="pick" class="btn" type="button" data-tip="Choose a folder and start a chat there"><svg class="icon" aria-hidden="true"><use href="#i-folder"/></svg>Choose folder</button>
     </div>
   </section>
   <p id="notice" class="notice" role="alert" hidden></p>
@@ -57,13 +65,15 @@
   <svg class="icon" aria-hidden="true"><use href="#i-folder"/></svg>
   <span id="path" class="measured readout__path"></span>
   <span id="session" class="measured readout__session"></span>
-  <div class="meters">
-    <span id="meter-context" class="meter" hidden>Context <meter aria-label="Context used" min="0" max="100" low="60" high="80" optimum="0"></meter><span class="measured"></span></span>
-    <span id="meter-five" class="meter" hidden>5 h <meter aria-label="5-hour limit used" min="0" max="100" low="60" high="80" optimum="0"></meter><span class="measured"></span></span>
-    <span id="meter-week" class="meter" hidden>Week <meter aria-label="Weekly limit used" min="0" max="100" low="60" high="80" optimum="0"></meter><span class="measured"></span></span>
-  </div>
+  <button id="usage-open" class="btn" type="button" popovertarget="usage" hidden>Usage</button>
   <span id="state" class="readout__state" role="status"></span>
 </footer>
+<div id="usage" class="usage" popover="auto" aria-label="Usage">
+  <div id="meter-context" class="meter" hidden>Context <meter aria-label="Context used" min="0" max="100" low="60" high="80" optimum="0"></meter><span class="measured"></span></div>
+  <div id="meter-five" class="meter" hidden>5 h <meter aria-label="5-hour limit used" min="0" max="100" low="60" high="80" optimum="0"></meter><span class="measured"></span></div>
+  <div id="meter-week" class="meter" hidden>Week <meter aria-label="Weekly limit used" min="0" max="100" low="60" high="80" optimum="0"></meter><span class="measured"></span></div>
+  <div id="usage-tokens" class="meter" hidden>Session tokens <span class="measured"></span></div>
+</div>
 <dialog id="palette" class="palette" closedby="any" aria-label="Search sessions">
   <input id="palette-query" class="palette__query" type="text" role="combobox" aria-controls="palette-list" aria-expanded="true" aria-autocomplete="list" aria-label="Search sessions" placeholder="Search by title or folder" autocomplete="off" spellcheck="false">
   <div id="palette-list" class="palette__list" role="listbox" aria-label="Sessions"></div>
@@ -73,12 +83,35 @@
   <form id="organize-form" method="dialog">
     <h2 id="organize-title" class="organize__title"></h2>
     <label class="organize__check"><input id="organize-pinned" type="checkbox"> Pin to top</label>
-    <label class="organize__field">Space<input id="organize-space" list="space-names" placeholder="No space" autocomplete="off" spellcheck="false"></label>
-    <datalist id="space-names"></datalist>
+    <label class="organize__field" data-tip="Places this chat directly in a workspace, outside its group">Workspace<input id="organize-space" placeholder="No workspace" autocomplete="off" spellcheck="false"></label>
+    <label class="organize__field">Group<input id="organize-group" placeholder="No group" autocomplete="off" spellcheck="false"></label>
     <label class="organize__field">Tags<input id="organize-tags" placeholder="Comma-separated" autocomplete="off" spellcheck="false"></label>
     <div class="organize__actions">
-      <button id="organize-cancel" class="btn" type="button">Cancel</button>
-      <button class="btn btn--primary" type="submit">Save</button>
+      <button id="organize-unlink" class="btn sort__restore" type="button" data-tip="Move this session and the later ones out of this chat" hidden>Unlink from chat</button>
+      <button id="organize-cancel" class="btn" type="button" data-tip="Close without saving">Cancel</button>
+      <button class="btn btn--primary" type="submit" data-tip="Save the pin, space and tags">Save</button>
+    </div>
+  </form>
+</dialog>
+<div id="menu" class="menu" popover="auto" role="menu" aria-label="Options"></div>
+<dialog id="ask-dialog" class="organize" closedby="any" aria-labelledby="ask-title">
+  <form id="ask-form" method="dialog">
+    <h2 id="ask-title" class="organize__title"></h2>
+    <p id="ask-text" class="organize__text"></p>
+    <label id="ask-field" class="organize__field">Name<input id="ask-value" required maxlength="40" pattern=".*\S.*" autocomplete="off" spellcheck="false"></label>
+    <div class="organize__actions">
+      <button id="ask-cancel" class="btn" type="button" data-tip="Close without changing anything">Cancel</button>
+      <button id="ask-submit" class="btn btn--primary" type="submit"></button>
+    </div>
+  </form>
+</dialog>
+<dialog id="workspace-dialog" class="organize" closedby="any" aria-labelledby="workspace-title">
+  <form id="workspace-form" method="dialog">
+    <h2 id="workspace-title" class="organize__title"></h2>
+    <label class="organize__field">Workspace<input id="workspace-name" placeholder="No workspace" autocomplete="off" spellcheck="false"></label>
+    <div class="organize__actions">
+      <button id="workspace-cancel" class="btn" type="button" data-tip="Close without saving">Cancel</button>
+      <button class="btn btn--primary" type="submit" data-tip="Move this group into a workspace">Save</button>
     </div>
   </form>
 </dialog>
@@ -88,24 +121,63 @@
     <fieldset class="organize__choice">
       <legend>Group by</legend>
       <div class="segmented">
-        <label><input type="radio" name="session-view" value="folders">Folders</label>
-        <label><input type="radio" name="session-view" value="topics">Topics</label>
+        <label data-tip="Group sessions by project folder"><input type="radio" name="session-view" value="folders">Folders</label>
+        <label data-tip="Group sessions by subject"><input type="radio" name="session-view" value="topics">Topics</label>
       </div>
     </fieldset>
     <div class="organize__pair">
-      <label class="organize__field">Model<select id="sort-model"><option value="sonnet" selected>Sonnet</option><option value="opus">Opus</option><option value="haiku">Haiku</option></select></label>
+      <label class="organize__field">Model<select id="sort-model"><option value="opus">Opus</option><option value="sonnet" selected>Sonnet</option><option value="haiku">Haiku</option></select></label>
       <label class="organize__field">Effort<select id="sort-effort"><option value="low">Low</option><option value="medium" selected>Medium</option><option value="high">High</option></select></label>
     </div>
     <label class="organize__check"><input id="sort-rename" type="checkbox"> Rewrite titles to be more exact</label>
+    <label class="organize__field">What you work on<input id="sort-notes" maxlength="2000" placeholder="DevStand: weekly goals, outreach. ServiceMinder: Pylon tickets, support." autocomplete="off" spellcheck="false"></label>
+    <label class="organize__check"><input id="sort-resort" type="checkbox"> Sort every session again (groups you set by hand stay)</label>
     <p id="sort-warning" class="sort__warning" role="note"></p>
+    <div id="join-row" class="sort__joins" hidden><p id="join-text" class="organize__text"></p><button id="join-run" class="btn" type="button" data-tip="Let Claude choose the origin of these sessions">Resolve with Claude</button></div>
+    <div id="workspace-row" class="sort__joins" hidden><p id="workspace-text" class="organize__text"></p><button id="workspace-run" class="btn" type="button" data-tip="Let Claude nest your groups into workspaces">Build workspaces</button></div>
     <p id="sort-status" class="sort__status" role="status" hidden></p>
     <div class="organize__actions">
-      <button id="sort-restore" class="btn sort__restore" type="button">Restore titles</button>
-      <button id="sort-close" class="btn" type="button">Close</button>
-      <button id="sort-run" class="btn btn--primary" type="button">Find topics</button>
+      <button id="sort-restore" class="btn sort__restore" type="button" data-tip="Put back the original session titles">Restore titles</button>
+      <button id="join-undo" class="btn sort__restore" type="button" data-tip="Remove the joins Claude chose" hidden>Undo Claude's joins</button>
+      <button id="workspace-undo" class="btn sort__restore" type="button" data-tip="Remove the workspaces Claude chose" hidden>Undo Claude's workspaces</button>
+      <button id="sort-close" class="btn" type="button" data-tip="Close this menu">Close</button>
+      <button id="sort-run" class="btn btn--primary" type="button" data-tip="Let Claude sort your sessions into topics">Find topics</button>
     </div>
   </form>
 </dialog>
+<dialog id="close-dialog" class="organize" closedby="any" aria-labelledby="close-title" aria-describedby="close-message">
+  <form method="dialog">
+    <h2 id="close-title" class="organize__title">Close this chat?</h2>
+    <p id="close-message" class="organize__text"></p>
+    <label class="organize__check"><input id="close-skip" type="checkbox"> Don't ask again (change it in Settings)</label>
+    <div class="organize__actions">
+      <button class="btn" type="submit" value="cancel" autofocus data-tip="Keep this chat open">Cancel</button>
+      <button class="btn btn--primary" type="submit" value="close" data-tip="Stop Claude and close this chat">Close chat</button>
+    </div>
+  </form>
+</dialog>
+<dialog id="settings-dialog" class="organize" closedby="any" aria-labelledby="settings-title">
+  <form method="dialog">
+    <h2 id="settings-title" class="organize__title">Settings</h2>
+    <label class="organize__check"><input id="settings-confirm-close" type="checkbox"> Ask before closing a running chat</label>
+    <label class="organize__check"><input id="settings-always-trust" type="checkbox"> Always trust folders</label>
+    <div class="organize__actions">
+      <button class="btn" type="submit" data-tip="Close settings">Close</button>
+    </div>
+  </form>
+</dialog>
+<dialog id="trust-dialog" class="organize" closedby="any" aria-labelledby="trust-title" aria-describedby="trust-warning">
+  <form method="dialog">
+    <h2 id="trust-title" class="organize__title">Always trust folders?</h2>
+    <p id="trust-warning" class="sort__warning" role="note">Frugal Deck will accept Claude Code's trust check for you in every folder you open here. Claude Code will be able to read, edit, and execute files there, and a folder's own settings and hooks can run commands as soon as the chat starts. A folder you downloaded or did not write could harm your computer or expose your files and credentials.</p>
+    <div class="organize__actions">
+      <button class="btn" type="submit" value="cancel" autofocus data-tip="Keep asking for each folder">Cancel</button>
+      <button class="btn btn--primary" type="submit" value="trust" data-tip="Skip the trust check in every folder">Always trust</button>
+    </div>
+  </form>
+</dialog>
+<div id="undo-bar" class="undo-bar" role="status" hidden><span id="undo-text"></span><button id="undo-run" class="btn" type="button" data-tip="Put this back as it was">Undo</button><button id="undo-close" class="btn btn--icon" type="button" aria-label="Dismiss" data-tip="Dismiss"><svg class="icon" aria-hidden="true"><use href="#i-x"/></svg></button></div>
+<div id="tooltip" class="tooltip" popover="manual" role="tooltip"></div>
 <script type="module" src="./app.js"></script>
 </body>
 </html>
