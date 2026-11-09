@@ -7,6 +7,8 @@ const DONE = /^\s*Done:/;
 const PENDING = /^\s*Pending:/;
 const FENCE = /^\s*```/;
 const USAGE = /^\s*Usage:/;
+const FRUGAL = /^\s*\/frugal\b/;
+const NEXT = /^\s*Next step:/;
 
 function handoffBlock(body) {
   if (typeof body !== 'string') return null;
@@ -35,4 +37,20 @@ function pickOrigin({ id, hash, goal, at }, emissions) {
   return top.length === 1 ? { parent: top[0], candidates: [] } : { parent: null, candidates: top };
 }
 
-module.exports = { handoffBlock, pickOrigin };
+// The prompt for the next session: the last /frugal line through the end of its fence, without Usage:.
+function nextBlock(body) {
+  if (typeof body !== 'string') return null;
+  const lines = body.split(/\r?\n/);
+  const from = lines.findLastIndex((line) => FRUGAL.test(line));
+  if (from === -1) return null;
+  let taken = lines.slice(from);
+  const fence = taken.findIndex((line) => FENCE.test(line));
+  if (fence !== -1) taken = taken.slice(0, fence);
+  if (!taken.some((line) => GOAL.test(line)) || !taken.some((line) => NEXT.test(line))) return null;
+  return taken.filter((line) => !USAGE.test(line)).map((line) => line.trimEnd()).join('\n').trim();
+}
+
+// Everything the model read for this reply, so the context size at the end of the turn.
+const contextTokens = (usage) => ['input_tokens', 'cache_creation_input_tokens', 'cache_read_input_tokens'].reduce((sum, key) => sum + (Number.isFinite(usage?.[key]) ? usage[key] : 0), 0);
+
+module.exports = { handoffBlock, pickOrigin, nextBlock, contextTokens };

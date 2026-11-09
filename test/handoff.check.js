@@ -1,5 +1,5 @@
 const assert = require('assert');
-const { handoffBlock, pickOrigin } = require('../src/main/handoff.js');
+const { handoffBlock, pickOrigin, nextBlock, contextTokens } = require('../src/main/handoff.js');
 
 // non-text is not a handoff
 assert.equal(handoffBlock(null), null);
@@ -58,5 +58,18 @@ assert.deepEqual(pickOrigin(at, [e('a', 'zz', 'g1', '2026-01-08T00:00:00Z'), e('
 // Nothing to pool.
 assert.deepEqual(pickOrigin(at, [e('a', 'h1', 'g1', '2026-03-01T00:00:00Z')]), { parent: null, candidates: [] });
 assert.deepEqual(pickOrigin(at, []), { parent: null, candidates: [] });
+
+// nextBlock: the last /frugal line through its fence, without Usage:.
+const reply = ['Done for now.', '```', '/frugal code', 'Goal: Ship handoff', 'Done:', '- indexer', 'Pending:', '- UI', 'Next step: Wire the bar', 'Usage: 160k (80%)', '```', 'Bye'].join('\r\n');
+assert.equal(nextBlock(reply), '/frugal code\nGoal: Ship handoff\nDone:\n- indexer\nPending:\n- UI\nNext step: Wire the bar');
+assert.equal(nextBlock(reply.replace('Next step: Wire the bar', '')), null);
+assert.equal(nextBlock(reply.replace('/frugal code', 'frugal code')), null);
+assert.equal(nextBlock(reply.replace('/frugal code', '/frugality')), null);
+assert.equal(nextBlock(null), null);
+// Unfenced, with an earlier /frugal mention: the last one wins.
+assert.equal(nextBlock('Run /frugal first.\n/frugal\nGoal: g\nNext step: n'), '/frugal\nGoal: g\nNext step: n');
+
+assert.equal(contextTokens({ input_tokens: 3, cache_creation_input_tokens: 100, cache_read_input_tokens: 150000, output_tokens: 900 }), 150103);
+assert.equal(contextTokens(undefined), 0);
 
 console.log('ok');

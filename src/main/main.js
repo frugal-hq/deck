@@ -87,7 +87,7 @@ ipcMain.handle('sessions:get', sidebarIndex);
 ipcMain.handle('sessions:all', () => index.sessions);
 ipcMain.on('sessions:organize', (_, id, organization) => indexer?.postMessage({ id, organization }));
 
-function launchChat({ id, folder, cols, rows, resume, group, account, file }) {
+function launchChat({ id, folder, cols, rows, resume, group, account, file, prompt }) {
   const claude = findClaude();
   if (!claude) return { error: NO_CLAUDE };
   const env = accountEnv(account);
@@ -96,9 +96,10 @@ function launchChat({ id, folder, cols, rows, resume, group, account, file }) {
     if (account.id !== accounts.MAIN) accounts.ensureOnboarded(account.configDir);
     if (resume) accounts.shareTranscript(file, account.configDir);
     const args = [resume ? '--resume' : '--session-id', id, '--settings', JSON.stringify({ statusLine: status.statusLine })];
+    if (prompt) args.push(prompt);
     const child = pty.spawn(claude, args, { name: 'xterm-256color', cols, rows, cwd: folder, env });
     chats.set(id, child);
-    chatInfo.set(id, { account: account.id, lastOutput: Date.now() });
+    chatInfo.set(id, { account: account.id, folder, lastOutput: Date.now() });
     if (typeof group === 'string' && group) indexer?.postMessage({ setGroup: { id, name: group } });
     child.onData((data) => {
       if (chats.get(id) !== child) return;
@@ -130,6 +131,25 @@ ipcMain.handle('chat:start', (_, { id, cwd, cols, rows, resume, group }) => {
   }
   return launchChat({ id, folder, cols, rows, resume, group, account: accounts.primary(), file: session?.file });
 });
+
+// A handoff continues in the folder its chat runs in, or the one the index recorded once it exits, on the account it ran on.
+// frugal: no permission flags exist yet, so "same permissions" holds; pass them here when Phase 4 adds them.
+ipcMain.handle('chat:continue', (_, { id, from, accountId, prompt, cols, rows }) => {
+  const folder = chatInfo.get(from)?.folder ?? index.sessions.find((s) => s.id === from)?.cwd;
+  const account = accounts.claudeAccounts().find((candidate) => candidate.id === accountId);
+  const text = typeof prompt === 'string' ? prompt.trim() : '';
+  // A leading dash would be read as a flag of claude.exe.
+  if (!UUID.test(id) || chats.has(id) || !folder || !account || !text || text.startsWith('-') || !isSize(cols) || !isSize(rows)) {
+    return { error: 'Invalid request.' };
+  }
+  return launchChat({ id, folder, cols, rows, account, prompt: text });
+});
+
+function offerHandoffs(handoffs) {
+  for (const { id, prompt, tokens } of handoffs) {
+    if (chats.has(id)) send('chat:handoff', id, { prompt, tokens });
+  }
+}
 
 ipcMain.handle('chat:switch-account', async (_, { id, accountId, cols, rows }) => {
   const child = chats.get(id);
@@ -357,7 +377,7 @@ function startIndexer() {
       dbFile: path.join(os.homedir(), '.frugal-deck', 'deck.db'),
     },
   });
-  worker.on('message', publishIndex);
+  worker.on('message', (message) => (message.handoffs ? offerHandoffs(message.handoffs) : publishIndex(message)));
   worker.on('error', (error) => publishIndex({ indexing: false, error: error.message }));
 }
 

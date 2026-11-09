@@ -4,7 +4,7 @@ const { DatabaseSync } = require('node:sqlite');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
-const { handoffBlock, pickOrigin } = require('./handoff');
+const { handoffBlock, pickOrigin, nextBlock, contextTokens } = require('./handoff');
 
 const CHUNK = 1 << 20;
 const BATCH = 500;
@@ -75,7 +75,7 @@ function promptTitle(content) {
   return title.replace(/\s+/g, ' ').trim().slice(0, 120) || null;
 }
 
-function applyRecord(row, record, emissions) {
+function applyRecord(row, record, emissions, handoffs) {
   if (record.isSidechain) return;
   if (record.type === 'custom-title') row.custom_title = text(record.customTitle);
   if (record.type === 'ai-title') row.ai_title = text(record.aiTitle);
@@ -103,17 +103,24 @@ function applyRecord(row, record, emissions) {
       const block = handoffBlock(body);
       if (block && typeof record.timestamp === 'string') emissions.push({ ...block, at: record.timestamp });
     }
+    // Each content block is its own record; the reply's text comes last and carries end_turn.
+    if (handoffs && record.message?.stop_reason === 'end_turn') {
+      for (const body of blocks) {
+        const prompt = nextBlock(body);
+        if (prompt) handoffs.push({ id: row.id, prompt, tokens: contextTokens(record.message.usage) });
+      }
+    }
   }
 }
 
-function parseLine(row, line, emissions) {
+function parseLine(row, line, emissions, handoffs) {
   let record;
   try {
     record = JSON.parse(line);
   } catch {
     return;
   }
-  if (record && typeof record === 'object') applyRecord(row, record, emissions);
+  if (record && typeof record === 'object') applyRecord(row, record, emissions, handoffs);
 }
 
 // Returns the offset after the last complete line, so a half-written line is read again next time.
@@ -139,7 +146,8 @@ function readLines(file, start, onLine) {
 
 const sessionId = (file) => path.basename(file, '.jsonl');
 
-function syncFile(db, file) {
+// handoffs only on live changes: a scan must not offer turns that ended while Deck was closed.
+function syncFile(db, file, handoffs) {
   const id = sessionId(file);
   const { size } = fs.statSync(file);
   let row = db.prepare('SELECT * FROM sessions WHERE id = ?').get(id);
@@ -151,7 +159,7 @@ function syncFile(db, file) {
   }
   row = { ...row, size };
   const emissions = [];
-  row.offset = readLines(file, row.offset, (line) => parseLine(row, line, emissions));
+  row.offset = readLines(file, row.offset, (line) => parseLine(row, line, emissions, handoffs));
   db.prepare(`INSERT OR REPLACE INTO sessions (id, file, size, offset, cwd, entrypoint, custom_title, ai_title, first_prompt, turns, last_at, started_at, handoff_hash, handoff_goal)
     VALUES (:id, :file, :size, :offset, :cwd, :entrypoint, :custom_title, :ai_title, :first_prompt, :turns, :last_at, :started_at, :handoff_hash, :handoff_goal)`).run(row);
   // In order with OR IGNORE: on a repeated hash the earliest emission stays.
@@ -484,15 +492,17 @@ function runWorker({ roots, dbFile }) {
   let timer = null;
   const flush = () => {
     timer = null;
+    const handoffs = [];
     for (const file of changed) {
       try {
-        syncFile(db, file);
+        syncFile(db, file, handoffs);
       } catch (error) {
         if (error.code === 'ENOENT') removeSession(db, file);
       }
     }
     changed.clear();
     publish(false);
+    if (handoffs.length) parentPort.postMessage({ handoffs });
   };
   for (const root of roots.filter((folder) => fs.existsSync(folder))) {
     fs.watch(root, { recursive: true }, (_, name) => {

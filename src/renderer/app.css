@@ -411,9 +411,9 @@ option::checkmark { order: 1; margin-inline-start: auto; color: var(--color-acce
 body { transition: opacity var(--dur-short) var(--ease-out); }
 @starting-style { body { opacity: 0; } }
 
-.empty, .notice, .readout, .term, .meter, .sidebar__status, .sort__status { transition: opacity var(--dur-micro) var(--ease-out), display var(--dur-micro) allow-discrete; }
-:is(.empty, .notice, .readout, .term, .meter, .sidebar__status, .sort__status)[hidden] { opacity: 0; pointer-events: none; }
-@starting-style { :is(.empty, .notice, .readout, .term, .meter, .sidebar__status, .sort__status) { opacity: 0; } }
+.empty, .notice, .handoff, .readout, .term, .meter, .sidebar__status, .sort__status { transition: opacity var(--dur-micro) var(--ease-out), display var(--dur-micro) allow-discrete; }
+:is(.empty, .notice, .handoff, .readout, .term, .meter, .sidebar__status, .sort__status)[hidden] { opacity: 0; pointer-events: none; }
+@starting-style { :is(.empty, .notice, .handoff, .readout, .term, .meter, .sidebar__status, .sort__status) { opacity: 0; } }
 
 .tab { transition: background-color var(--dur-micro) var(--ease-out), opacity var(--dur-micro) var(--ease-out), translate var(--dur-micro) var(--ease-out); }
 @starting-style { .tab { opacity: 0; translate: 0 4px; } }
@@ -480,3 +480,20 @@ body { transition: opacity var(--dur-short) var(--ease-out); }
 #sort-dialog { width: min(46rem, 92vw); max-height: 92vh; margin: auto; overflow-y: auto; }
 .sort__joins { display: flex; align-items: center; gap: var(--space-xs); }
 .sort__joins p { flex: 1; min-width: 0; }
+.handoff {
+  position: absolute;
+  top: var(--space-md);
+  right: var(--space-md);
+  display: grid;
+  gap: var(--space-xs);
+  width: min(40rem, calc(100% - 2 * var(--space-md)));
+  padding: var(--space-sm) var(--space-md);
+  border-radius: var(--radius-card);
+  background: var(--color-control-2);
+  box-shadow: var(--shadow-card);
+  z-index: var(--z-raised);
+}
+.handoff__title { margin: 0; font-size: var(--text-md); }
+.handoff__status { margin: 0; color: var(--color-muted); font-size: var(--text-sm); }
+.handoff__text { min-height: 10lh; max-height: 50vh; padding: var(--space-xs) var(--space-sm); border: 0; border-radius: var(--radius-card); background: var(--color-paper-3); color: var(--color-ink); font: var(--text-sm) / 1.4 var(--font-term); resize: vertical; }
+.handoff__actions { display: flex; justify-content: flex-end; gap: var(--space-xs); }

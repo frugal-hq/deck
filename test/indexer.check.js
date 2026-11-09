@@ -322,6 +322,17 @@ assert.deepEqual(gw(), snap.gw);
 assert.deepEqual(sg(), snap.sg);
 assert.deepEqual(so(), snap.so);
 
+// Handoffs come only from live syncs, only from a reply that ended its turn, with the context it read.
+const handoffFile = path.join(project, '00000000-0000-4000-8000-0000000000aa.jsonl');
+const reply = (stop, text) => line({ type: 'assistant', cwd, timestamp: '2026-05-01T00:00:00Z', message: { stop_reason: stop, usage: { input_tokens: 5, cache_read_input_tokens: 160000 }, content: [{ type: 'text', text }] } });
+const block = '/frugal code\nGoal: Ship it\nNext step: Test';
+fs.writeFileSync(handoffFile, user('go', '2026-05-01T00:00:00Z') + reply('end_turn', block));
+syncFile(db, handoffFile);
+const live = [];
+fs.appendFileSync(handoffFile, reply('tool_use', block) + reply('end_turn', 'no block') + reply('end_turn', `Done.\n${block}`));
+syncFile(db, handoffFile, live);
+assert.deepEqual(live, [{ id: '00000000-0000-4000-8000-0000000000aa', prompt: block, tokens: 160005 }]);
+
 db.close();
 fs.rmSync(dir, { recursive: true, force: true });
 console.log('ok');

@@ -15,6 +15,8 @@ contextBridge.exposeInMainWorld('deck', {
   onExit: (callback) => ipcRenderer.on('chat:exit', (_, id, code) => callback(id, code)),
   onMeters: (callback) => ipcRenderer.on('chat:meters', (_, id, meters) => callback(id, meters)),
   onRestarting: (callback) => ipcRenderer.on('chat:restarting', (_, id) => callback(id)),
+  onHandoff: (callback) => ipcRenderer.on('chat:handoff', (_, id, handoff) => callback(id, handoff)),
+  continueIn: (options) => ipcRenderer.invoke('chat:continue', options),
   switchAccount: (options) => ipcRenderer.invoke('chat:switch-account', options),
   login: (options) => ipcRenderer.invoke('accounts:login', options),
   logout: (id) => ipcRenderer.invoke('accounts:logout', { id }),

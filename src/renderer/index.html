@@ -61,6 +61,15 @@
     </div>
   </section>
   <p id="notice" class="notice" role="alert" hidden></p>
+  <section id="handoff" class="handoff" aria-labelledby="handoff-title" hidden>
+    <h2 id="handoff-title" class="handoff__title">Handoff ready</h2>
+    <p id="handoff-status" class="handoff__status" role="status"></p>
+    <textarea id="handoff-text" class="handoff__text" spellcheck="false" aria-label="Prompt for the new session"></textarea>
+    <div class="handoff__actions">
+      <button id="handoff-stop" class="btn" type="button"></button>
+      <button id="handoff-continue" class="btn btn--primary" type="button" data-tip="Start a new session with this prompt, in the same folder and account">Continue in new session</button>
+    </div>
+  </section>
 </main>
 <footer id="readout" class="readout" hidden>
   <svg class="icon" aria-hidden="true"><use href="#i-folder"/></svg>

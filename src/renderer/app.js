@@ -79,6 +79,7 @@ function render() {
   $('readout').hidden = !chat;
   $('notice').hidden = !chat?.error;
   $('notice').textContent = chat?.error ?? '';
+  drawHandoff();
   const activeSession = currentIndex?.sessions?.find((s) => s.id === activeId);
   $('link-chat').hidden = !activeSession;
   const activeChat = activeSession && chatsById.get(activeSession.chatId);
@@ -391,7 +392,7 @@ function addAccount() {
 
 $('account-add').onclick = addAccount;
 
-async function openChat({ id, cwd, name, resume, group, login, accountId }) {
+async function openChat({ id, cwd, name, resume, group, login, accountId, handoff }) {
   const el = document.createElement('div');
   el.className = 'term';
   stage.append(el);
@@ -419,14 +420,88 @@ async function openChat({ id, cwd, name, resume, group, login, accountId }) {
   term.attachCustomKeyEventHandler((event) => handleTerminalKey(chat, event));
 
   const size = { id, cols: term.cols, rows: term.rows };
-  const result = await (login ? deck.login({ ...size, name: login, accountId }) : deck.start({ ...size, cwd, resume, group }));
+  const result = await (login ? deck.login({ ...size, name: login, accountId })
+    : handoff ? deck.continueIn({ ...size, ...handoff })
+    : deck.start({ ...size, cwd, resume, group }));
   if (result.error) {
     chat.state = 'error';
     chat.error = result.error;
   }
   chat.account = result.account;
   render();
+  return result;
 }
+
+// From this context size on, every turn re-sends enough that a fresh session is worth starting unasked.
+const HANDOFF_AUTO_TOKENS = 150000;
+const HANDOFF_COUNTDOWN_S = 10;
+
+function stopCountdown(chat) {
+  if (!chat.handoff?.timer) return;
+  clearInterval(chat.handoff.timer);
+  chat.handoff.timer = null;
+}
+
+function drawHandoff() {
+  const handoff = chats.get(activeId)?.handoff;
+  $('handoff').hidden = !handoff;
+  if (!handoff) return;
+  const text = $('handoff-text');
+  if (document.activeElement !== text) text.value = handoff.prompt;
+  const size = `Context is ${compact.format(handoff.tokens)} tokens.`;
+  $('handoff-status').textContent = handoff.timer ? `${size} A new session starts in ${handoff.left} s.` : size;
+  const stop = $('handoff-stop');
+  stop.textContent = handoff.timer ? 'Cancel' : 'Dismiss';
+  stop.dataset.tip = handoff.timer ? 'Stop the countdown and keep this prompt' : 'Keep working in this session';
+}
+
+async function continueHandoff(chat) {
+  stopCountdown(chat);
+  if (chat.handoff.starting) return;
+  chat.handoff.starting = true;
+  const { prompt } = chat.handoff;
+  const result = await openChat({ id: crypto.randomUUID(), cwd: chat.cwd, name: 'New chat', handoff: { from: chat.id, accountId: chat.account, prompt } });
+  // A failed start keeps the prompt, so nothing typed into it is lost.
+  if (!result.error) chat.handoff = null;
+  else if (chat.handoff) chat.handoff.starting = false;
+  render();
+}
+
+deck.onHandoff((id, { prompt, tokens }) => {
+  const chat = chats.get(id);
+  if (!chat) return;
+  if (chat.handoff) stopCountdown(chat);
+  chat.handoff = { prompt, tokens, left: HANDOFF_COUNTDOWN_S, timer: null };
+  // Counts down only while its chat is on screen, so it never opens a tab over another chat.
+  if (tokens >= HANDOFF_AUTO_TOKENS) chat.handoff.timer = setInterval(() => {
+    if (activeId !== id) return;
+    chat.handoff.left -= 1;
+    if (chat.handoff.left > 0) drawHandoff();
+    else continueHandoff(chat);
+  }, 1000);
+  drawHandoff();
+});
+
+$('handoff-text').addEventListener('focus', () => {
+  const chat = chats.get(activeId);
+  if (chat?.handoff) stopCountdown(chat);
+  drawHandoff();
+});
+$('handoff-text').addEventListener('input', (event) => {
+  const chat = chats.get(activeId);
+  if (chat?.handoff) chat.handoff.prompt = event.target.value;
+});
+$('handoff-stop').onclick = () => {
+  const chat = chats.get(activeId);
+  if (!chat?.handoff) return;
+  if (chat.handoff.timer) stopCountdown(chat);
+  else chat.handoff = null;
+  drawHandoff();
+};
+$('handoff-continue').onclick = () => {
+  const chat = chats.get(activeId);
+  if (chat?.handoff?.prompt.trim()) continueHandoff(chat);
+};
 
 // The prompt comes before anything else, so a slower start just shows it and a resumed transcript is never read as one.
 const TRUST_PROMPT_MS = 15000;
@@ -467,6 +542,7 @@ async function closeChat(id) {
   const live = chat.state === 'starting' || chat.state === 'running';
   if (live && confirmsClose() && !await askToClose(chat)) return;
   if (live) deck.kill(id);
+  stopCountdown(chat);
   chat.term.dispose();
   chat.el.remove();
   fadeOut(chat.tab);
