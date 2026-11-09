@@ -33,6 +33,7 @@
     <button id="new-in-folder" class="btn btn--bar btn--icon" type="button" aria-label="New chat in a folder" data-tip="Choose a folder and start a chat there"><svg class="icon" aria-hidden="true"><use href="#i-folder"/></svg></button>
     <button id="chat-history" class="btn btn--bar" type="button" hidden><svg class="icon" aria-hidden="true"><use href="#i-topic"/></svg><span class="measured"></span></button>
     <button id="link-chat" class="btn btn--bar" type="button" hidden><svg class="icon" aria-hidden="true"><use href="#i-link"/></svg><span></span></button>
+    <button id="accounts-open" class="btn btn--bar" type="button" popovertarget="usage" data-tip="Claude accounts and usage">Accounts</button>
     <button id="settings-open" class="btn btn--bar btn--icon" type="button" aria-label="Settings" data-tip="Open settings"><svg class="icon" aria-hidden="true"><use href="#i-settings"/></svg></button>
   </div>
   <div class="window-controls" role="group" aria-label="Window">
@@ -70,9 +71,13 @@
 </footer>
 <div id="usage" class="usage" popover="auto" aria-label="Usage">
   <div id="meter-context" class="meter" hidden>Context <meter aria-label="Context used" min="0" max="100" low="60" high="80" optimum="0"></meter><span class="measured"></span></div>
-  <div id="meter-five" class="meter" hidden>5 h <meter aria-label="5-hour limit used" min="0" max="100" low="60" high="80" optimum="0"></meter><span class="measured"></span></div>
-  <div id="meter-week" class="meter" hidden>Week <meter aria-label="Weekly limit used" min="0" max="100" low="60" high="80" optimum="0"></meter><span class="measured"></span></div>
   <div id="usage-tokens" class="meter" hidden>Session tokens <span class="measured"></span></div>
+  <div id="accounts" class="accounts"></div>
+  <details id="usage-others" class="usage__others" hidden>
+    <summary>Delegates <span id="others-count" class="usage__count"></span></summary>
+    <div id="others" class="others"></div>
+  </details>
+  <button id="account-add" class="btn" type="button" data-tip="Sign in to another Claude account">Add account</button>
 </div>
 <dialog id="palette" class="palette" closedby="any" aria-label="Search sessions">
   <input id="palette-query" class="palette__query" type="text" role="combobox" aria-controls="palette-list" aria-expanded="true" aria-autocomplete="list" aria-label="Search sessions" placeholder="Search by title or folder" autocomplete="off" spellcheck="false">
