@@ -1,0 +1,7 @@
+node_modules/
+dist/
+out/
+.hallmark/
+spikes/08-whisper/
+/nul
+/spikes03-resume/
