@@ -6,6 +6,7 @@ const path = require('path');
 const { Worker } = require('worker_threads');
 const pty = require('node-pty');
 const { createStatusBridge, readUserStatusLine } = require('./statusline');
+const { validOptions, estimate, organize } = require('./organizer');
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const DROPPED_ENV = /^(CLAUDE.*|ELECTRON_RUN_AS_NODE|NO_COLOR)$/i;
@@ -19,7 +20,7 @@ let indexer;
 const SIDEBAR_LIMIT = 500;
 const sidebarIndex = () => ({ ...index, sessions: index.sessions.filter((s, i) => i < SIDEBAR_LIMIT || s.pinned || s.space || s.tags.length) });
 
-// frugal: only PATH and the npm layout are verified; other installs are pending (Prueba 5).
+// frugal: only PATH and the npm layout are verified; other installs are pending (Test 5).
 function findClaude() {
   let found;
   try {
@@ -54,6 +55,15 @@ ipcMain.handle('folder:pick', async () => {
   return filePaths[0];
 });
 
+// Outside the install folder: Program Files needs admin rights and an update or uninstall could remove it.
+const SESSIONS_FOLDER = path.join(os.homedir(), 'Frugal Deck', 'Sessions');
+
+ipcMain.handle('folder:default', () => {
+  fs.mkdirSync(SESSIONS_FOLDER, { recursive: true });
+  pickedFolders.add(SESSIONS_FOLDER);
+  return SESSIONS_FOLDER;
+});
+
 ipcMain.handle('sessions:get', sidebarIndex);
 ipcMain.handle('sessions:all', () => index.sessions);
 ipcMain.on('sessions:organize', (_, id, organization) => indexer?.postMessage({ id, organization }));
@@ -62,10 +72,10 @@ ipcMain.handle('chat:start', (_, { id, cwd, cols, rows, resume }) => {
   // A resumed chat always runs in the folder the index recorded, never one sent by the renderer.
   const folder = resume ? index.sessions.find((session) => session.id === id)?.cwd : pickedFolders.has(cwd) && cwd;
   if (!UUID.test(id) || chats.has(id) || !folder || !isSize(cols) || !isSize(rows)) {
-    return { error: 'Petición no válida.' };
+    return { error: 'Invalid request.' };
   }
   const claude = findClaude();
-  if (!claude) return { error: 'No se encontró claude.exe en el PATH. Instala Claude Code y vuelve a abrir Deck.' };
+  if (!claude) return { error: 'claude.exe not found in PATH. Install Claude Code and reopen Deck.' };
   const env = cleanEnv();
   const status = statusBridge.register({ id, cwd: folder, env, statusLine: readUserStatusLine(path.join(os.homedir(), '.claude/settings.json')) });
   try {
@@ -81,7 +91,7 @@ ipcMain.handle('chat:start', (_, { id, cwd, cols, rows, resume }) => {
     return { ok: true };
   } catch (error) {
     statusBridge.release(status.token);
-    return { error: `No se pudo iniciar Claude: ${error.message}` };
+    return { error: `Failed to start Claude: ${error.message}` };
   }
 });
 
@@ -91,12 +101,58 @@ ipcMain.on('chat:resize', (_, id, cols, rows) => {
 });
 ipcMain.on('chat:kill', (_, id) => chats.get(id)?.kill());
 
+let topicRun = null;
+
+ipcMain.handle('topics:estimate', (_, options) => (validOptions(options) ? estimate(index.sessions, options) : { sessions: 0, tokens: 0 }));
+
+ipcMain.handle('topics:run', async (_, options) => {
+  if (topicRun || !validOptions(options)) return { error: 'Invalid request.' };
+  const claude = findClaude();
+  if (!claude) return { error: 'claude.exe not found in PATH. Install Claude Code and reopen Deck.' };
+  const run = topicRun = { child: null, stopped: false };
+  try {
+    await organize({
+      claude,
+      env: cleanEnv(),
+      sessions: index.sessions,
+      options,
+      run,
+      onBatch: (rows, done, total) => {
+        indexer?.postMessage({ automatic: rows });
+        send('topics:progress', done, total);
+      },
+    });
+    return run.stopped ? { stopped: true } : { ok: true };
+  } catch (error) {
+    return run.stopped ? { stopped: true } : { error: error.message };
+  } finally {
+    topicRun = null;
+  }
+});
+
+function stopTopics() {
+  if (!topicRun) return;
+  topicRun.stopped = true;
+  topicRun.child?.kill();
+}
+
+ipcMain.on('topics:stop', stopTopics);
+ipcMain.on('topics:restore-titles', () => indexer?.postMessage({ clearTitles: true }));
+
+const windowActions = new Map([
+  ['minimize', () => win.minimize()],
+  ['maximize', () => (win.isMaximized() ? win.unmaximize() : win.maximize())],
+  ['close', () => win.close()],
+]);
+ipcMain.on('window:action', (_, action) => windowActions.get(action)?.());
+
 function createWindow() {
   // The default menu would take Ctrl+R and Ctrl+W away from the TUI.
   Menu.setApplicationMenu(null);
   win = new BrowserWindow({
     width: 1200,
     height: 800,
+    frame: false,
     backgroundColor: '#14171b',
     icon: path.join(__dirname, '../../assets/icon.ico'),
     webPreferences: {
@@ -107,12 +163,15 @@ function createWindow() {
   });
   win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
   win.webContents.on('will-navigate', (event) => event.preventDefault());
+  win.on('maximize', () => send('window:maximized', true));
+  win.on('unmaximize', () => send('window:maximized', false));
   win.loadFile(path.join(__dirname, '../renderer/index.html'));
 }
 
-// app.quit() hung for 80 s with a dialog open in the TUI (Prueba 1); app.exit does not.
+// app.quit() hung for 80 s with a dialog open in the TUI (Test 1); app.exit does not.
 app.on('window-all-closed', () => {
   for (const child of chats.values()) child.kill();
+  stopTopics();
   setTimeout(() => app.exit(0), 1000);
 });
 

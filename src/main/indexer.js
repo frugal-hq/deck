@@ -33,6 +33,12 @@ function openIndex(file) {
     space TEXT,
     tags TEXT NOT NULL
   )`);
+  // Apart from session_org: the organizer never touches what the user set by hand.
+  db.exec(`CREATE TABLE IF NOT EXISTS session_auto (
+    session_id TEXT PRIMARY KEY,
+    topic TEXT,
+    title TEXT
+  )`);
   return db;
 }
 
@@ -149,8 +155,9 @@ function listSessions(db) {
   };
   const sessions = [];
   // -p runs (sdk-cli) and sandboxes in Temp would bury the real chats; a missing cwd cannot be resumed.
-  const rows = db.prepare(`SELECT id, cwd, COALESCE(NULLIF(custom_title, ''), NULLIF(ai_title, ''), first_prompt, 'Sin título') AS title, last_at AS lastAt, COALESCE(pinned, 0) AS pinned, space, COALESCE(tags, '[]') AS tags
-    FROM sessions LEFT JOIN session_org ON session_id = id
+  const rows = db.prepare(`SELECT id, cwd, COALESCE(NULLIF(custom_title, ''), NULLIF(a.title, ''), NULLIF(ai_title, ''), first_prompt, 'Untitled') AS title, last_at AS lastAt, COALESCE(pinned, 0) AS pinned, space, COALESCE(tags, '[]') AS tags,
+      a.topic AS topic, a.title AS autoTitle, NULLIF(custom_title, '') AS customTitle, NULLIF(ai_title, '') AS aiTitle, first_prompt AS firstPrompt
+    FROM sessions LEFT JOIN session_org o ON o.session_id = id LEFT JOIN session_auto a ON a.session_id = id
     WHERE turns > 0 AND cwd IS NOT NULL AND last_at IS NOT NULL AND COALESCE(entrypoint, '') <> 'sdk-cli'
     ORDER BY last_at DESC`);
   for (const row of rows.iterate()) {
@@ -177,6 +184,18 @@ function saveOrganization(db, id, input) {
   return true;
 }
 
+function saveAutomatic(db, rows) {
+  const save = db.prepare(`INSERT INTO session_auto (session_id, topic, title) VALUES (?, ?, ?)
+    ON CONFLICT (session_id) DO UPDATE SET topic = excluded.topic, title = COALESCE(excluded.title, title)`);
+  db.exec('BEGIN');
+  for (const { id, topic, title } of rows) save.run(id, topic, title);
+  db.exec('COMMIT');
+}
+
+function clearAutoTitles(db) {
+  db.exec('UPDATE session_auto SET title = NULL');
+}
+
 function runWorker({ root, dbFile }) {
   const db = openIndex(dbFile);
   const publish = (indexing) => parentPort.postMessage({ indexing, sessions: listSessions(db) });
@@ -185,8 +204,11 @@ function runWorker({ root, dbFile }) {
   scan(db, root, () => publish(true));
   publish(false);
 
-  parentPort.on('message', ({ id, organization }) => {
-    if (saveOrganization(db, id, organization)) publish(false);
+  parentPort.on('message', ({ id, organization, automatic, clearTitles }) => {
+    if (automatic) saveAutomatic(db, automatic);
+    else if (clearTitles) clearAutoTitles(db);
+    else if (!saveOrganization(db, id, organization)) return;
+    publish(false);
   });
   const changed = new Set();
   let timer = null;
@@ -213,4 +235,4 @@ function runWorker({ root, dbFile }) {
 
 if (parentPort) runWorker(workerData);
 
-module.exports = { openIndex, syncFile, scan, listSessions, promptTitle, saveOrganization };
+module.exports = { openIndex, syncFile, scan, listSessions, promptTitle, saveOrganization, saveAutomatic, clearAutoTitles };
