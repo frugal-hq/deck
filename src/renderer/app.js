@@ -20,10 +20,10 @@ function icon(name) {
 }
 
 const STATE_LABEL = {
-  starting: () => 'Iniciando',
-  running: () => 'En marcha',
-  exited: (chat) => `Terminó con código ${chat.exitCode}`,
-  error: () => 'No se pudo iniciar',
+  starting: () => 'Starting',
+  running: () => 'Running',
+  exited: (chat) => `Exited with code ${chat.exitCode}`,
+  error: () => 'Failed to start',
 };
 
 function render() {
@@ -45,7 +45,7 @@ function render() {
     close.type = 'button';
     close.className = 'tab__close';
     close.append(icon('x'));
-    close.setAttribute('aria-label', `Cerrar chat ${chat.name}`);
+    close.setAttribute('aria-label', `Close chat ${chat.name}`);
     close.onclick = () => closeChat(chat.id);
     tab.append(open, close);
     return tab;
@@ -67,8 +67,8 @@ function render() {
 
 // frugal: one account for now, so limits are shared by every tab; Phase 3 keys them by account.
 const limits = { fiveHour: null, sevenDay: null };
-const resetToday = new Intl.DateTimeFormat('es', { hour: '2-digit', minute: '2-digit' });
-const resetDay = new Intl.DateTimeFormat('es', { weekday: 'short', hour: '2-digit', minute: '2-digit' });
+const resetToday = new Intl.DateTimeFormat('en-US', { hour: '2-digit', minute: '2-digit' });
+const resetDay = new Intl.DateTimeFormat('en-US', { weekday: 'short', hour: '2-digit', minute: '2-digit' });
 
 function drawMeter(id, pct, resetsAt, format) {
   const element = $(id);
@@ -76,8 +76,8 @@ function drawMeter(id, pct, resetsAt, format) {
   if (element.hidden) return;
   element.querySelector('meter').value = pct;
   const reset = resetsAt ? format.format(resetsAt * 1000) : '';
-  element.querySelector('.measured').textContent = reset ? `${Math.round(pct)}% · ${reset}` : `${Math.round(pct)}%`;
-  element.title = reset ? `Se reinicia: ${reset}` : '';
+  element.querySelector('.measured').textContent = reset ? `${Math.round(pct)}% - ${reset}` : `${Math.round(pct)}%`;
+  element.title = reset ? `Resets: ${reset}` : '';
 }
 
 // frugal: readings refresh with each status line, so an idle chat keeps the last one until its next turn.
@@ -140,8 +140,7 @@ function handleTerminalKey(chat, event) {
 
 const folderName = (cwd) => cwd.split(/[\\/]/).filter(Boolean).pop() ?? cwd;
 
-async function newChat() {
-  const cwd = await deck.pickFolder();
+function startChat(cwd) {
   if (cwd) openChat({ id: crypto.randomUUID(), cwd, name: folderName(cwd), resume: false });
 }
 
@@ -188,7 +187,7 @@ async function openChat({ id, cwd, name, resume }) {
 function closeChat(id) {
   const chat = chats.get(id);
   const live = chat.state === 'starting' || chat.state === 'running';
-  if (live && !confirm(`Claude sigue en marcha en ${chat.name}. ¿Cerrar este chat?`)) return;
+  if (live && !confirm(`Claude is still running in ${chat.name}. Close this chat?`)) return;
   if (live) deck.kill(id);
   chat.term.dispose();
   chat.el.remove();
@@ -233,18 +232,20 @@ new ResizeObserver(() => {
   });
 }).observe(stage);
 
-const shortDate = new Intl.DateTimeFormat('es', { day: 'numeric', month: 'short' });
+const shortDate = new Intl.DateTimeFormat('en-US', { day: 'numeric', month: 'short' });
 const openGroups = new Set();
 let groupsDrawn = false;
 let drawnSignature = '';
 let currentIndex;
+const NO_TOPIC = 'No topic';
+let sessionView = localStorage.getItem('sessionView') === 'topics' ? 'topics' : 'folders';
 
 function sessionButton(session) {
   const button = document.createElement('button');
   button.type = 'button';
   button.className = 'session';
   button.dataset.session = session.id;
-  button.title = `${session.title}\nClic derecho para organizar`;
+  button.title = `${session.title}\nRight-click to organize`;
   const title = document.createElement('span');
   title.className = 'session__title';
   title.textContent = session.title;
@@ -267,31 +268,40 @@ function sessionButton(session) {
   return button;
 }
 
-function groupElement(cwd, sessions) {
+function addFolderLabel(row, session) {
+  const folder = document.createElement('span');
+  folder.className = 'session__folder';
+  folder.textContent = folderName(session.cwd);
+  folder.title = session.cwd;
+  row.querySelector('time').before(folder);
+  return row;
+}
+
+function groupElement(key, sessions, byTopic) {
   const group = document.createElement('details');
   group.className = 'group';
-  group.open = openGroups.has(cwd);
-  group.ontoggle = () => (group.open ? openGroups.add(cwd) : openGroups.delete(cwd));
+  group.open = openGroups.has(key);
+  group.ontoggle = () => (group.open ? openGroups.add(key) : openGroups.delete(key));
   const summary = document.createElement('summary');
   summary.className = 'group__name';
-  summary.title = cwd;
+  summary.title = key;
   const name = document.createElement('span');
   name.className = 'group__label';
-  name.textContent = folderName(cwd);
+  name.textContent = byTopic ? key : folderName(key);
   const count = document.createElement('span');
   count.className = 'group__count measured';
   count.textContent = sessions.length;
   const chevron = icon('chevron');
   chevron.classList.add('group__chevron');
-  summary.append(chevron, icon('folder'), name, count);
-  group.append(summary, ...sessions.map(sessionButton));
+  summary.append(chevron, icon(byTopic ? 'topic' : 'folder'), name, count);
+  group.append(summary, ...sessions.map((session) => (byTopic ? addFolderLabel(sessionButton(session), session) : sessionButton(session))));
   return group;
 }
 
 function indexStatus({ indexing, sessions, error }) {
-  if (error) return `No se pudo leer el índice: ${error}`;
+  if (error) return `Could not read the index: ${error}`;
   if (sessions.length) return '';
-  return indexing ? 'Indexando sesiones' : 'Todavía no hay sesiones.';
+  return indexing ? 'Indexing sessions' : 'No sessions yet.';
 }
 
 function pinnedElement(sessions) {
@@ -299,16 +309,16 @@ function pinnedElement(sessions) {
   section.className = 'pinned';
   const heading = document.createElement('h2');
   heading.className = 'pinned__title';
-  heading.textContent = 'Fijadas';
+  heading.textContent = 'Pinned';
   section.append(heading, ...sessions.map(sessionButton));
   return section;
 }
 
 function drawSpaces(sessions) {
-  const names = [...new Set(sessions.map((s) => s.space).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'es'));
+  const names = [...new Set(sessions.map((s) => s.space).filter(Boolean))].sort((a, b) => a.localeCompare(b, 'en-US'));
   const select = $('space-filter');
   const chosen = names.includes(select.value) ? select.value : '';
-  select.replaceChildren(new Option('Todos los espacios', ''), ...names.map((name) => new Option(name, name)));
+  select.replaceChildren(new Option('All spaces', ''), ...names.map((name) => new Option(name, name)));
   select.value = chosen;
   select.hidden = !names.length;
   $('space-names').replaceChildren(...names.map((name) => new Option(name, name)));
@@ -321,21 +331,24 @@ function renderSessions(index) {
   $('index-status').textContent = status;
 
   // Transcripts change every second during a turn; rebuilding only when the list changes keeps focus and scroll.
-  const signature = `${index.indexing}\n${$('space-filter').value}\n${index.sessions.map((s) => `${s.id}\n${s.title}\n${s.cwd}\n${shortDate.format(new Date(s.lastAt))}\n${s.pinned}\n${s.space}\n${s.tags}`).join('\n')}`;
+  const signature = `${sessionView}\n${index.indexing}\n${$('space-filter').value}\n${index.sessions.map((s) => `${s.id}\n${s.title}\n${s.cwd}\n${shortDate.format(new Date(s.lastAt))}\n${s.pinned}\n${s.space}\n${s.tags}\n${s.topic}`).join('\n')}`;
   if (signature === drawnSignature) return;
   drawnSignature = signature;
+  if (sortDialog.open) drawSortEstimate();
 
   drawSpaces(index.sessions);
   const space = $('space-filter').value;
   const visible = space ? index.sessions.filter((s) => s.space === space) : index.sessions;
   const pinned = visible.filter((s) => s.pinned);
-  const groups = Map.groupBy(visible.filter((s) => !s.pinned), (session) => session.cwd);
-  if (!groupsDrawn && groups.size && !index.indexing) {
+  const byTopic = sessionView === 'topics';
+  const grouped = Map.groupBy(visible.filter((s) => !s.pinned), (session) => (byTopic ? session.topic ?? NO_TOPIC : session.cwd));
+  const groups = [...grouped].sort(([a], [b]) => (a === NO_TOPIC) - (b === NO_TOPIC));
+  if (!groupsDrawn && groups.length && !index.indexing) {
     groupsDrawn = true;
-    openGroups.add(groups.keys().next().value);
+    openGroups.add(groups[0][0]);
   }
   const focused = document.activeElement?.dataset?.session;
-  $('groups').replaceChildren(...(pinned.length ? [pinnedElement(pinned)] : []), ...[...groups].map(([cwd, sessions]) => groupElement(cwd, sessions)));
+  $('groups').replaceChildren(...(pinned.length ? [pinnedElement(pinned)] : []), ...groups.map(([key, sessions]) => groupElement(key, sessions, byTopic)));
   markActiveSession();
   if (focused) $('groups').querySelector(`[data-session="${focused}"]`)?.focus();
 }
@@ -371,12 +384,7 @@ function paletteOption(session, index) {
   row.onclick = () => chooseFromPalette(session);
   row.title = session.title;
   row.oncontextmenu = null;
-  const folder = document.createElement('span');
-  folder.className = 'session__folder';
-  folder.textContent = folderName(session.cwd);
-  folder.title = session.cwd;
-  row.querySelector('time').before(folder);
-  return row;
+  return addFolderLabel(row, session);
 }
 
 function drawPalette() {
@@ -440,8 +448,83 @@ $('organize-form').onsubmit = () => {
 $('organize-cancel').onclick = () => organize.close();
 $('space-filter').onchange = () => renderSessions(currentIndex);
 
-$('new').onclick = newChat;
-$('pick').onclick = newChat;
+const viewRadios = document.querySelectorAll('input[name="session-view"]');
+const sortDialog = $('sort-dialog');
+let sorting = false;
+
+function setSessionView(view) {
+  sessionView = view;
+  localStorage.setItem('sessionView', view);
+  groupsDrawn = false;
+  for (const radio of viewRadios) radio.checked = radio.value === view;
+  renderSessions(currentIndex);
+}
+
+function sortOptions() {
+  return { model: $('sort-model').value, effort: $('sort-effort').value, rename: $('sort-rename').checked };
+}
+
+function sortStatus(text, failed = false) {
+  $('sort-status').hidden = !text;
+  $('sort-status').textContent = text;
+  $('sort-status').dataset.failed = failed;
+}
+
+async function drawSortEstimate() {
+  if (sorting) return;
+  const { sessions, tokens } = await deck.estimateTopics(sortOptions());
+  $('sort-run').disabled = !sessions;
+  $('sort-warning').textContent = sessions
+    ? `This uses your Claude account: about ${tokens.toLocaleString('en-US')} tokens for ${sessions.toLocaleString('en-US')} session${sessions === 1 ? '' : 's'}. Only titles and folder names are sent.`
+    : 'Every session already has what you asked for. Nothing to send.';
+}
+
+for (const radio of viewRadios) {
+  radio.checked = radio.value === sessionView;
+  radio.onchange = () => setSessionView(radio.value);
+}
+$('search').onclick = togglePalette;
+$('sort').onclick = () => {
+  sortDialog.showModal();
+  drawSortEstimate();
+};
+$('sort-rename').onchange = drawSortEstimate;
+$('sort-close').onclick = () => sortDialog.close();
+$('sort-restore').onclick = () => {
+  deck.restoreTitles();
+  sortStatus('Original titles restored.');
+};
+$('sort-run').onclick = async () => {
+  if (sorting) {
+    deck.stopTopics();
+    return;
+  }
+  sorting = true;
+  $('sort-run').textContent = 'Stop';
+  sortStatus('Sending the first batch');
+  setSessionView('topics');
+  const result = await deck.runTopics(sortOptions());
+  sorting = false;
+  $('sort-run').textContent = 'Find topics';
+  sortStatus(result.error ?? (result.stopped ? 'Stopped. What was done is saved.' : 'Done.'), Boolean(result.error));
+  drawSortEstimate();
+};
+deck.onTopicsProgress((done, total) => sortStatus(`Sorted ${done} of ${total}`));
+
+const startInSessions = async () => startChat(await deck.defaultFolder());
+const startInPicked = async () => startChat(await deck.pickFolder());
+$('new').onclick = startInSessions;
+$('start').onclick = startInSessions;
+$('pick').onclick = startInPicked;
+$('new-in-folder').onclick = startInPicked;
 render();
+for (const button of document.querySelectorAll('[data-window-action]')) {
+  button.onclick = () => deck.windowAction(button.dataset.windowAction);
+}
+const maximizeButton = document.getElementById('window-maximize');
+deck.onMaximized((maximized) => {
+  maximizeButton.setAttribute('aria-label', maximized ? 'Restore' : 'Maximize');
+  maximizeButton.querySelector('use').setAttribute('href', maximized ? '#i-window-restore' : '#i-window-maximize');
+});
 deck.onSessions(renderSessions);
 deck.getSessions().then(renderSessions);

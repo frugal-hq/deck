@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="es">
+<html lang="en">
 <head>
 <meta charset="utf-8">
 <meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:">
@@ -12,25 +12,44 @@
   <symbol id="i-logo" viewBox="0 0 256 256"><path fill="currentColor" fill-rule="evenodd" d="M80 24L52 24A44 44 0 0 0 8 68L8 188A44 44 0 0 0 52 232L80 232ZM96 24L204 24A44 44 0 0 1 248 68L248 188A44 44 0 0 1 204 232L96 232ZM148.96 188.48L148.96 133.76L134.56 133.76A14.4 14.4 0 0 1 134.56 104.96L148.96 104.96L148.96 99.2A46.08 46.08 0 0 1 195.04 53.12L209.44 53.12A14.4 14.4 0 0 1 209.44 81.92L195.04 81.92A17.28 17.28 0 0 0 177.76 99.2L177.76 104.96L184.96 104.96A14.4 14.4 0 0 1 184.96 133.76L177.76 133.76L177.76 188.48A14.4 14.4 0 0 1 148.96 188.48Z"/></symbol>
   <symbol id="i-plus" viewBox="0 0 16 16"><path d="M8 3v10M3 8h10"/></symbol>
   <symbol id="i-x" viewBox="0 0 16 16"><path d="m4 4 8 8m0-8-8 8"/></symbol>
+  <symbol id="i-window-minimize" viewBox="0 0 16 16"><path d="M3.5 8h9"/></symbol>
+  <symbol id="i-window-maximize" viewBox="0 0 16 16"><rect x="3.5" y="3.5" width="9" height="9" rx="2"/></symbol>
+  <symbol id="i-window-restore" viewBox="0 0 16 16"><rect x="3" y="5.5" width="7.5" height="7.5" rx="2"/><path d="M6 3h5a2 2 0 0 1 2 2v5"/></symbol>
+  <symbol id="i-search" viewBox="0 0 16 16"><circle cx="7" cy="7" r="4.25"/><path d="m10.25 10.25 3 3"/></symbol>
+  <symbol id="i-sort" viewBox="0 0 16 16"><path d="M2.5 4.5h11M4.5 8h7M6.5 11.5h3"/></symbol>
+  <symbol id="i-topic" viewBox="0 0 16 16"><path d="M8 2.5 14 5.5 8 8.5 2 5.5zM2 10.5l6 3 6-3"/></symbol>
   <symbol id="i-chevron" viewBox="0 0 16 16"><path d="m6 3.5 4.5 4.5L6 12.5"/></symbol>
   <symbol id="i-folder" viewBox="0 0 16 16"><path d="M2 5.2c0-.9.7-1.6 1.6-1.6h2.6l1.5 1.7h4.7c.9 0 1.6.7 1.6 1.6v4.9c0 .9-.7 1.6-1.6 1.6H3.6c-.9 0-1.6-.7-1.6-1.6z"/></symbol>
   <symbol id="i-terminal" viewBox="0 0 16 16"><rect x="1.75" y="2.5" width="12.5" height="11" rx="2.5"/><path d="m4.5 6 2 2-2 2m4 .5h3"/></symbol>
 </svg>
 <header class="bar">
   <span class="mark"><svg class="mark__logo" aria-hidden="true"><use href="#i-logo"/></svg>Frugal Deck</span>
-  <nav id="tabs" class="tabs" aria-label="Chats abiertos"></nav>
-  <button id="new" class="btn" type="button"><svg class="icon" aria-hidden="true"><use href="#i-plus"/></svg>Nuevo chat</button>
+  <nav id="tabs" class="tabs" aria-label="Open chats"></nav>
+  <button id="new" class="btn" type="button"><svg class="icon" aria-hidden="true"><use href="#i-plus"/></svg>New chat</button>
+  <button id="new-in-folder" class="btn btn--icon" type="button" aria-label="New chat in a folder" title="New chat in a folder"><svg class="icon" aria-hidden="true"><use href="#i-folder"/></svg></button>
+  <div class="window-controls" role="group" aria-label="Window">
+    <button class="window-control" type="button" data-window-action="minimize" aria-label="Minimize"><svg class="icon" aria-hidden="true"><use href="#i-window-minimize"/></svg></button>
+    <button id="window-maximize" class="window-control" type="button" data-window-action="maximize" aria-label="Maximize"><svg class="icon" aria-hidden="true"><use href="#i-window-maximize"/></svg></button>
+    <button class="window-control window-control--close" type="button" data-window-action="close" aria-label="Close"><svg class="icon" aria-hidden="true"><use href="#i-x"/></svg></button>
+  </div>
 </header>
-<aside class="sidebar" aria-label="Sesiones">
+<aside class="sidebar" aria-label="Sessions">
+  <div class="sidebar__tools">
+    <button id="search" class="btn" type="button" title="Ctrl+Shift+K"><svg class="icon" aria-hidden="true"><use href="#i-search"/></svg>Search</button>
+    <button id="sort" class="btn" type="button"><svg class="icon" aria-hidden="true"><use href="#i-sort"/></svg>Organize</button>
+  </div>
   <p id="index-status" class="sidebar__status" role="status" hidden></p>
-  <select id="space-filter" class="space-filter" aria-label="Filtrar por espacio" hidden></select>
+  <select id="space-filter" class="space-filter" aria-label="Filter by space" hidden></select>
   <div id="groups"></div>
 </aside>
 <main id="stage" class="stage">
   <section id="empty" class="empty">
-    <h1>Abre una carpeta para empezar</h1>
-    <p>Cada chat ejecuta Claude Code en la carpeta que elijas.</p>
-    <button id="pick" class="btn btn--primary" type="button"><svg class="icon" aria-hidden="true"><use href="#i-folder"/></svg>Elegir carpeta</button>
+    <h1>Start a chat</h1>
+    <p>New chats open in Frugal Deck/Sessions in your home folder. Choose a folder to work on a project.</p>
+    <div class="empty__actions">
+      <button id="start" class="btn btn--primary" type="button"><svg class="icon" aria-hidden="true"><use href="#i-plus"/></svg>New chat</button>
+      <button id="pick" class="btn" type="button"><svg class="icon" aria-hidden="true"><use href="#i-folder"/></svg>Choose folder</button>
+    </div>
   </section>
   <p id="notice" class="notice" role="alert" hidden></p>
 </main>
@@ -39,27 +58,51 @@
   <span id="path" class="measured readout__path"></span>
   <span id="session" class="measured readout__session"></span>
   <div class="meters">
-    <span id="meter-context" class="meter" hidden>Contexto <meter aria-label="Contexto usado" min="0" max="100" low="60" high="80" optimum="0"></meter><span class="measured"></span></span>
-    <span id="meter-five" class="meter" hidden>5 h <meter aria-label="Límite de 5 horas usado" min="0" max="100" low="60" high="80" optimum="0"></meter><span class="measured"></span></span>
-    <span id="meter-week" class="meter" hidden>Semana <meter aria-label="Límite semanal usado" min="0" max="100" low="60" high="80" optimum="0"></meter><span class="measured"></span></span>
+    <span id="meter-context" class="meter" hidden>Context <meter aria-label="Context used" min="0" max="100" low="60" high="80" optimum="0"></meter><span class="measured"></span></span>
+    <span id="meter-five" class="meter" hidden>5 h <meter aria-label="5-hour limit used" min="0" max="100" low="60" high="80" optimum="0"></meter><span class="measured"></span></span>
+    <span id="meter-week" class="meter" hidden>Week <meter aria-label="Weekly limit used" min="0" max="100" low="60" high="80" optimum="0"></meter><span class="measured"></span></span>
   </div>
   <span id="state" class="readout__state" role="status"></span>
 </footer>
-<dialog id="palette" class="palette" closedby="any" aria-label="Buscar sesiones">
-  <input id="palette-query" class="palette__query" type="text" role="combobox" aria-controls="palette-list" aria-expanded="true" aria-autocomplete="list" aria-label="Buscar sesiones" placeholder="Buscar por título o carpeta" autocomplete="off" spellcheck="false">
-  <div id="palette-list" class="palette__list" role="listbox" aria-label="Sesiones"></div>
-  <p id="palette-empty" class="palette__empty" role="status" hidden>Sin resultados.</p>
+<dialog id="palette" class="palette" closedby="any" aria-label="Search sessions">
+  <input id="palette-query" class="palette__query" type="text" role="combobox" aria-controls="palette-list" aria-expanded="true" aria-autocomplete="list" aria-label="Search sessions" placeholder="Search by title or folder" autocomplete="off" spellcheck="false">
+  <div id="palette-list" class="palette__list" role="listbox" aria-label="Sessions"></div>
+  <p id="palette-empty" class="palette__empty" role="status" hidden>No results.</p>
 </dialog>
 <dialog id="organize" class="organize" closedby="any" aria-labelledby="organize-title">
   <form id="organize-form" method="dialog">
     <h2 id="organize-title" class="organize__title"></h2>
-    <label class="organize__check"><input id="organize-pinned" type="checkbox"> Fijar arriba</label>
-    <label class="organize__field">Espacio<input id="organize-space" list="space-names" placeholder="Sin espacio" autocomplete="off" spellcheck="false"></label>
+    <label class="organize__check"><input id="organize-pinned" type="checkbox"> Pin to top</label>
+    <label class="organize__field">Space<input id="organize-space" list="space-names" placeholder="No space" autocomplete="off" spellcheck="false"></label>
     <datalist id="space-names"></datalist>
-    <label class="organize__field">Etiquetas<input id="organize-tags" placeholder="Separadas por comas" autocomplete="off" spellcheck="false"></label>
+    <label class="organize__field">Tags<input id="organize-tags" placeholder="Comma-separated" autocomplete="off" spellcheck="false"></label>
     <div class="organize__actions">
-      <button id="organize-cancel" class="btn" type="button">Cancelar</button>
-      <button class="btn btn--primary" type="submit">Guardar</button>
+      <button id="organize-cancel" class="btn" type="button">Cancel</button>
+      <button class="btn btn--primary" type="submit">Save</button>
+    </div>
+  </form>
+</dialog>
+<dialog id="sort-dialog" class="organize" closedby="any" aria-labelledby="sort-title">
+  <form method="dialog">
+    <h2 id="sort-title" class="organize__title">Organize sessions</h2>
+    <fieldset class="organize__choice">
+      <legend>Group by</legend>
+      <div class="segmented">
+        <label><input type="radio" name="session-view" value="folders">Folders</label>
+        <label><input type="radio" name="session-view" value="topics">Topics</label>
+      </div>
+    </fieldset>
+    <div class="organize__pair">
+      <label class="organize__field">Model<select id="sort-model"><option value="sonnet" selected>Sonnet</option><option value="opus">Opus</option><option value="haiku">Haiku</option></select></label>
+      <label class="organize__field">Effort<select id="sort-effort"><option value="low">Low</option><option value="medium" selected>Medium</option><option value="high">High</option></select></label>
+    </div>
+    <label class="organize__check"><input id="sort-rename" type="checkbox"> Rewrite titles to be more exact</label>
+    <p id="sort-warning" class="sort__warning" role="note"></p>
+    <p id="sort-status" class="sort__status" role="status" hidden></p>
+    <div class="organize__actions">
+      <button id="sort-restore" class="btn sort__restore" type="button">Restore titles</button>
+      <button id="sort-close" class="btn" type="button">Close</button>
+      <button id="sort-run" class="btn btn--primary" type="button">Find topics</button>
     </div>
   </form>
 </dialog>
