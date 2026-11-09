@@ -234,7 +234,6 @@ body {
 .session[aria-current] { background: var(--color-accent-soft); color: var(--color-ink); }
 
 .session__title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.session__date { font-size: var(--text-xs); white-space: nowrap; }
 
 .stage { grid-column: 2; grid-row: 2; position: relative; min-height: 0; overflow: hidden; background: var(--color-paper-3); border-radius: var(--radius-card); }
 

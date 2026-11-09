@@ -787,25 +787,33 @@ let currentIndex;
 const NO_TOPIC = 'No topic';
 let sessionView = localStorage.getItem('sessionView') === 'topics' ? 'topics' : 'folders';
 
+function sessionTip(session) {
+  const started = session.startedAt && session.startedAt !== session.lastAt ? `Started ${resetExact.format(new Date(session.startedAt))}` : null;
+  const prompts = session.turns ? `${session.turns} prompt${session.turns === 1 ? '' : 's'}` : null;
+  return [session.title, session.cwd, `Last active ${resetExact.format(new Date(session.lastAt))}`, started, prompts, 'Right-click to organize'].filter(Boolean).join('\n');
+}
+
 function sessionButton(session) {
   const button = document.createElement('button');
   button.type = 'button';
   button.className = 'session';
   button.dataset.session = session.id;
-  button.dataset.tip = `${session.title}\nRight-click to organize`;
+  // The list redraws once a day per session, so the tip is read again from the index on each hover.
+  const refreshTip = () => {
+    button.dataset.tip = sessionTip(currentIndex?.sessions?.find((s) => s.id === session.id) ?? session);
+  };
+  refreshTip();
+  button.addEventListener('pointerover', refreshTip);
+  button.addEventListener('focusin', refreshTip);
   const title = document.createElement('span');
   title.className = 'session__title';
   title.textContent = session.title;
-  const date = document.createElement('time');
-  date.className = 'session__date measured';
-  date.dateTime = session.lastAt;
-  date.textContent = shortDate.format(new Date(session.lastAt));
-  button.append(title, date);
+  button.append(title);
   if (session.tags.length) {
     const tags = document.createElement('span');
     tags.className = 'session__tags';
     tags.textContent = session.tags.map((tag) => `#${tag}`).join(' ');
-    date.before(tags);
+    button.append(tags);
   }
   setRowStatus(button, chats.get(session.id)?.status);
   button.oncontextmenu = (event) => {
@@ -821,7 +829,7 @@ function addFolderLabel(row, session) {
   folder.className = 'session__folder';
   folder.textContent = folderName(session.cwd);
   folder.dataset.tip = session.cwd;
-  row.querySelector('time').before(folder);
+  row.append(folder);
   return row;
 }
 
