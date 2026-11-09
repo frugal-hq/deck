@@ -6,19 +6,23 @@ const path = require('path');
 const { Worker } = require('worker_threads');
 const pty = require('node-pty');
 const { createStatusBridge, readUserStatusLine } = require('./statusline');
-const { validOptions, estimate, organize } = require('./organizer');
+const { validOptions, estimate, organize, estimateJoins, resolveJoins, estimateWorkspaces, resolveWorkspaces } = require('./organizer');
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const DROPPED_ENV = /^(CLAUDE.*|ELECTRON_RUN_AS_NODE|NO_COLOR)$/i;
 
 const chats = new Map();
 const pickedFolders = new Set();
-let index = { indexing: true, sessions: [], error: null };
+let index = { indexing: true, sessions: [], error: null, ambiguous: [], modelJoins: 0, workspaces: {}, modelWorkspaces: 0 };
 let win;
 let indexer;
-// frugal: the sidebar shows the newest sessions plus every organized one; the palette and resume use all of them.
+// frugal: the sidebar shows the newest sessions plus every organized one and every open chat, and never cuts a chat in half; the palette and resume use all of them.
 const SIDEBAR_LIMIT = 500;
-const sidebarIndex = () => ({ ...index, sessions: index.sessions.filter((s, i) => i < SIDEBAR_LIMIT || s.pinned || s.space || s.tags.length) });
+const sidebarIndex = () => {
+  const kept = index.sessions.filter((s, i) => i < SIDEBAR_LIMIT || s.pinned || s.space || s.tags.length || chats.has(s.id));
+  const chatIds = new Set(kept.map((s) => s.chatId));
+  return { ...index, sessions: index.sessions.filter((s) => chatIds.has(s.chatId)) };
+};
 
 // frugal: only PATH and the npm layout are verified; other installs are pending (Test 5).
 function findClaude() {
@@ -68,9 +72,9 @@ ipcMain.handle('sessions:get', sidebarIndex);
 ipcMain.handle('sessions:all', () => index.sessions);
 ipcMain.on('sessions:organize', (_, id, organization) => indexer?.postMessage({ id, organization }));
 
-ipcMain.handle('chat:start', (_, { id, cwd, cols, rows, resume }) => {
+ipcMain.handle('chat:start', (_, { id, cwd, cols, rows, resume, group }) => {
   // A resumed chat always runs in the folder the index recorded, never one sent by the renderer.
-  const folder = resume ? index.sessions.find((session) => session.id === id)?.cwd : pickedFolders.has(cwd) && cwd;
+  const folder = resume ? index.sessions.find((session) => session.id === id)?.cwd : (pickedFolders.has(cwd) || index.sessions.some((s) => s.cwd === cwd)) && cwd;
   if (!UUID.test(id) || chats.has(id) || !folder || !isSize(cols) || !isSize(rows)) {
     return { error: 'Invalid request.' };
   }
@@ -82,12 +86,14 @@ ipcMain.handle('chat:start', (_, { id, cwd, cols, rows, resume }) => {
     const args = [resume ? '--resume' : '--session-id', id, '--settings', JSON.stringify({ statusLine: status.statusLine })];
     const child = pty.spawn(claude, args, { name: 'xterm-256color', cols, rows, cwd: folder, env });
     chats.set(id, child);
+    if (typeof group === 'string' && group) indexer?.postMessage({ setGroup: { id, name: group } });
     child.onData((data) => send('chat:data', id, data));
     child.onExit(({ exitCode }) => {
       chats.delete(id);
       statusBridge.release(status.token);
       send('chat:exit', id, exitCode);
     });
+    send('sessions:changed', sidebarIndex());
     return { ok: true };
   } catch (error) {
     statusBridge.release(status.token);
@@ -105,30 +111,48 @@ let topicRun = null;
 
 ipcMain.handle('topics:estimate', (_, options) => (validOptions(options) ? estimate(index.sessions, options) : { sessions: 0, tokens: 0 }));
 
-ipcMain.handle('topics:run', async (_, options) => {
+async function exclusiveRun(options, work) {
   if (topicRun || !validOptions(options)) return { error: 'Invalid request.' };
   const claude = findClaude();
   if (!claude) return { error: 'claude.exe not found in PATH. Install Claude Code and reopen Deck.' };
   const run = topicRun = { child: null, stopped: false };
   try {
-    await organize({
-      claude,
-      env: cleanEnv(),
-      sessions: index.sessions,
-      options,
-      run,
-      onBatch: (rows, done, total) => {
-        indexer?.postMessage({ automatic: rows });
-        send('topics:progress', done, total);
-      },
-    });
+    await work(claude, run);
     return run.stopped ? { stopped: true } : { ok: true };
   } catch (error) {
     return run.stopped ? { stopped: true } : { error: error.message };
   } finally {
     topicRun = null;
   }
-});
+}
+
+ipcMain.handle('topics:run', (_, options) => exclusiveRun(options, (claude, run) => organize({
+  claude,
+  env: cleanEnv(),
+  sessions: index.sessions,
+  options,
+  run,
+  onBatch: (rows, done, total) => {
+    indexer?.postMessage({ automatic: rows });
+    send('topics:progress', done, total);
+  },
+})));
+
+ipcMain.on('sessions:set-group', (_, id, name) => indexer?.postMessage({ setGroup: { id, name } }));
+ipcMain.on('sessions:set-workspace', (_, group, workspace) => indexer?.postMessage({ setWorkspace: { group, workspace } }));
+ipcMain.on('workspaces:rename', (_, from, to) => indexer?.postMessage({ renameWorkspace: { from, to } }));
+ipcMain.on('workspaces:delete', (_, name) => indexer?.postMessage({ deleteWorkspace: { name } }));
+ipcMain.on('groups:rename', (_, ids, from, to) => indexer?.postMessage({ renameGroup: { ids, from, to } }));
+ipcMain.on('groups:delete', (_, ids, group) => indexer?.postMessage({ deleteGroup: { ids, group } }));
+ipcMain.on('workspaces:clear', () => indexer?.postMessage({ clearWorkspaces: true }));
+ipcMain.handle('workspaces:estimate', () => estimateWorkspaces(index.sessions));
+ipcMain.handle('workspaces:run', (_, options) => exclusiveRun(options, async (claude, run) => indexer?.postMessage({ modelWorkspaces: await resolveWorkspaces({ claude, env: cleanEnv(), sessions: index.sessions, options, run }) })));
+
+ipcMain.handle('joins:estimate', () => estimateJoins(index.ambiguous));
+ipcMain.handle('joins:run', (_, options) => exclusiveRun(options, async (claude, run) => indexer?.postMessage({ joins: await resolveJoins({ claude, env: cleanEnv(), ambiguous: index.ambiguous, options, run }) })));
+ipcMain.on('sessions:link', (_, id, parentId) => indexer?.postMessage({ link: { id, parentId } }));
+ipcMain.on('sessions:undo-link', () => indexer?.postMessage({ undoLink: true }));
+ipcMain.on('joins:clear', () => indexer?.postMessage({ clearJoins: true }));
 
 function stopTopics() {
   if (!topicRun) return;
@@ -136,7 +160,6 @@ function stopTopics() {
   topicRun.child?.kill();
 }
 
-ipcMain.on('topics:stop', stopTopics);
 ipcMain.on('topics:restore-titles', () => indexer?.postMessage({ clearTitles: true }));
 
 const windowActions = new Map([
