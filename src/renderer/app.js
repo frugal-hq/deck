@@ -103,10 +103,11 @@ function render() {
   drawMeters();
 }
 
-// frugal: one account for now, so limits are shared by every tab; Phase 3 keys them by account.
-const limits = { fiveHour: null, sevenDay: null };
-const resetToday = new Intl.DateTimeFormat('en-US', { hour: '2-digit', minute: '2-digit' });
-const resetDay = new Intl.DateTimeFormat('en-US', { weekday: 'short', hour: '2-digit', minute: '2-digit' });
+let accountState = { primary: null, accounts: [], others: [] };
+const WARN_PCT = 80;
+const DAY_MS = 86400000;
+const resetDay = new Intl.DateTimeFormat('en-US', { weekday: 'short', hour: 'numeric', minute: '2-digit' });
+const resetExact = new Intl.DateTimeFormat('en-US', { dateStyle: 'medium', timeStyle: 'short' });
 const compact = new Intl.NumberFormat('en-US', { notation: 'compact' });
 
 function drawMeter(id, pct, text) {
@@ -117,32 +118,201 @@ function drawMeter(id, pct, text) {
   element.querySelector('.measured').textContent = text;
 }
 
-function resetText(limit, format) {
-  if (limit?.pct === null || limit?.pct === undefined) return '';
-  const reset = limit.resetsAt ? format.format(limit.resetsAt * 1000) : '';
-  return reset ? `${Math.round(limit.pct)}% - ${reset}` : `${Math.round(limit.pct)}%`;
+// A reading whose window already reset says nothing about the current one.
+const liveLimit = (limit) => (limit && (!limit.resetsAt || limit.resetsAt * 1000 > Date.now()) ? limit : null);
+
+function spanText(ms) {
+  const minutes = Math.max(1, Math.round(ms / 60000));
+  if (minutes < 60) return `${minutes} min`;
+  if (minutes < 1440) return `${Math.floor(minutes / 60)} h${minutes % 60 ? ` ${minutes % 60} min` : ''}`;
+  return `${Math.floor(minutes / 1440)} d ${Math.floor((minutes % 1440) / 60)} h`;
+}
+
+function resetLabel(resetsAt) {
+  const ms = resetsAt * 1000 - Date.now();
+  return ms < DAY_MS ? `in ${spanText(ms)}` : resetDay.format(resetsAt * 1000);
+}
+
+const limitTip = (label, limit) => (limit.resetsAt ? `${label} resets ${resetExact.format(limit.resetsAt * 1000)}` : `${label} has no reset time yet`);
+
+function node(tag, className, text) {
+  const element = document.createElement(tag);
+  if (className) element.className = className;
+  if (text !== undefined) element.textContent = text;
+  return element;
+}
+
+function resetNode(tag, className, limit) {
+  const element = node(tag, className, limit.resetsAt ? resetLabel(limit.resetsAt) : '');
+  if (limit.resetsAt) element.dataset.reset = limit.resetsAt;
+  return element;
+}
+
+function usageMeter(label, limit) {
+  const meter = Object.assign(node('meter'), { min: 0, max: 100, low: 60, high: 80, optimum: 0, value: limit.pct });
+  meter.setAttribute('aria-label', `${label} used`);
+  return meter;
+}
+
+function askRename(account) {
+  ask({
+    title: 'Rename account',
+    text: 'Only changes how Deck shows it.',
+    value: account.name,
+    action: 'Rename',
+    run: (name) => deck.renameAccount(account.id, name),
+  });
+}
+
+function accountName(account, details) {
+  const button = node('button', 'account__name', account.name);
+  button.type = 'button';
+  button.dataset.tip = [...details, 'Click to rename'].filter(Boolean).join('\n');
+  button.onclick = () => askRename(account);
+  return button;
+}
+
+function report(result) {
+  if (result?.error) ask({ title: 'Account', text: result.error, action: 'OK', run: () => {} });
+}
+
+function signIn(account) {
+  $('usage').hidePopover();
+  openChat({ id: crypto.randomUUID(), cwd: `Sign in to ${account.name}`, name: `Sign in: ${account.name}`, login: account.name, accountId: account.id });
+}
+
+function accountMenu(account) {
+  const items = [{ label: 'Rename', run: () => askRename(account) }];
+  if (!account.signedIn) items.push({ label: 'Sign in', run: () => signIn(account) });
+  else items.push({ label: 'Sign out', run: () => ask({
+    title: `Sign out of ${account.name}?`,
+    text: `Its folder, chats and settings stay, so you can sign in to it again later.${account.id === 'main' ? ' Claude Code in your terminals uses this sign-in too, so finish their work first.' : ''}`,
+    action: 'Sign out',
+    run: async () => report(await deck.logout(account.id)),
+  }) });
+  if (account.id !== 'main') items.push({ label: 'Delete', danger: true, run: () => ask({
+    title: `Delete ${account.name}?`,
+    text: `This deletes ${account.configDir}, with its sign-in and settings. Its chats move to Main first. It also leaves Frugal. This cannot be undone.`,
+    action: 'Delete',
+    danger: true,
+    run: async () => report(await deck.removeAccount(account.id)),
+  }) });
+  return items;
+}
+
+// The menu opens from the more button or a right-click anywhere on the account, over the panel, which stays open.
+function withMenu(target, account) {
+  const button = moreButton(account.name, () => accountMenu(account));
+  button.classList.replace('group__new', 'account__more');
+  target.oncontextmenu = (event) => {
+    event.preventDefault();
+    openMenu(event.clientX, event.clientY, accountMenu(account), target);
+  };
+  return button;
+}
+
+// What the panel says under a name: the login or that there is none, and a warning when another account shares it.
+function loginLines(account) {
+  const lines = [node('span', 'account__email', account.signedIn ? account.email ?? 'Signed in' : 'Signed out')];
+  if (account.sameLogin.length) lines.push(node('span', 'account__detail is-warn', `Same login as ${account.sameLogin.join(', ')}`));
+  return lines;
+}
+
+const accountLimits = (account) => [['5-hour limit', liveLimit(account.limits?.fiveHour)], ['Weekly', liveLimit(account.limits?.sevenDay)]];
+
+// One limit as a label, its reset and percent on a line, with a full-width bar under them.
+function limitRow(label, limit) {
+  const row = node('div', 'limit');
+  row.dataset.tip = limitTip(label, limit);
+  const used = node('span', 'limit__pct', `${Math.round(limit.pct)}%`);
+  used.classList.toggle('is-warn', limit.pct >= WARN_PCT);
+  row.append(node('span', 'limit__label', label), resetNode('span', 'limit__reset', limit), used, usageMeter(label, limit));
+  return row;
+}
+
+// frugal: blocks are redrawn on every status line, so keyboard focus on Use is lost when a reading arrives.
+function accountBlock(account, primary, chat) {
+  const block = node('section', 'account');
+  const head = node('div', 'account__head');
+  const age = account.limits?.at ? `Read ${spanText(Date.now() - account.limits.at)} ago` : '';
+  head.append(accountName(account, [account.configDir, primary ? '' : age]));
+  if (primary) head.append(node('span', 'tag tag--primary', 'Primary'));
+  else if (account.signedIn && chat?.account && chat.state === 'running') {
+    const button = node('button', 'btn', 'Use');
+    button.type = 'button';
+    button.dataset.tip = 'Restart this chat on this account. New chats use it too';
+    button.onclick = () => useAccount(chat, account);
+    head.append(button);
+  } else if (account.signedIn) {
+    const hint = node('span', 'tag tag--switch', 'Can be primary');
+    hint.dataset.tip = 'This account can take over as primary. Use, from a running chat, restarts it on this account';
+    head.append(hint);
+  }
+  head.append(withMenu(block, account));
+  block.append(head, ...loginLines(account));
+  const limits = accountLimits(account).filter(([, limit]) => limit);
+  block.append(...(limits.length ? limits.map(([label, limit]) => limitRow(label, limit)) : [node('span', 'account__detail', 'No reading yet')]));
+  return block;
+}
+
+function drawOthers() {
+  const { others } = accountState;
+  const limited = others.filter((other) => other.exhaustedUntil).length;
+  $('usage-others').hidden = !others.length;
+  $('others-count').textContent = `${others.length - limited} ready${limited ? `, ${limited} at limit` : ''}`;
+  $('others').replaceChildren(...others.flatMap((other) => [
+    accountName(other, [[other.kind, other.model].filter(Boolean).join(': ')]),
+    node('span', '', other.exhaustedUntil ? `Until ${resetDay.format(other.exhaustedUntil * 1000)}` : 'Ready'),
+  ]));
+}
+
+function drawAccounts() {
+  const chat = chats.get(activeId);
+  const currentId = chat?.account ?? accountState.primary;
+  const current = accountState.accounts.find((account) => account.id === currentId);
+  const rest = accountState.accounts.filter((account) => account !== current);
+  $('accounts').replaceChildren(...(current ? [accountBlock(current, true, chat)] : []), ...(rest.length ? [node('h3', 'accounts__heading', 'Other Claude accounts')] : []), ...rest.map((account) => accountBlock(account, false, chat)));
+  drawOthers();
+}
+
+async function useAccount(chat, account) {
+  $('usage').hidePopover();
+  const result = await deck.switchAccount({ id: chat.id, accountId: account.id, cols: chat.cols, rows: chat.rows });
+  chat.error = result.error ?? null;
+  if (result.stopped) chat.state = 'error';
+  if (result.account) chat.account = result.account;
+  render();
+  if (!result.error || result.stopped) return;
+  setTimeout(() => {
+    if (chat.error !== result.error) return;
+    chat.error = null;
+    render();
+  }, 5000);
 }
 
 // frugal: readings refresh with each status line, so an idle chat keeps the last one until its next turn.
 function drawMeters() {
   const chat = chats.get(activeId);
+  const limits = accountState.accounts.find((account) => account.id === chat?.account)?.limits ?? {};
+  const fiveHour = liveLimit(limits.fiveHour);
+  const sevenDay = liveLimit(limits.sevenDay);
   const context = chat?.context ?? null;
-  const contextText = context === null
-    ? ''
-    : chat.contextTokens !== null && chat.contextTokens !== undefined && chat.contextSize !== null && chat.contextSize !== undefined
-      ? `${Math.round(context)}% - ${compact.format(chat.contextTokens)} of ${compact.format(chat.contextSize)}`
-      : `${Math.round(context)}%`;
-  drawMeter('meter-context', context, contextText);
-  drawMeter('meter-five', limits.fiveHour?.pct, resetText(limits.fiveHour, resetToday));
-  drawMeter('meter-week', limits.sevenDay?.pct, resetText(limits.sevenDay, resetDay));
   const tracksTokens = chat?.inputTokens !== null && chat?.inputTokens !== undefined || chat?.outputTokens !== null && chat?.outputTokens !== undefined;
+  const tokenText = tracksTokens ? `${compact.format(chat.inputTokens ?? 0)} in, ${compact.format(chat.outputTokens ?? 0)} out` : '';
+  const sized = chat?.contextTokens !== null && chat?.contextTokens !== undefined && chat?.contextSize !== null && chat?.contextSize !== undefined;
+  drawMeter('meter-context', context, context === null ? '' : `${Math.round(context)}%`);
+  $('meter-context').dataset.tip = [sized ? `${compact.format(chat.contextTokens)} of ${compact.format(chat.contextSize)}` : '', tokenText].filter(Boolean).join('\n') || 'Context used by this chat';
   const tokens = $('usage-tokens');
-  tokens.hidden = !tracksTokens;
-  if (tracksTokens) tokens.querySelector('.measured').textContent = `${compact.format(chat.inputTokens ?? 0)} in, ${compact.format(chat.outputTokens ?? 0)} out`;
+  tokens.hidden = !tracksTokens || context !== null;
+  if (!tokens.hidden) tokens.querySelector('.measured').textContent = tokenText;
   const button = $('usage-open');
-  const reading = context !== null || limits.fiveHour !== null || limits.sevenDay !== null || tracksTokens;
-  button.hidden = !reading;
-  if (reading) button.textContent = context === null ? 'Usage' : `Context ${Math.round(context)}%`;
+  button.hidden = !chat?.account && !tracksTokens;
+  const worst = Math.max(fiveHour?.pct ?? 0, sevenDay?.pct ?? 0);
+  const warning = worst >= WARN_PCT;
+  button.classList.toggle('is-warn', warning);
+  button.dataset.tip = warning ? 'This account is close to its limit. Open to switch accounts' : 'Usage and accounts';
+  button.textContent = warning ? `Limit ${Math.round(worst)}%` : context === null ? 'Usage' : `Context ${Math.round(context)}%`;
+  drawAccounts();
 }
 
 function markActiveSession() {
@@ -207,7 +377,21 @@ function resumeSession(session) {
   else openChat({ id: session.id, cwd: session.cwd, name: session.title, resume: true });
 }
 
-async function openChat({ id, cwd, name, resume, group }) {
+function addAccount() {
+  $('usage').hidePopover();
+  ask({
+    title: 'Add account',
+    text: 'Opens the Claude sign-in in a new tab. The account also joins Frugal as a secondary account.',
+    value: '',
+    names: accountState.accounts.map((account) => account.name),
+    action: 'Sign in',
+    run: (name) => openChat({ id: crypto.randomUUID(), cwd: `Sign in to ${name}`, name: `Sign in: ${name}`, login: name }),
+  });
+}
+
+$('account-add').onclick = addAccount;
+
+async function openChat({ id, cwd, name, resume, group, login, accountId }) {
   const el = document.createElement('div');
   el.className = 'term';
   stage.append(el);
@@ -226,7 +410,7 @@ async function openChat({ id, cwd, name, resume, group }) {
   term.loadAddon(fit);
   term.open(el);
 
-  const chat = { id, cwd, name, el, term, fit, state: 'starting', trustUntil: Date.now() + TRUST_PROMPT_MS };
+  const chat = { id, cwd, name, el, term, fit, login, state: 'starting', trustUntil: Date.now() + TRUST_PROMPT_MS };
   chats.set(id, chat);
   activate(id);
   chat.cols = term.cols;
@@ -234,12 +418,14 @@ async function openChat({ id, cwd, name, resume, group }) {
   term.onData((data) => deck.input(id, data));
   term.attachCustomKeyEventHandler((event) => handleTerminalKey(chat, event));
 
-  const result = await deck.start({ id, cwd, cols: term.cols, rows: term.rows, resume, group });
+  const size = { id, cols: term.cols, rows: term.rows };
+  const result = await (login ? deck.login({ ...size, name: login, accountId }) : deck.start({ ...size, cwd, resume, group }));
   if (result.error) {
     chat.state = 'error';
     chat.error = result.error;
-    render();
   }
+  chat.account = result.account;
+  render();
 }
 
 // The prompt comes before anything else, so a slower start just shows it and a resumed transcript is never read as one.
@@ -305,6 +491,13 @@ deck.onExit((id, code) => {
   chat.state = 'exited';
   chat.exitCode = code;
   render();
+  // A finished sign-in closes its tab after "Login successful" shows, and the panel opens on the account; a failed one stays to show why.
+  if (chat.login && code === 0) setTimeout(() => {
+    if (!chats.has(id)) return;
+    closeChat(id);
+    $('usage').classList.add('usage--top');
+    $('usage').showPopover();
+  }, 1500);
 });
 
 deck.onMeters((id, meters) => {
@@ -315,13 +508,39 @@ deck.onMeters((id, meters) => {
       if (meters[key] != null) chat[key] = meters[key];
     }
   }
-  limits.fiveHour = meters.fiveHour ?? limits.fiveHour;
-  limits.sevenDay = meters.sevenDay ?? limits.sevenDay;
   if (chats.has(activeId)) drawMeters();
 });
 
+deck.onRestarting((id) => {
+  const chat = chats.get(id);
+  if (!chat) return;
+  chat.term.reset();
+  chat.state = 'starting';
+  chat.trustUntil = Date.now() + TRUST_PROMPT_MS;
+  chat.trustSent = null;
+  render();
+});
+
+function setAccounts(state) {
+  accountState = state;
+  drawMeters();
+}
+
+deck.getAccounts().then(setAccounts);
+deck.onAccounts(setAccounts);
+
+let resetClock = 0;
+
 $('usage').addEventListener('toggle', (event) => {
-  if (event.newState === 'closed') chats.get(activeId)?.term.focus();
+  clearInterval(resetClock);
+  if (event.newState === 'closed') {
+    chats.get(activeId)?.term.focus();
+    return;
+  }
+  deck.refreshAccounts();
+  resetClock = setInterval(() => {
+    for (const element of $('usage').querySelectorAll('[data-reset]')) element.textContent = resetLabel(Number(element.dataset.reset));
+  }, 30000);
 });
 
 let frame = 0;
@@ -436,7 +655,7 @@ function moreButton(label, items) {
   button.onclick = (event) => {
     event.preventDefault();
     const { left, bottom } = button.getBoundingClientRect();
-    openMenu(left, bottom + 4, items());
+    openMenu(left, bottom + 4, items(), button);
   };
   return button;
 }
@@ -776,7 +995,8 @@ $('workspace-cancel').onclick = () => workspaceDialog.close();
 
 const menu = $('menu');
 
-function openMenu(x, y, items) {
+// A source inside another popover nests the menu in it, so opening the menu leaves that popover open.
+function openMenu(x, y, items, source) {
   if (menu.matches(':popover-open')) menu.hidePopover();
   menu.replaceChildren(...items.map(({ label, run, danger }) => {
     const item = document.createElement('button');
@@ -791,7 +1011,7 @@ function openMenu(x, y, items) {
     };
     return item;
   }));
-  menu.showPopover();
+  menu.showPopover({ source });
   menu.style.left = `${Math.min(x, innerWidth - menu.offsetWidth - 8)}px`;
   menu.style.top = `${Math.min(y, innerHeight - menu.offsetHeight - 8)}px`;
   menu.firstChild.focus();
@@ -807,9 +1027,11 @@ menu.onkeydown = (event) => {
 const askDialog = $('ask-dialog');
 let askRun = null;
 let askNames = [];
+let askReturn = false;
 
 function ask({ title, text, value = null, names = [], action, danger = false, run }) {
   const input = $('ask-value');
+  askReturn = $('usage').matches(':popover-open');
   $('ask-title').textContent = title;
   $('ask-text').textContent = text;
   $('ask-field').hidden = value === null;
@@ -825,6 +1047,13 @@ function ask({ title, text, value = null, names = [], action, danger = false, ru
 
 $('ask-form').onsubmit = () => askRun($('ask-value').value.trim());
 $('ask-cancel').onclick = () => askDialog.close();
+// A question asked from the accounts panel returns to it.
+askDialog.addEventListener('close', () => {
+  if (askReturn && !$('usage').matches(':popover-open')) $('usage').showPopover();
+});
+// The panel opens under the bar button or over the footer one, whichever was clicked.
+$('accounts-open').addEventListener('click', () => $('usage').classList.add('usage--top'));
+$('usage-open').addEventListener('click', () => $('usage').classList.remove('usage--top'));
 
 // The native datalist popup cannot be styled, so these fields share the app's list.
 function attachCombo(input, names) {
