@@ -1,0 +1,68 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta http-equiv="Content-Security-Policy" content="default-src 'self'; style-src 'self' 'unsafe-inline'; img-src 'self' data:">
+<title>Frugal Deck</title>
+<link rel="stylesheet" href="../../node_modules/@xterm/xterm/css/xterm.css">
+<link rel="stylesheet" href="./app.css">
+</head>
+<body>
+<svg hidden>
+  <symbol id="i-logo" viewBox="0 0 256 256"><path fill="currentColor" fill-rule="evenodd" d="M80 24L52 24A44 44 0 0 0 8 68L8 188A44 44 0 0 0 52 232L80 232ZM96 24L204 24A44 44 0 0 1 248 68L248 188A44 44 0 0 1 204 232L96 232ZM148.96 188.48L148.96 133.76L134.56 133.76A14.4 14.4 0 0 1 134.56 104.96L148.96 104.96L148.96 99.2A46.08 46.08 0 0 1 195.04 53.12L209.44 53.12A14.4 14.4 0 0 1 209.44 81.92L195.04 81.92A17.28 17.28 0 0 0 177.76 99.2L177.76 104.96L184.96 104.96A14.4 14.4 0 0 1 184.96 133.76L177.76 133.76L177.76 188.48A14.4 14.4 0 0 1 148.96 188.48Z"/></symbol>
+  <symbol id="i-plus" viewBox="0 0 16 16"><path d="M8 3v10M3 8h10"/></symbol>
+  <symbol id="i-x" viewBox="0 0 16 16"><path d="m4 4 8 8m0-8-8 8"/></symbol>
+  <symbol id="i-chevron" viewBox="0 0 16 16"><path d="m6 3.5 4.5 4.5L6 12.5"/></symbol>
+  <symbol id="i-folder" viewBox="0 0 16 16"><path d="M2 5.2c0-.9.7-1.6 1.6-1.6h2.6l1.5 1.7h4.7c.9 0 1.6.7 1.6 1.6v4.9c0 .9-.7 1.6-1.6 1.6H3.6c-.9 0-1.6-.7-1.6-1.6z"/></symbol>
+  <symbol id="i-terminal" viewBox="0 0 16 16"><rect x="1.75" y="2.5" width="12.5" height="11" rx="2.5"/><path d="m4.5 6 2 2-2 2m4 .5h3"/></symbol>
+</svg>
+<header class="bar">
+  <span class="mark"><svg class="mark__logo" aria-hidden="true"><use href="#i-logo"/></svg>Frugal Deck</span>
+  <nav id="tabs" class="tabs" aria-label="Chats abiertos"></nav>
+  <button id="new" class="btn" type="button"><svg class="icon" aria-hidden="true"><use href="#i-plus"/></svg>Nuevo chat</button>
+</header>
+<aside class="sidebar" aria-label="Sesiones">
+  <p id="index-status" class="sidebar__status" role="status" hidden></p>
+  <select id="space-filter" class="space-filter" aria-label="Filtrar por espacio" hidden></select>
+  <div id="groups"></div>
+</aside>
+<main id="stage" class="stage">
+  <section id="empty" class="empty">
+    <h1>Abre una carpeta para empezar</h1>
+    <p>Cada chat ejecuta Claude Code en la carpeta que elijas.</p>
+    <button id="pick" class="btn btn--primary" type="button"><svg class="icon" aria-hidden="true"><use href="#i-folder"/></svg>Elegir carpeta</button>
+  </section>
+  <p id="notice" class="notice" role="alert" hidden></p>
+</main>
+<footer id="readout" class="readout" hidden>
+  <svg class="icon" aria-hidden="true"><use href="#i-folder"/></svg>
+  <span id="path" class="measured readout__path"></span>
+  <span id="session" class="measured readout__session"></span>
+  <div class="meters">
+    <span id="meter-context" class="meter" hidden>Contexto <meter aria-label="Contexto usado" min="0" max="100" low="60" high="80" optimum="0"></meter><span class="measured"></span></span>
+    <span id="meter-five" class="meter" hidden>5 h <meter aria-label="Límite de 5 horas usado" min="0" max="100" low="60" high="80" optimum="0"></meter><span class="measured"></span></span>
+    <span id="meter-week" class="meter" hidden>Semana <meter aria-label="Límite semanal usado" min="0" max="100" low="60" high="80" optimum="0"></meter><span class="measured"></span></span>
+  </div>
+  <span id="state" class="readout__state" role="status"></span>
+</footer>
+<dialog id="palette" class="palette" closedby="any" aria-label="Buscar sesiones">
+  <input id="palette-query" class="palette__query" type="text" role="combobox" aria-controls="palette-list" aria-expanded="true" aria-autocomplete="list" aria-label="Buscar sesiones" placeholder="Buscar por título o carpeta" autocomplete="off" spellcheck="false">
+  <div id="palette-list" class="palette__list" role="listbox" aria-label="Sesiones"></div>
+  <p id="palette-empty" class="palette__empty" role="status" hidden>Sin resultados.</p>
+</dialog>
+<dialog id="organize" class="organize" closedby="any" aria-labelledby="organize-title">
+  <form id="organize-form" method="dialog">
+    <h2 id="organize-title" class="organize__title"></h2>
+    <label class="organize__check"><input id="organize-pinned" type="checkbox"> Fijar arriba</label>
+    <label class="organize__field">Espacio<input id="organize-space" list="space-names" placeholder="Sin espacio" autocomplete="off" spellcheck="false"></label>
+    <datalist id="space-names"></datalist>
+    <label class="organize__field">Etiquetas<input id="organize-tags" placeholder="Separadas por comas" autocomplete="off" spellcheck="false"></label>
+    <div class="organize__actions">
+      <button id="organize-cancel" class="btn" type="button">Cancelar</button>
+      <button class="btn btn--primary" type="submit">Guardar</button>
+    </div>
+  </form>
+</dialog>
+<script type="module" src="./app.js"></script>
+</body>
+</html>
