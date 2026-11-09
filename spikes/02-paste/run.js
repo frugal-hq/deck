@@ -22,24 +22,24 @@ module.exports = async ({ win, p, app, ipcMain }) => {
       win.webContents.send('spike:dump');
     });
 
-  const noSpace = path.join(fx, 'uno.png');
-  const spaced = path.join(fx, 'con espacios');
+  const noSpace = path.join(fx, 'one.png');
+  const spaced = path.join(fx, 'with spaces');
 
   await sleep(20000);
   await shot('1-start.png');
 
   const steps = [
-    () => type('UNO '),
+    () => type('ONE '),
     () => paste(noSpace),
-    () => type(' DOS '),
-    () => paste(path.join(spaced, 'foto dos.png')),
-    () => type(' TRES '),
-    () => paste('"' + path.join(spaced, 'foto tres.png') + '"'),
-    () => type(' CUATRO '),
-    () => paste('@' + path.join(spaced, 'nota a.txt')),
-    () => type(' CINCO '),
-    () => paste('@"' + path.join(spaced, 'nota b.txt') + '"'),
-    () => type(' SEIS. Responde solo: ok'),
+    () => type(' TWO '),
+    () => paste(path.join(spaced, 'photo two.png')),
+    () => type(' THREE '),
+    () => paste('"' + path.join(spaced, 'photo three.png') + '"'),
+    () => type(' FOUR '),
+    () => paste('@' + path.join(spaced, 'note a.txt')),
+    () => type(' FIVE '),
+    () => paste('@"' + path.join(spaced, 'note b.txt') + '"'),
+    () => type(' SIX. Reply with only: ok'),
   ];
   for (const step of steps) {
     step();

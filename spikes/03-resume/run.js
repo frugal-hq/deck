@@ -30,7 +30,7 @@ module.exports = async ({ win, p, app, ipcMain }) => {
 
   await shot('2-ready.png');
   await dump('2-ready.json');
-  p.write('Cual era la clave que te di? Responde solo con ella.');
+  p.write('What was the key I gave you? Reply with only it.');
   await sleep(1500);
   p.write('\r');
   await sleep(60000);

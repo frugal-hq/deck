@@ -13,7 +13,7 @@ function limit(window) {
   return pct === null ? null : { pct, resetsAt: Number.isFinite(window.resets_at) ? window.resets_at : null };
 }
 
-// The first invocations of a session omit these fields or send null (Prueba 6).
+// The first invocations of a session omit these fields or send null (Test 6).
 function readMeters(input) {
   return {
     context: percent(input?.context_window?.used_percentage),

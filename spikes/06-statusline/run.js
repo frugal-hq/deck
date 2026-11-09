@@ -15,7 +15,7 @@ env.T6_CHAIN = `node "${js('user-line.js')}"`;
 
 const settings = JSON.stringify({ statusLine: { type: 'command', command: `node "${js('capture.js')}"` } });
 const sid = crypto.randomUUID();
-const p = pty.spawn(exe, ['--session-id', sid, '--model', 'haiku', '--strict-mcp-config', '--settings', settings, 'responde solo ok'],
+const p = pty.spawn(exe, ['--session-id', sid, '--model', 'haiku', '--strict-mcp-config', '--settings', settings, 'reply with only ok'],
   { name: 'xterm-256color', cols: 120, rows: 40, cwd: process.cwd(), env });
 let out = '';
 p.onData(d => { out += d; });
