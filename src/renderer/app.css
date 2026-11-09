@@ -73,7 +73,7 @@ body {
 .tabs {
   display: flex;
   flex: 1;
-  gap: var(--space-2xs);
+  gap: var(--space-xs);
   min-width: 0;
   overflow-x: auto;
   scrollbar-width: none;
@@ -81,10 +81,12 @@ body {
 
 .tab {
   display: flex;
+  flex: none;
   align-items: stretch;
   height: 32px;
   border-radius: var(--radius-pill);
   overflow: hidden;
+  background: color-mix(in oklab, var(--color-paper-2) 60%, transparent);
 }
 
 .tab__open, .tab__close {
@@ -109,11 +111,11 @@ body {
 .tab__close { display: grid; place-items: center; width: 28px; }
 .tab__close .icon { width: 14px; height: 14px; }
 
-.tab__open:hover, .tab__close:hover { background: var(--color-paper); color: var(--color-ink); }
+.tab__open:hover, .tab__close:hover { background: var(--color-highlight); color: var(--color-ink); }
 .tab__open:active, .tab__close:active { background: var(--color-paper-3); }
 .tab__open:focus-visible, .tab__close:focus-visible { outline-offset: -2px; }
 
-.tab:has([aria-current]) { background: var(--color-paper-2); }
+.tab:has([aria-current]) { background: var(--color-control); box-shadow: inset 0 1px 0 var(--color-highlight); }
 .tab__open[aria-current] { color: var(--color-ink); }
 .tab__open[aria-current] .icon { color: var(--color-accent); }
 
