@@ -17,6 +17,7 @@
   --font-display: "Host Grotesk", ui-sans-serif, system-ui, sans-serif; --font-body: var(--font-display);
   --font-outlier: "Atkinson Hyperlegible Mono", ui-monospace, monospace;
   --radius-card: 16px; --radius-pill: 10px; --rule-hair: 1px;
-  --shadow-card: none;
+  --color-control: oklch(28% 0.01 250); --color-control-2: oklch(24.5% 0.009 250); --color-highlight: oklch(100% 0 0 / 0.07); --color-scrim: oklch(0% 0 0 / 0.5);
+  --shadow-card: 0 12px 32px oklch(0% 0 0 / 0.45); --shadow-float: 0 3px 10px oklch(0% 0 0 / 0.4);
   --tracking-display: -0.03em; --display-weight: 500;
 }
