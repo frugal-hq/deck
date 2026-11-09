@@ -165,24 +165,27 @@ function removeSession(db, file) {
   db.prepare('DELETE FROM sessions WHERE id = ?').run(sessionId(file));
 }
 
-function scan(db, root, onBatch) {
+// Junctions report as links, not directories, so a project shared between accounts is read from its real folder only.
+function scan(db, roots, onBatch) {
   const seen = new Set();
   let changed = 0;
   db.exec('BEGIN');
-  for (const project of fs.readdirSync(root, { withFileTypes: true })) {
-    if (!project.isDirectory()) continue;
-    for (const entry of fs.readdirSync(path.join(root, project.name), { withFileTypes: true })) {
-      if (!entry.isFile() || !entry.name.endsWith('.jsonl')) continue;
-      seen.add(sessionId(entry.name));
-      try {
-        if (!syncFile(db, path.join(root, project.name, entry.name))) continue;
-      } catch {
-        continue;
-      }
-      if (++changed % BATCH === 0) {
-        db.exec('COMMIT');
-        onBatch();
-        db.exec('BEGIN');
+  for (const root of [roots].flat().filter((folder) => fs.existsSync(folder))) {
+    for (const project of fs.readdirSync(root, { withFileTypes: true })) {
+      if (!project.isDirectory()) continue;
+      for (const entry of fs.readdirSync(path.join(root, project.name), { withFileTypes: true })) {
+        if (!entry.isFile() || !entry.name.endsWith('.jsonl') || seen.has(sessionId(entry.name))) continue;
+        seen.add(sessionId(entry.name));
+        try {
+          if (!syncFile(db, path.join(root, project.name, entry.name))) continue;
+        } catch {
+          continue;
+        }
+        if (++changed % BATCH === 0) {
+          db.exec('COMMIT');
+          onBatch();
+          db.exec('BEGIN');
+        }
       }
     }
   }
@@ -222,7 +225,7 @@ function listIndex(db) {
   };
   const sessions = [];
   // -p runs (sdk-cli) and sandboxes in Temp would bury the real chats; a missing cwd cannot be resumed.
-  const rows = db.prepare(`SELECT id, cwd, COALESCE(NULLIF(custom_title, ''), NULLIF(a.title, ''), NULLIF(ai_title, ''), first_prompt, 'Untitled') AS title, last_at AS lastAt, COALESCE(pinned, 0) AS pinned, space, COALESCE(tags, '[]') AS tags,
+  const rows = db.prepare(`SELECT id, file, cwd, COALESCE(NULLIF(custom_title, ''), NULLIF(a.title, ''), NULLIF(ai_title, ''), first_prompt, 'Untitled') AS title, last_at AS lastAt, COALESCE(pinned, 0) AS pinned, space, COALESCE(tags, '[]') AS tags,
       CASE WHEN g.name = '' THEN NULL ELSE COALESCE(g.name, a.topic) END AS topic, NULLIF(g.name, '') AS userGroup, COALESCE(g.name = '', 0) AS noGroup, a.title AS autoTitle, NULLIF(custom_title, '') AS customTitle, NULLIF(ai_title, '') AS aiTitle, first_prompt AS firstPrompt
     FROM sessions LEFT JOIN session_org o ON o.session_id = id LEFT JOIN session_auto a ON a.session_id = id LEFT JOIN session_group g ON g.session_id = id
     WHERE turns > 0 AND cwd IS NOT NULL AND last_at IS NOT NULL AND COALESCE(entrypoint, '') <> 'sdk-cli'
@@ -440,12 +443,11 @@ function clearModelWorkspaces(db) {
   db.prepare("DELETE FROM group_workspace WHERE origin = 'model'").run();
 }
 
-function runWorker({ root, dbFile }) {
+function runWorker({ roots, dbFile }) {
   const db = openIndex(dbFile);
   const publish = (indexing) => parentPort.postMessage({ indexing, ...listIndex(db) });
   publish(true);
-  if (!fs.existsSync(root)) return publish(false);
-  scan(db, root, () => publish(true));
+  scan(db, roots, () => publish(true));
   publish(false);
 
   parentPort.on('message', ({ id, organization, automatic, clearTitles, link, undoLink, joins, clearJoins, setGroup, setWorkspace, modelWorkspaces, clearWorkspaces, renameWorkspace: spaceRename, deleteWorkspace: spaceDelete, renameGroup: groupRename, deleteGroup: groupDelete }) => {
@@ -482,8 +484,7 @@ function runWorker({ root, dbFile }) {
   let timer = null;
   const flush = () => {
     timer = null;
-    for (const name of changed) {
-      const file = path.join(root, name);
+    for (const file of changed) {
       try {
         syncFile(db, file);
       } catch (error) {
@@ -493,12 +494,14 @@ function runWorker({ root, dbFile }) {
     changed.clear();
     publish(false);
   };
-  fs.watch(root, { recursive: true }, (_, name) => {
-    // Subagent transcripts live one level deeper and are not sessions.
-    if (!name?.endsWith('.jsonl') || name.split(path.sep).length !== 2) return;
-    changed.add(name);
-    timer ??= setTimeout(flush, 1000);
-  });
+  for (const root of roots.filter((folder) => fs.existsSync(folder))) {
+    fs.watch(root, { recursive: true }, (_, name) => {
+      // Subagent transcripts live one level deeper and are not sessions.
+      if (!name?.endsWith('.jsonl') || name.split(path.sep).length !== 2) return;
+      changed.add(path.join(root, name));
+      timer ??= setTimeout(flush, 1000);
+    });
+  }
 }
 
 module.exports = { saveGroup, saveWorkspace, saveModelWorkspaces, clearModelWorkspaces, openIndex, syncFile, scan, listSessions, listIndex, chatLinks, promptTitle, saveOrganization, saveAutomatic, clearAutoTitles, saveLink, undoLastLink, clearModelLinks, renameWorkspace, deleteWorkspace, renameGroup, deleteGroup };
