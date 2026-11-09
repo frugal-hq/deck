@@ -1,0 +1,101 @@
+name: Release
+
+# Every push to main that passes the checks republishes the release of the
+# version in package.json (tag v<version>), so a release always holds every
+# commit since "chore: bump version to <version>".
+
+# frugal: only notes for now; attach the installer here once Fase 7 builds one.
+
+on:
+  push:
+    branches: [main]
+
+permissions:
+  contents: read
+
+concurrency:
+  group: release
+  cancel-in-progress: false
+
+jobs:
+  check:
+    runs-on: windows-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: npm ci
+      - name: Run checks
+        shell: bash
+        env:
+          ELECTRON_RUN_AS_NODE: "1"
+        run: for f in test/*.check.*; do node_modules/electron/dist/electron.exe "$f"; done
+
+  release:
+    needs: check
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    env:
+      GH_TOKEN: ${{ github.token }}
+      HEAD_SHA: ${{ github.sha }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Read version
+        run: |
+          set -euo pipefail
+          VERSION=$(node -p "require('./package.json').version")
+          [[ $VERSION =~ ^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$ ]] || { echo "bad version '$VERSION'"; exit 1; }
+          echo "VERSION=$VERSION" >> "$GITHUB_ENV"
+      - name: Build release notes
+        run: |
+          set -euo pipefail
+          TAG=v$VERSION
+          git log --format='%H%x09%s' "$HEAD_SHA" > log.tsv
+          BUMP=$(awk -F '\t' -v s="chore: bump version to $VERSION" '$2 == s { print $1; exit }' log.tsv)
+          if [[ -n $BUMP ]]; then
+            BASE=$(git rev-parse --verify -q "$BUMP^" || true)
+          else
+            BASE=$(gh release list --exclude-drafts --limit 100 --json tagName --jq "[.[].tagName | select(. != \"$TAG\")][0] // empty")
+            [[ -n $BASE ]] || { echo "no bump commit and no previous release; refusing to use the full history"; exit 1; }
+          fi
+          RANGE=$HEAD_SHA
+          [[ -n $BASE ]] && RANGE=$BASE..$HEAD_SHA
+
+          : > contributors
+          {
+            echo "## What's Changed"
+            echo
+            while read -r SHA; do
+              LOGIN=$(gh api "repos/$GITHUB_REPOSITORY/commits/$SHA" --jq '.author.login // empty' || true)
+              SUBJECT=$(git log -1 --format=%s "$SHA")
+              if [[ -n $LOGIN ]]; then
+                echo "- $SUBJECT by @$LOGIN (${SHA:0:7})"
+                echo "$LOGIN" >> contributors
+              else
+                echo "- $SUBJECT by $(git log -1 --format=%aN "$SHA") (${SHA:0:7})"
+              fi
+            done < <(git rev-list --reverse --topo-order --no-merges "$RANGE")
+            if [[ -s contributors ]]; then
+              echo
+              echo "## Contributors"
+              echo
+              sort -fu contributors | sed 's/^/- @/'
+            fi
+            if [[ -n $BASE ]]; then
+              echo
+              echo "**Full Changelog**: https://github.com/$GITHUB_REPOSITORY/compare/$BASE...$TAG"
+            fi
+          } > release-notes.md
+      - name: Publish release
+        run: |
+          set -euo pipefail
+          TAG=v$VERSION
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            gh release delete "$TAG" --cleanup-tag --yes
+          elif git ls-remote --exit-code --tags origin "refs/tags/$TAG" >/dev/null 2>&1; then
+            git push -q origin ":refs/tags/$TAG"
+          fi
+          FLAGS=(--latest)
+          [[ $VERSION == *-* ]] && FLAGS=(--prerelease --latest=false)
+          gh release create "$TAG" --title "$VERSION" --notes-file release-notes.md --target "$HEAD_SHA" "${FLAGS[@]}"
