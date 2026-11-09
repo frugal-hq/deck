@@ -1,27 +1,41 @@
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/brand/deck-mark-amber.svg">
+  <img src="docs/brand/deck-mark.svg" alt="Frugal Deck logo" width="72">
+</picture>
+
 # Frugal Deck
 
-Cliente de escritorio open source que envuelve el CLI oficial de Claude Code. Muestra la terminal real y añade alrededor lo que le falta: historial de sesiones, adjuntos fáciles, voz, varias cuentas, límites de uso y handoff automático con Frugal.
+Open-source desktop client that wraps the official Claude Code CLI. It shows the real terminal and adds around it what it lacks: session history, easy attachments, voice, multiple accounts, usage limits, and automatic handoff with Frugal.
 
-**Versión objetivo:** 0.1.0
-**Estado:** en desarrollo, Fase 1 de 7.
-**Plataforma de 0.1.0:** Windows 10 y 11.
+## Status
 
-## Principios
+In development toward 0.1.0, for Windows 10 and 11. Working today:
 
-1. **La terminal es la real.** Deck ejecuta el binario oficial de Claude Code sin modificarlo, dentro de un PTY.
-2. **Cero tokens añadidos.** Ninguna función puede agregar contenido al prompt, servidores MCP ni llamadas al modelo. Lo que no cumpla esto queda fuera o es opcional y apagado.
-3. **Deck nunca toca credenciales.** No lee, copia ni guarda `.credentials.json` ni tokens. El login siempre es el flujo oficial dentro de la terminal.
-4. **Nada se pierde.** Archivar nunca borra, y Deck conserva su propia copia de cada sesión.
+- The official Claude Code terminal in tabs, with context and usage-limit meters
+- An index of every local session, with search and resume
+- Pins, spaces, and tags
+- Grouping by folder or by topic. Topics and clearer titles come from an optional one-shot Claude call that you start yourself; it uses your account's tokens and sends only titles, folder names, and dates
+- New chats that open in `Frugal Deck/Sessions` in your home folder, or in a folder you choose
+- A title bar and window controls in Deck's own design
 
-## Documentos
+Not built yet: attachments, voice, multiple accounts, automatic handoff, and joining related sessions into one chat.
 
-| Archivo | Contenido |
+## Principles
+
+1. **The terminal is the real one.** Deck runs the official Claude Code binary unchanged, inside a PTY.
+2. **Zero added tokens.** No feature may add content to the prompt, MCP servers, or model calls. Anything that fails this is out or optional and off.
+3. **Deck never touches credentials.** It does not read, copy, or store `.credentials.json` or tokens. Login is always the official flow inside the terminal.
+4. **Nothing is lost.** Archiving never deletes, and Deck keeps its own copy of every session.
+
+## Documents
+
+| File | Content |
 |---|---|
-| [docs/REQUISITOS.md](docs/REQUISITOS.md) | Todo lo pedido para el cliente |
-| [docs/PLAN.md](docs/PLAN.md) | Plan completo de 0.1.0, por fases |
-| [docs/DECISIONES.md](docs/DECISIONES.md) | Decisiones tomadas, motivos y alternativas |
-| [docs/INVESTIGACION.md](docs/INVESTIGACION.md) | Datos verificados, medición de tokens, competencia y fuentes |
+| [docs/REQUIREMENTS.md](docs/REQUIREMENTS.md) | Everything requested for the client |
+| [docs/PLAN.md](docs/PLAN.md) | Complete 0.1.0 plan, by phases |
+| [docs/DECISIONS.md](docs/DECISIONS.md) | Decisions made, reasons, and alternatives |
+| [docs/RESEARCH.md](docs/RESEARCH.md) | Verified data, token measurement, competitors, and sources |
 
-## Licencia
+## License
 
-MIT (propuesta).
+MIT. See [LICENSE](LICENSE).
