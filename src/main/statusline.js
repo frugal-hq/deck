@@ -15,8 +15,14 @@ function limit(window) {
 
 // The first invocations of a session omit these fields or send null (Test 6).
 function readMeters(input) {
+  const window = input?.context_window;
+  const finite = (value) => Number.isFinite(value) ? value : null;
   return {
-    context: percent(input?.context_window?.used_percentage),
+    context: percent(window?.used_percentage),
+    contextTokens: Number.isFinite(window?.used_percentage) && Number.isFinite(window?.context_window_size) ? finite(Math.round(window.used_percentage / 100 * window.context_window_size)) : null,
+    contextSize: finite(window?.context_window_size),
+    inputTokens: finite(window?.total_input_tokens),
+    outputTokens: finite(window?.total_output_tokens),
     fiveHour: limit(input?.rate_limits?.five_hour),
     sevenDay: limit(input?.rate_limits?.seven_day),
   };

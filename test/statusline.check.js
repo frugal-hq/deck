@@ -6,9 +6,9 @@ const os = require('os');
 const path = require('path');
 const { createStatusBridge, readMeters, readUserStatusLine } = require('../src/main/statusline.js');
 
-const EMPTY = { context: null, fiveHour: null, sevenDay: null };
+const EMPTY = { context: null, contextTokens: null, contextSize: null, inputTokens: null, outputTokens: null, fiveHour: null, sevenDay: null };
 const FULL = {
-  context_window: { used_percentage: 34.5 },
+  context_window: { used_percentage: 34.5, context_window_size: 200000, total_input_tokens: 12000, total_output_tokens: 3456 },
   rate_limits: { five_hour: { used_percentage: 67, resets_at: 1800000000 }, seven_day: { used_percentage: 13 } },
 };
 
@@ -20,9 +20,22 @@ assert.strictEqual(readMeters({ context_window: { used_percentage: -1 } }).conte
 assert.strictEqual(readMeters({ context_window: { used_percentage: 130 } }).context, 100);
 assert.deepStrictEqual(readMeters(FULL), {
   context: 34.5,
+  contextTokens: 69000,
+  contextSize: 200000,
+  inputTokens: 12000,
+  outputTokens: 3456,
   fiveHour: { pct: 67, resetsAt: 1800000000 },
   sevenDay: { pct: 13, resetsAt: null },
 });
+
+for (const value of [undefined, null, '20', NaN, Infinity, -Infinity]) {
+  assert.deepStrictEqual(readMeters({ context_window: { used_percentage: value, context_window_size: value, total_input_tokens: value, total_output_tokens: value } }), EMPTY);
+}
+assert.equal(readMeters({ context_window: { context_window_size: 200000 } }).contextTokens, null);
+assert.equal(readMeters({ context_window: { used_percentage: 20 } }).contextTokens, null);
+assert.equal(readMeters({ context_window: { used_percentage: 33.3, context_window_size: 101 } }).contextTokens, 34);
+assert.equal(readMeters({ context_window: { used_percentage: 130, context_window_size: 100 } }).contextTokens, 130);
+assert.equal(readMeters({ context_window: { used_percentage: 0, context_window_size: 100, total_input_tokens: 0, total_output_tokens: 0 } }).inputTokens, 0);
 
 const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'deck-status-'));
 const file = (text) => {
