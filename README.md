@@ -16,9 +16,10 @@ In development toward 0.1.0, for Windows 10 and 11. Working today:
 - Pins, spaces, and tags
 - Grouping by folder or by topic. Topics and clearer titles come from an optional one-shot Claude call that you start yourself; it uses your account's tokens and sends only titles, folder names, and dates
 - New chats that open in `Frugal Deck/Sessions` in your home folder, or in a folder you choose
+- Chats that join the sessions continued through a Frugal handoff, without any model call, with a Link to chat button and undo. If a handoff has several possible origins, an optional Claude call that you start yourself can pick one
 - A title bar and window controls in Deck's own design
 
-Not built yet: attachments, voice, multiple accounts, automatic handoff, and joining related sessions into one chat.
+Not built yet: attachments, voice, multiple accounts, and opening the next session automatically after a handoff.
 
 ## Principles
 
