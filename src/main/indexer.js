@@ -105,6 +105,7 @@ function applyRecord(row, record, emissions, handoffs) {
     }
     // Each content block is its own record; the reply's text comes last and carries end_turn.
     if (handoffs && record.message?.stop_reason === 'end_turn') {
+      handoffs.push({ id: row.id, prompt: null });
       for (const body of blocks) {
         const prompt = nextBlock(body);
         if (prompt) handoffs.push({ id: row.id, prompt, tokens: contextTokens(record.message.usage) });

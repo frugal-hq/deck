@@ -21,6 +21,40 @@ function icon(name) {
   return svg;
 }
 
+// Copies the symbol's shapes in place of <use>, so CSS can reach them: the working icon animates its levels.
+function inlineIcon(name) {
+  const symbol = $(`i-${name}`);
+  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  svg.setAttribute('viewBox', symbol.getAttribute('viewBox'));
+  svg.append(...[...symbol.children].map((shape) => shape.cloneNode(true)));
+  return svg;
+}
+
+const STATUS_LABEL = { working: 'Working', waiting: 'Waiting for your answer', replied: 'Replied' };
+
+function statusIcon(status) {
+  if (!status) return icon('terminal');
+  const svg = inlineIcon(status);
+  svg.setAttribute('class', `icon status status--${status}`);
+  svg.setAttribute('role', 'img');
+  svg.setAttribute('aria-label', STATUS_LABEL[status]);
+  return svg;
+}
+
+function setRowStatus(row, status) {
+  row.querySelector('.session__status')?.remove();
+  if (!status) return;
+  const svg = statusIcon(status);
+  svg.classList.add('session__status');
+  row.prepend(svg);
+}
+
+function drawStatus(chat) {
+  chat.tab?.querySelector('.tab__open > svg').replaceWith(statusIcon(chat.status));
+  for (const row of $('groups').querySelectorAll(`[data-session="${chat.id}"]`)) setRowStatus(row, chat.status);
+  render();
+}
+
 const STATE_LABEL = {
   starting: () => 'Starting',
   running: () => 'Running',
@@ -36,7 +70,7 @@ function tabElement(chat) {
   open.className = 'tab__open';
   const label = document.createElement('span');
   label.className = 'tab__label';
-  open.append(icon('terminal'), label);
+  open.append(statusIcon(null), label);
   open.onclick = () => activate(chat.id);
   const close = document.createElement('button');
   close.type = 'button';
@@ -334,6 +368,7 @@ function activate(id) {
   markActiveSession();
   const chat = chats.get(id);
   if (!chat) return;
+  if (chat.status === 'replied') setStatus(chat, null);
   syncSize(chat);
   chat.term.focus();
 }
@@ -415,12 +450,16 @@ async function openChat({ id, cwd, name, resume, group, login, accountId, handof
   term.loadAddon(fit);
   term.open(el);
 
-  const chat = { id, cwd, name, el, term, fit, login, state: 'starting', trustUntil: Date.now() + TRUST_PROMPT_MS };
+  const chat = { id, cwd, name, el, term, fit, login, state: 'starting', trustUntil: Date.now() + TRUST_PROMPT_MS, status: null, busy: false, inputAt: 0 };
   chats.set(id, chat);
   activate(id);
   chat.cols = term.cols;
   chat.rows = term.rows;
-  term.onData((data) => deck.input(id, data));
+  term.onData((data) => {
+    chat.inputAt = Date.now();
+    deck.input(id, data);
+  });
+  term.onTitleChange((title) => onTitle(chat, title));
   term.attachCustomKeyEventHandler((event) => handleTerminalKey(chat, event));
 
   const size = { id, cols: term.cols, rows: term.rows };
@@ -565,9 +604,65 @@ deck.onData((id, data) => {
   }
 });
 
+// Claude Code animates a mark at the head of the terminal title while a turn runs (\u25d0 \u25d1 in 2.1.287, braille in older builds). It rests on \u2733
+// when the turn ends and while a permission or question dialog waits, so a stop without the turn's end_turn record means it asks us.
+const isBusyTitle = (title) => {
+  const mark = /^(\S) /.exec(title)?.[1];
+  return Boolean(mark) && mark !== '\u2733' && !/[\p{L}\p{N}]/u.test(mark);
+};
+// The end_turn record reaches the index a moment after the spinner stops.
+const SETTLE_MS = 1500;
+// Esc ends a turn without end_turn; a stop this soon after a key is taken as that.
+const INTERRUPT_MS = 1000;
+
+const seen = (chat) => chat.id === activeId && document.hasFocus();
+
+function setStatus(chat, status) {
+  if (chat.status === status) return;
+  chat.status = status;
+  drawStatus(chat);
+}
+
+function onTitle(chat, title) {
+  const busy = isBusyTitle(title);
+  if (busy === chat.busy) return;
+  chat.busy = busy;
+  clearTimeout(chat.settle);
+  if (busy) {
+    chat.turnEnded = false;
+    setStatus(chat, 'working');
+    return;
+  }
+  const interrupted = Date.now() - chat.inputAt < INTERRUPT_MS;
+  chat.settle = setTimeout(() => {
+    if (chat.turnEnded) setStatus(chat, seen(chat) ? null : 'replied');
+    else setStatus(chat, interrupted ? null : 'waiting');
+  }, SETTLE_MS);
+}
+
+// Before the spinner stops, the stop's timer reads the flag; after it, this replaces the waiting guess.
+deck.onTurnEnd((id) => {
+  const chat = chats.get(id);
+  if (!chat) return;
+  chat.turnEnded = true;
+  if (!chat.busy && chat.status === 'waiting') setStatus(chat, seen(chat) ? null : 'replied');
+});
+
+window.addEventListener('focus', () => {
+  const chat = chats.get(activeId);
+  if (chat?.status === 'replied') setStatus(chat, null);
+});
+
+function resetStatus(chat) {
+  clearTimeout(chat.settle);
+  chat.busy = false;
+  setStatus(chat, null);
+}
+
 deck.onExit((id, code) => {
   const chat = chats.get(id);
   if (!chat) return;
+  resetStatus(chat);
   chat.state = 'exited';
   chat.exitCode = code;
   render();
@@ -595,6 +690,7 @@ deck.onRestarting((id) => {
   const chat = chats.get(id);
   if (!chat) return;
   chat.term.reset();
+  resetStatus(chat);
   chat.state = 'starting';
   chat.trustUntil = Date.now() + TRUST_PROMPT_MS;
   chat.trustSent = null;
@@ -662,6 +758,7 @@ function sessionButton(session) {
     tags.textContent = session.tags.map((tag) => `#${tag}`).join(' ');
     date.before(tags);
   }
+  setRowStatus(button, chats.get(session.id)?.status);
   button.oncontextmenu = (event) => {
     event.preventDefault();
     openOrganize(session);

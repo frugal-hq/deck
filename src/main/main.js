@@ -145,9 +145,12 @@ ipcMain.handle('chat:continue', (_, { id, from, accountId, prompt, cols, rows })
   return launchChat({ id, folder, cols, rows, account, prompt: text });
 });
 
+// Every live end_turn comes as an entry without a prompt; a handoff block adds one with it.
 function offerHandoffs(handoffs) {
   for (const { id, prompt, tokens } of handoffs) {
-    if (chats.has(id)) send('chat:handoff', id, { prompt, tokens });
+    if (!chats.has(id)) continue;
+    if (prompt) send('chat:handoff', id, { prompt, tokens });
+    else send('chat:turn-end', id);
   }
 }
 
