@@ -86,6 +86,70 @@ function signedInEmail({ id, configDir }) {
 // Only the file's presence is checked; Claude Code removes it on logout.
 const isSignedIn = ({ configDir }) => fs.existsSync(path.join(configDir, '.credentials.json'));
 
+const localDay = (now) => {
+  const date = new Date(now);
+  return `${date.getFullYear()}-${String(date.getMonth() + 1).padStart(2, '0')}-${String(date.getDate()).padStart(2, '0')}`;
+};
+
+const names = (folder) => {
+  try {
+    return fs.readdirSync(folder).sort().reverse();
+  } catch {
+    return [];
+  }
+};
+
+function newestRollout(folder) {
+  try {
+    return fs.readdirSync(folder)
+      .filter((name) => /^rollout-.*\.jsonl$/.test(name))
+      .map((name) => path.join(folder, name))
+      .sort((a, b) => fs.statSync(b).mtimeMs - fs.statSync(a).mtimeMs)[0] ?? null;
+  } catch {
+    return null;
+  }
+}
+
+function codexLimits(home = process.env.CODEX_HOME || path.join(os.homedir(), '.codex')) {
+  try {
+    const sessions = path.join(home, 'sessions');
+    let file = null;
+    for (const year of names(sessions)) {
+      for (const month of names(path.join(sessions, year))) {
+        for (const day of names(path.join(sessions, year, month))) {
+          file = newestRollout(path.join(sessions, year, month, day));
+          if (file) break;
+        }
+        if (file) break;
+      }
+      if (file) break;
+    }
+    if (!file) return null;
+    const at = fs.statSync(file).mtimeMs;
+    let limits = null;
+    for (const line of fs.readFileSync(file, 'utf8').split('\n')) {
+      if (!line.includes('"rate_limits"')) continue;
+      try {
+        const record = JSON.parse(line);
+        limits = record?.payload?.rate_limits ?? record?.rate_limits ?? limits;
+      } catch {
+        // Malformed lines are skipped.
+      }
+    }
+    if (!limits) return null;
+    const result = { fiveHour: null, sevenDay: null, at };
+    for (const key of ['primary', 'secondary']) {
+      const window = limits[key];
+      if (!window) continue;
+      const target = window.window_minutes === 300 ? 'fiveHour' : window.window_minutes === 10080 ? 'sevenDay' : null;
+      if (target) result[target] = { pct: Number(window.used_percent), resetsAt: typeof window.resets_at === 'number' ? window.resets_at : null };
+    }
+    return result;
+  } catch {
+    return null;
+  }
+}
+
 function snapshot(now = Date.now()) {
   const { readings = {}, labels = {} } = load();
   const list = claudeAccounts().map((account) => {
@@ -99,7 +163,7 @@ function snapshot(now = Date.now()) {
     accounts: list,
     others: frugalAccounts()
       .filter((entry) => entry.kind !== 'claude' && entry.enabled !== false && typeof entry.id === 'string')
-      .map((entry) => ({ id: entry.id, name: labels[entry.id] ?? entry.id.replace(/^oc-/, ''), kind: String(entry.kind ?? ''), model: typeof entry.model === 'string' ? entry.model : null, exhaustedUntil: entry.exhausted_until > now / 1000 ? entry.exhausted_until : null })),
+      .map((entry) => ({ id: entry.id, name: labels[entry.id] ?? entry.id.replace(/^oc-/, ''), kind: String(entry.kind ?? ''), model: typeof entry.model === 'string' ? entry.model : null, exhaustedUntil: entry.exhausted_until > now / 1000 ? entry.exhausted_until : null, usedToday: entry.day === localDay(now) && typeof entry.used === 'number' ? entry.used : 0, limits: entry.kind === 'codex' ? codexLimits() : null })),
   };
 }
 
@@ -290,7 +354,7 @@ async function refreshReadings(claude, env, openAccounts) {
 
 const clearEmails = () => emails.clear();
 
-module.exports = { MAIN, claudeAccounts, primary, setPrimary, roles, setRoles, snapshot, renameAccount, saveReading, prepareAccount, ensureOnboarded, finishAccount, removeAccount, clearEmails, shareTranscript, parseUsage, refreshReadings };
+module.exports = { MAIN, claudeAccounts, primary, setPrimary, roles, setRoles, snapshot, renameAccount, saveReading, prepareAccount, ensureOnboarded, finishAccount, removeAccount, clearEmails, shareTranscript, parseUsage, refreshReadings, codexLimits };
 
 if (require.main === module) {
   const assert = require('assert');
@@ -302,6 +366,22 @@ if (require.main === module) {
   });
   assert.strictEqual(parseUsage('Current session: 0% used · resets Jan 2, 12am (X)', now).fiveHour.resetsAt, new Date(2027, 0, 2, 0, 0).getTime() / 1000);
   assert.deepStrictEqual(parseUsage('breakdown only', now), { fiveHour: null, sevenDay: null });
+
+  const codex = fs.mkdtempSync(path.join(os.tmpdir(), 'deck-codex-'));
+  const day = path.join(codex, 'sessions', '2026', '11', '09');
+  fs.mkdirSync(day, { recursive: true });
+  fs.writeFileSync(path.join(day, 'rollout-a.jsonl'), [
+    '{"type":"event_msg","payload":{"type":"other"}}',
+    '{"type":"event_msg","payload":{"rate_limits":',
+    '{"type":"event_msg","payload":{"type":"token_count","rate_limits":{"limit_id":"codex","primary":{"used_percent":4.0,"window_minutes":300,"resets_at":1794255884},"secondary":{"used_percent":39.0,"window_minutes":10080,"resets_at":1794417951},"credits":{}}}}',
+  ].join('\n'));
+  const limits = codexLimits(codex);
+  assert.deepStrictEqual(limits.fiveHour, { pct: 4, resetsAt: 1794255884 });
+  assert.deepStrictEqual(limits.sevenDay, { pct: 39, resetsAt: 1794417951 });
+  const emptyCodex = fs.mkdtempSync(path.join(os.tmpdir(), 'deck-codex-'));
+  assert.strictEqual(codexLimits(emptyCodex), null);
+  fs.rmSync(codex, { recursive: true });
+  fs.rmSync(emptyCodex, { recursive: true });
 
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'deck-accounts-'));
   const source = path.join(root, 'a', 'projects', 'slug');

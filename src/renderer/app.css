@@ -313,7 +313,8 @@ body {
 .usage__others summary { color: var(--color-muted); cursor: pointer; }
 .usage__count { float: inline-end; font-size: var(--text-xs); }
 .others { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: var(--space-2xs) var(--space-sm); margin-block-start: var(--space-xs); }
-.others span { color: var(--color-muted); font-size: var(--text-xs); }
+.others > span { color: var(--color-muted); font-size: var(--text-xs); }
+.others .limit { grid-column: 1 / -1; margin-block-start: 0; }
 .meters { display: flex; gap: var(--space-sm); }
 .meter { display: inline-flex; align-items: center; gap: var(--space-2xs); color: var(--color-muted); white-space: nowrap; }
 .meter .measured { color: var(--color-ink-2); }

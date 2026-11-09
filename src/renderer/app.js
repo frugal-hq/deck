@@ -261,10 +261,14 @@ function drawOthers() {
   const limited = others.filter((other) => other.exhaustedUntil).length;
   $('usage-others').hidden = !others.length;
   $('others-count').textContent = `${others.length - limited} ready${limited ? `, ${limited} at limit` : ''}`;
-  $('others').replaceChildren(...others.flatMap((other) => [
-    accountName(other, [[other.kind, other.model].filter(Boolean).join(': ')]),
-    node('span', '', other.exhaustedUntil ? `Until ${resetDay.format(other.exhaustedUntil * 1000)}` : 'Ready'),
-  ]));
+  $('others').replaceChildren(...others.flatMap((other) => {
+    const state = other.exhaustedUntil ? `Until ${resetDay.format(other.exhaustedUntil * 1000)}` : 'Ready';
+    return [
+      accountName(other, [[other.kind, other.model].filter(Boolean).join(': ')]),
+      node('span', '', other.usedToday ? `${state} · ${other.usedToday} today` : state),
+      ...accountLimits(other).filter(([, limit]) => limit).map(([label, limit]) => limitRow(label, limit)),
+    ];
+  }));
 }
 
 function drawAccounts() {
