@@ -737,6 +737,39 @@ stage.addEventListener('drop', (event) => {
   attach(chat, [...event.dataTransfer.files].map((file) => deck.pathForFile(file)).filter(Boolean));
 });
 
+const SIDEBAR_WIDTH = { min: 220, max: 520, base: 280 };
+const resizer = $('sidebar-resize');
+resizer.setAttribute('aria-valuemin', SIDEBAR_WIDTH.min);
+resizer.setAttribute('aria-valuemax', SIDEBAR_WIDTH.max);
+
+// The terminal refits through the stage's ResizeObserver.
+function setSidebarWidth(width) {
+  const clamped = Math.round(Math.min(SIDEBAR_WIDTH.max, Math.max(SIDEBAR_WIDTH.min, width)));
+  document.documentElement.style.setProperty('--sidebar-width', `${clamped}px`);
+  resizer.setAttribute('aria-valuenow', clamped);
+  localStorage.setItem('sidebarWidth', clamped);
+}
+
+const sidebarWidth = () => document.querySelector('.sidebar').getBoundingClientRect().width;
+
+resizer.onpointerdown = (event) => {
+  if (event.button !== 0) return;
+  resizer.setPointerCapture(event.pointerId);
+  const offset = event.clientX - sidebarWidth();
+  resizer.onpointermove = (move) => setSidebarWidth(move.clientX - offset);
+  resizer.onlostpointercapture = () => {
+    resizer.onpointermove = null;
+  };
+};
+resizer.ondblclick = () => setSidebarWidth(SIDEBAR_WIDTH.base);
+resizer.onkeydown = (event) => {
+  const width = { ArrowLeft: sidebarWidth() - 16, ArrowRight: sidebarWidth() + 16, Home: SIDEBAR_WIDTH.min, End: SIDEBAR_WIDTH.max }[event.key];
+  if (width === undefined) return;
+  event.preventDefault();
+  setSidebarWidth(width);
+};
+setSidebarWidth(Number(localStorage.getItem('sidebarWidth')) || SIDEBAR_WIDTH.base);
+
 deck.onExit((id, code) => {
   const chat = chats.get(id);
   if (!chat) return;

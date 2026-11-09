@@ -49,13 +49,14 @@
 </header>
 <aside class="sidebar" aria-label="Sessions">
   <div class="sidebar__tools">
-    <button id="search" class="btn" type="button" data-tip="Find a session by title or folder (Ctrl+Shift+K)"><svg class="icon" aria-hidden="true"><use href="#i-search"/></svg>Search</button>
-    <button id="sort" class="btn" type="button" data-tip="Group your sessions by folder or topic"><svg class="icon" aria-hidden="true"><use href="#i-sort"/></svg>Organize</button>
+    <button id="search" class="btn" type="button" aria-label="Search" data-tip="Find a session by title or folder (Ctrl+Shift+K)"><svg class="icon" aria-hidden="true"><use href="#i-search"/></svg><span class="btn__label">Search</span></button>
+    <button id="sort" class="btn" type="button" aria-label="Organize" data-tip="Group your sessions by folder or topic"><svg class="icon" aria-hidden="true"><use href="#i-sort"/></svg><span class="btn__label">Organize</span></button>
   </div>
   <p id="index-status" class="sidebar__status" role="status" hidden></p>
   <select id="space-filter" class="space-filter" aria-label="Filter by workspace" hidden></select>
   <div id="groups"></div>
 </aside>
+<div id="sidebar-resize" class="sidebar__resize" role="separator" aria-orientation="vertical" aria-label="Resize the sidebar" tabindex="0" data-tip="Drag to resize. Double-click to reset"></div>
 <main id="stage" class="stage">
   <section id="empty" class="empty">
     <h1>Start a chat</h1>

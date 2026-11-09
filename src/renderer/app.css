@@ -166,7 +166,9 @@ body {
 @keyframes spin { to { rotate: 360deg; } }
 
 .sidebar {
+  grid-column: 1;
   grid-row: 2 / -1;
+  container: sidebar / inline-size;
   min-height: 0;
   padding: var(--space-xs);
   overflow-y: auto;
@@ -386,6 +388,13 @@ meter::-webkit-meter-even-less-good-value { background: var(--color-bad); border
 
 .sidebar__tools { position: sticky; top: calc(-1 * var(--space-xs)); z-index: var(--z-raised); display: flex; gap: var(--space-2xs); margin: calc(-1 * var(--space-xs)) 0 var(--space-2xs); padding-block: var(--space-xs) var(--space-2xs); background: var(--color-paper-2); }
 .sidebar__tools .btn { flex: 1; justify-content: center; padding-inline: var(--space-xs); }
+@container sidebar (width < 250px) { .sidebar__tools .btn__label { display: none; } }
+
+.sidebar__resize { grid-column: 1; grid-row: 2 / -1; justify-self: end; z-index: var(--z-raised); width: var(--space-xs); margin-inline-end: calc(-1 * var(--space-xs)); cursor: col-resize; touch-action: none; }
+.sidebar__resize::after { content: ""; display: block; width: 2px; height: 100%; margin-inline: auto; border-radius: 1px; background: var(--color-accent); opacity: 0; transition: opacity var(--dur-micro) var(--ease-out); }
+.sidebar__resize:hover::after, .sidebar__resize:active::after { opacity: 0.6; }
+.sidebar__resize:focus-visible { outline: none; }
+.sidebar__resize:focus-visible::after { opacity: 1; transition: none; }
 .btn--icon { justify-content: center; width: 36px; padding: 0; }
 .btn--bar { min-height: 28px; gap: var(--space-2xs); padding-inline: var(--space-xs); font-size: var(--text-xs); }
 .btn--bar.btn--icon { width: 28px; padding: 0; }
