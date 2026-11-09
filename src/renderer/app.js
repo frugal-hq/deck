@@ -55,6 +55,28 @@ function drawStatus(chat) {
   render();
 }
 
+// Moving a tab re-inserts it, which would replay its entrance; is-sorting turns that off for the move.
+function moveTab(move) {
+  const tabs = $('tabs');
+  tabs.classList.add('is-sorting');
+  move();
+  tabs.getBoundingClientRect();
+  tabs.classList.remove('is-sorting');
+}
+
+function togglePin(chat) {
+  chat.pinned = !chat.pinned;
+  moveTab(() => {
+    const lastPinned = [...$('tabs').querySelectorAll('.tab.is-pinned')].filter((tab) => tab !== chat.tab).pop();
+    if (lastPinned) lastPinned.after(chat.tab);
+    else $('tabs').prepend(chat.tab);
+  });
+  chat.tab.classList.toggle('is-pinned', chat.pinned);
+  render();
+}
+
+let draggedTab = null;
+
 const STATE_LABEL = {
   starting: () => 'Starting',
   running: () => 'Running',
@@ -86,6 +108,32 @@ function tabElement(chat) {
   tab.addEventListener('mousedown', (event) => {
     if (event.button === 1) event.preventDefault();
   });
+  tab.addEventListener('contextmenu', (event) => {
+    event.preventDefault();
+    openMenu(event.clientX, event.clientY, [
+      { label: chat.pinned ? 'Unpin tab' : 'Pin tab', run: () => togglePin(chat) },
+      { label: 'Close', run: () => closeChat(chat.id) },
+    ], tab);
+  });
+  tab.draggable = true;
+  tab.addEventListener('dragstart', (event) => {
+    draggedTab = tab;
+    event.dataTransfer.effectAllowed = 'move';
+    tab.classList.add('is-dragging');
+  });
+  tab.addEventListener('dragend', () => {
+    tab.classList.remove('is-dragging');
+    draggedTab = null;
+  });
+  // Pinned tabs sort among themselves, the rest after them.
+  tab.addEventListener('dragover', (event) => {
+    if (!draggedTab || draggedTab === tab || draggedTab.classList.contains('is-pinned') !== tab.classList.contains('is-pinned')) return;
+    event.preventDefault();
+    const { left, width } = tab.getBoundingClientRect();
+    const before = event.clientX < left + width / 2;
+    if ((before ? tab.previousElementSibling : tab.nextElementSibling) !== draggedTab) moveTab(() => tab[before ? 'before' : 'after'](draggedTab));
+  });
+  tab.addEventListener('drop', (event) => event.preventDefault());
   tab.append(open, close);
   return tab;
 }
@@ -102,7 +150,8 @@ function render() {
     chat.tab ??= $('tabs').appendChild(tabElement(chat));
     const [open, close] = chat.tab.children;
     open.querySelector('.tab__label').textContent = chat.name;
-    open.dataset.tip = chat.cwd;
+    open.dataset.tip = [chat.pinned ? chat.name : null, chat.cwd, STATUS_LABEL[chat.status]].filter(Boolean).join('\n');
+    open.setAttribute('aria-label', chat.name);
     if (chat.id === activeId) open.setAttribute('aria-current', 'true');
     else open.removeAttribute('aria-current');
     close.setAttribute('aria-label', `Close chat ${chat.name}`);
