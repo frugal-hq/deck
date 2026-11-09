@@ -3,7 +3,7 @@ const assert = require('assert');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
-const { openIndex, syncFile, scan, listSessions, promptTitle, saveOrganization, saveAutomatic, clearAutoTitles } = require('../src/main/indexer.js');
+const { openIndex, syncFile, scan, listSessions, listIndex, chatLinks, promptTitle, saveOrganization, saveAutomatic, clearAutoTitles, saveLink, undoLastLink, clearModelLinks, saveGroup, saveWorkspace, saveModelWorkspaces, clearModelWorkspaces, renameWorkspace, deleteWorkspace, renameGroup, deleteGroup } = require('../src/main/indexer.js');
 
 const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'deck-index-'));
 const root = path.join(dir, 'projects');
@@ -20,6 +20,14 @@ const user = (content, timestamp, extra = {}) => line({ type: 'user', cwd, entry
 const row = (n) => db.prepare('SELECT * FROM sessions WHERE id = ?').get(id(n));
 const listed = () => listSessions(db).map((s) => s.id);
 
+// A new chat can receive its group before its first transcript exists.
+assert.equal(saveGroup(db, id(1), ' Manual '), true);
+assert.equal(row(1), undefined);
+assert.equal(saveGroup(db, 'not-a-uuid', 'Deck'), false);
+assert.equal(saveGroup(db, 1, 'Deck'), false);
+assert.equal(saveGroup(db, id(1), 1), false);
+assert.equal(saveGroup(db, id(1), 'x'.repeat(41)), false);
+
 // Half-written last line is not consumed, and a multi-byte prompt survives.
 fs.writeFileSync(file(1), user('first naïve prompt', '2026-01-01T00:00:00Z') + '{"type":"user","cwd"');
 assert.equal(syncFile(db, file(1)), true);
@@ -34,6 +42,18 @@ syncFile(db, file(1));
 assert.equal(row(1).turns, 3);
 assert.equal(row(1).first_prompt, 'first naïve prompt');
 assert.equal(row(1).last_at, '2026-01-02T00:00:00Z');
+
+assert.equal(listSessions(db)[0].userGroup, 'Manual');
+saveAutomatic(db, [{ id: id(1), topic: 'Automatic', title: null }]);
+assert.equal(listSessions(db)[0].topic, 'Manual');
+assert.equal(saveGroup(db, id(1), null), true);
+assert.equal(listSessions(db)[0].userGroup, null);
+assert.equal(listSessions(db)[0].topic, null);
+assert.equal(listSessions(db)[0].noGroup, true);
+assert.equal(saveGroup(db, id(1), 'Manual'), true);
+assert.equal(saveGroup(db, id(1), '  '), true);
+assert.equal(listSessions(db)[0].topic, null);
+assert.equal(listSessions(db)[0].noGroup, true);
 
 // Same size is skipped.
 assert.equal(syncFile(db, file(1)), false);
@@ -70,9 +90,11 @@ assert.deepEqual(listed(), [id(6), id(1)]);
 assert.equal(listSessions(db)[0].cwd, path.dirname(cwd));
 
 // A scan drops transcripts that no longer exist.
+assert.equal(saveGroup(db, id(6), 'Kept'), true);
 fs.rmSync(file(6));
 scan(db, root, () => {});
 assert.equal(row(6), undefined);
+assert.equal(db.prepare('SELECT name FROM session_group WHERE session_id = ?').get(id(6)).name, 'Kept');
 assert.deepEqual(listed(), [id(1)]);
 
 assert.equal(promptTitle('<command-message>a</command-message>\n<command-name>/frugal</command-name>\n<command-args>code\nGoal: Move to the org\nDone:</command-args>'), 'Move to the org');
@@ -127,6 +149,178 @@ fs.appendFileSync(file(8), line({ type: 'custom-title', customTitle: 'mine' }));
 syncFile(db, file(8));
 assert.equal(s8().title, 'mine');
 assert.equal(s8().topic, 'Other');
+
+// Handoff joins: an assistant record emits the block, later sessions open with it and share the chat root.
+const hand = 'Goal: Fix the deck\nDone: built\nPending: reviewed';
+fs.writeFileSync(file(9), user('seed', '2026-03-31T00:00:00Z') + line({ type: 'assistant', timestamp: '2026-04-01T00:00:00Z', message: { content: [{ type: 'text', text: `Picking up:\n${hand}` }] } }));
+syncFile(db, file(9));
+assert.equal(row(9).handoff_hash, null);
+assert.equal(row(9).started_at, '2026-03-31T00:00:00Z');
+assert.deepEqual(db.prepare('SELECT session_id, goal, at FROM session_handoffs').all(), [{ session_id: id(9), goal: 'Fix the deck', at: '2026-04-01T00:00:00Z' }]);
+
+const later = (n, at) => fs.writeFileSync(file(n), user(hand, at) + user(`go on ${n}`, new Date(Date.parse(at) + 864e5).toISOString()));
+later(10, '2026-04-02T00:00:00Z');
+later(11, '2026-04-04T00:00:00Z');
+syncFile(db, file(10));
+syncFile(db, file(11));
+assert.equal(row(10).handoff_hash, row(11).handoff_hash);
+assert.equal(db.prepare('SELECT hash FROM session_handoffs').get().hash, row(10).handoff_hash);
+assert.equal(row(10).started_at, '2026-04-02T00:00:00Z');
+let links = chatLinks(db);
+assert.equal(links.parents.get(id(10)), id(9));
+assert.equal(links.parents.get(id(11)), id(9));
+assert.deepEqual(links.ambiguous, []);
+let idx = listIndex(db);
+assert.equal(idx.sessions.find((s) => s.id === id(10)).parentId, id(9));
+assert.equal(idx.sessions.find((s) => s.id === id(10)).chatId, id(9));
+assert.equal(idx.sessions.find((s) => s.id === id(11)).chatId, id(9));
+assert.equal(idx.sessions.find((s) => s.id === id(9)).parentId, null);
+assert.equal(idx.sessions.find((s) => s.id === id(9)).chatId, id(9));
+assert.equal(idx.modelJoins, 0);
+
+// A user link replaces the automatic join and undo brings it back.
+assert.equal(saveLink(db, id(11), id(10), 'user'), true);
+assert.equal(listIndex(db).sessions.find((s) => s.id === id(11)).parentId, id(10));
+assert.equal(undoLastLink(db), true);
+assert.equal(listIndex(db).sessions.find((s) => s.id === id(11)).parentId, id(9));
+
+// A null parent separates the session, and undo restores the automatic join.
+assert.equal(saveLink(db, id(11), null, 'user'), true);
+assert.equal(listIndex(db).sessions.find((s) => s.id === id(11)).parentId, null);
+assert.equal(undoLastLink(db), true);
+assert.equal(listIndex(db).sessions.find((s) => s.id === id(11)).parentId, id(9));
+
+// A cycle and a self link are rejected.
+assert.equal(saveLink(db, id(9), id(11), 'user'), false);
+assert.equal(saveLink(db, id(9), id(9), 'user'), false);
+assert.equal(db.prepare('SELECT COUNT(*) AS n FROM session_links WHERE session_id = ?').get(id(9)).n, 0);
+assert.equal(listIndex(db).sessions.find((s) => s.id === id(11)).parentId, id(9));
+
+// session_links survives a restart of a file, like session_org.
+fs.writeFileSync(file(12), user('late chat', '2026-04-06T00:00:00Z'));
+syncFile(db, file(12));
+assert.equal(saveLink(db, id(12), id(11), 'user'), true);
+fs.writeFileSync(file(12), user('late again', '2026-04-07T00:00:00Z'));
+syncFile(db, file(12));
+const kept = db.prepare('SELECT parent_id, origin FROM session_links WHERE session_id = ?').get(id(12));
+assert.equal(kept.parent_id, id(11));
+assert.equal(kept.origin, 'user');
+assert.equal(listIndex(db).sessions.find((s) => s.id === id(12)).parentId, id(11));
+
+// Model workspaces update model rows only, including case-insensitive conflicts.
+assert.deepEqual(listIndex(db).workspaces, {});
+assert.equal(listIndex(db).modelWorkspaces, 0);
+assert.equal(saveWorkspace(db, '', 'Deck'), false);
+assert.equal(saveWorkspace(db, 'x'.repeat(501), 'Deck'), false);
+assert.equal(saveWorkspace(db, 'Deck', 'x'.repeat(41)), false);
+assert.equal(saveWorkspace(db, null, 'Deck'), false);
+assert.equal(saveWorkspace(db, 'Deck', null), false);
+assert.equal(saveWorkspace(db, ' Support ', ' Mine '), true);
+saveModelWorkspaces(db, [{ group: 'support', workspace: 'Wrong' }, { group: 'Plan', workspace: 'Deck' }]);
+assert.deepEqual(listIndex(db).workspaces, { Support: 'Mine', Plan: 'Deck' });
+assert.equal(listIndex(db).modelWorkspaces, 1);
+saveModelWorkspaces(db, [{ group: 'PLAN', workspace: 'Updated' }]);
+assert.equal(listIndex(db).workspaces.Plan, 'Updated');
+assert.equal(saveWorkspace(db, 'plan', 'User'), true);
+saveModelWorkspaces(db, [{ group: 'Plan', workspace: 'Wrong' }]);
+assert.equal(listIndex(db).workspaces.plan, 'User');
+saveModelWorkspaces(db, [{ group: 'Other', workspace: 'Model' }]);
+clearModelWorkspaces(db);
+assert.deepEqual(listIndex(db).workspaces, { Support: 'Mine', plan: 'User' });
+assert.equal(listIndex(db).modelWorkspaces, 0);
+assert.equal(saveWorkspace(db, 'SUPPORT', '  '), true);
+assert.deepEqual(listIndex(db).workspaces, { plan: 'User' });
+assert.equal(db.prepare('PRAGMA user_version').get().user_version, 1);
+
+fs.writeFileSync(file('a'), user('alpha', '2026-05-01T00:00:00Z'));
+fs.writeFileSync(file('b'), user('beta', '2026-05-02T00:00:00Z'));
+fs.writeFileSync(file('c'), user('gamma', '2026-05-03T00:00:00Z'));
+fs.writeFileSync(file('d'), user('delta', '2026-05-04T00:00:00Z'));
+syncFile(db, file('a'));
+syncFile(db, file('b'));
+syncFile(db, file('c'));
+syncFile(db, file('d'));
+const listedSession = (n) => listSessions(db).find((s) => s.id === id(n));
+
+assert.equal(saveWorkspace(db, 'AlphaGroup', 'AlphaSpace'), true);
+assert.equal(saveOrganization(db, id('a'), { pinned: false, space: 'AlphaSpace', tags: [] }), true);
+assert.equal(saveGroup(db, id('a'), 'AlphaGroup'), true);
+assert.equal(deleteWorkspace(db, 'alphaspace'), true);
+assert.ok(db.prepare('SELECT id FROM sessions WHERE id = ?').get(id('a')));
+assert.equal(listedSession('a').space, null);
+assert.equal(listedSession('a').userGroup, 'AlphaGroup');
+assert.equal(db.prepare('SELECT 1 FROM group_workspace WHERE workspace = ? COLLATE NOCASE').get('AlphaSpace'), undefined);
+
+assert.equal(saveWorkspace(db, 'BetaGroup', 'OldSpace'), true);
+assert.equal(saveOrganization(db, id('b'), { pinned: false, space: 'OldSpace', tags: [] }), true);
+assert.equal(renameWorkspace(db, 'oldspace', 'NewSpace'), true);
+assert.equal(listIndex(db).workspaces.BetaGroup, 'NewSpace');
+assert.equal(listedSession('b').space, 'NewSpace');
+assert.equal(db.prepare('SELECT origin FROM group_workspace WHERE name = ?').get('BetaGroup').origin, 'user');
+
+assert.equal(saveGroup(db, id('a'), 'Shared'), true);
+assert.equal(saveGroup(db, id('b'), 'Shared'), true);
+assert.equal(saveGroup(db, id('c'), 'Shared'), true);
+assert.equal(saveWorkspace(db, 'Shared', 'KeepSpace'), true);
+assert.equal(saveOrganization(db, id('b'), { pinned: false, space: '', tags: [] }), true);
+assert.equal(saveOrganization(db, id('c'), { pinned: true, space: 'OtherSpace', tags: ['keep'] }), true);
+assert.equal(deleteGroup(db, [id('a'), id('b'), id('c')], 'Shared'), true);
+assert.equal(listedSession('a').space, 'KeepSpace');
+assert.equal(listedSession('b').space, 'KeepSpace');
+assert.equal(listedSession('c').space, 'OtherSpace');
+assert.equal(listedSession('c').pinned, true);
+assert.deepEqual(listedSession('c').tags, ['keep']);
+assert.equal(listedSession('a').topic, null);
+assert.equal(listedSession('a').userGroup, null);
+assert.equal(listedSession('a').noGroup, true);
+saveAutomatic(db, [{ id: id('a'), topic: 'AutoTopic', title: null }]);
+assert.equal(listedSession('a').topic, null);
+assert.equal(listedSession('a').userGroup, null);
+assert.equal(db.prepare('SELECT 1 FROM group_workspace WHERE name = ?').get('Shared'), undefined);
+
+assert.equal(saveGroup(db, id('d'), 'NoWs'), true);
+assert.equal(listedSession('d').space, null);
+assert.equal(deleteGroup(db, [id('d')], 'NoWs'), true);
+assert.equal(listedSession('d').space, null);
+assert.equal(listedSession('d').userGroup, null);
+assert.equal(listedSession('d').noGroup, true);
+
+assert.equal(saveGroup(db, id('a'), 'FromName'), true);
+assert.equal(saveWorkspace(db, 'FromName', 'Ws1'), true);
+assert.equal(renameGroup(db, [id('a')], 'FromName', 'ToName'), true);
+assert.equal(listedSession('a').userGroup, 'ToName');
+assert.equal(listIndex(db).workspaces.ToName, 'Ws1');
+assert.equal(listIndex(db).workspaces.FromName, undefined);
+
+assert.equal(saveGroup(db, id('b'), 'Source'), true);
+assert.equal(saveWorkspace(db, 'Source', 'WsSource'), true);
+assert.equal(saveWorkspace(db, 'Target', 'WsTarget'), true);
+assert.equal(renameGroup(db, [id('b')], 'Source', 'Target'), true);
+assert.equal(listedSession('b').userGroup, 'Target');
+assert.equal(listIndex(db).workspaces.Target, 'WsTarget');
+assert.equal(listIndex(db).workspaces.Source, undefined);
+
+assert.equal(saveGroup(db, id('c'), 'mixed'), true);
+assert.equal(saveWorkspace(db, 'mixed', 'WsCase'), true);
+assert.equal(renameGroup(db, [id('c')], 'mixed', 'Mixed'), true);
+assert.equal(listedSession('c').userGroup, 'Mixed');
+assert.equal(listIndex(db).workspaces.Mixed, 'WsCase');
+assert.equal(db.prepare('SELECT name FROM group_workspace WHERE name = ?').get('mixed').name, 'Mixed');
+
+const gw = () => db.prepare('SELECT name, workspace, origin FROM group_workspace ORDER BY name').all();
+const sg = () => db.prepare('SELECT session_id, name FROM session_group ORDER BY session_id').all();
+const so = () => db.prepare('SELECT session_id, pinned, space, tags FROM session_org ORDER BY session_id').all();
+const snap = { gw: gw(), sg: sg(), so: so() };
+assert.equal(renameGroup(db, [], 'ToName', 'Other'), false);
+assert.equal(renameGroup(db, ['not-a-uuid'], 'ToName', 'Other'), false);
+assert.equal(renameGroup(db, [id('a'), 'not-a-uuid'], 'ToName', 'Other'), false);
+assert.equal(renameGroup(db, [id('a'), 1], 'ToName', 'Other'), false);
+assert.equal(deleteGroup(db, [], 'ToName'), false);
+assert.equal(deleteGroup(db, ['not-a-uuid'], 'ToName'), false);
+assert.equal(deleteGroup(db, [id('a'), 'x'], 'ToName'), false);
+assert.deepEqual(gw(), snap.gw);
+assert.deepEqual(sg(), snap.sg);
+assert.deepEqual(so(), snap.so);
 
 db.close();
 fs.rmSync(dir, { recursive: true, force: true });
