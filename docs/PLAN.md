@@ -69,6 +69,8 @@ Not verified:
 - **Plugins loaded in a session.** Only the listing was checked.
 - **Trust per account.** Each account has its own `.claude.json` and `claude-sm` has no trust folder at all, so the dialog should be expected in each new folder. It never got shown.
 
+Resolved on 2026-11-09: with `hasCompletedOnboarding: true` added to `claude-sm`'s `.claude.json`, the TUI skipped the theme and login screens, showed the trust dialog in a new folder, and reached the prompt as Claude Team without a new login. No prompt was sent. The trust dialog's default option is "No, exit". "Add account" must set that flag after `claude auth login`. The whole `projects` junction and plugins loaded in a session remain unverified.
+
 **Test 4: passed** (2026-11-08, `spikes/04-elevated`). Unprivileged Node opens the pipe and a UAC-elevated helper connects and hosts a PTY with ConPTY.
 
 - All 8 checks passed: elevated helper and PTY (`net session`), output, input, resize to 132 columns (`[Console]::WindowWidth`), variables sent through the pipe, `claude.cmd --version`, child process output, and helper shutdown with no remaining processes.
@@ -108,6 +110,8 @@ Not verified:
 - `-p` avoids onboarding and ANSI cleanup sequences, but does not guarantee percentages. They must be extracted from text, because they do not come as fields, and if missing show the last reading, which is the fallback in the table.
 
 Not verified: that `claude-sm` percentages are its organization's. `claude auth status` gives different email and `orgId`, but both accounts showed almost identical figures (91% and 92% weekly) and the same resets. Phase 3 must confirm this before showing per-account limits.
+
+Resolved on 2026-11-09: limits are per account. `claude-sm` reported 95% weekly with a reset on Nov 9 at 11pm Lima, while the main account's status line showed 29% with a reset on Nov 13 at 22:00 UTC. `-p /usage` again returned session and week lines for `claude-sm` (2 of 2) and not for the main account (2 of 2), at no cost, so an account cannot rely on `-p` alone.
 
 **Test 8: Whisper usable in general Spanish with later editing; `/voice` untested** (2026-11-08, `spikes/08-whisper`). `whisper-cli` from build b5454, CPU without GPU, with a 35 s Spanish sample recorded from the microphone with ffmpeg (mean -36.7 dB, peak -19.8 dB), a single person and a single take.
 
