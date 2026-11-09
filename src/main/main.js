@@ -62,7 +62,8 @@ const statusBridge = createStatusBridge((id, meters) => {
   send('chat:meters', id, meters);
 });
 
-const accountEnv = (account) => ({ ...cleanEnv(), ...(account.id === accounts.MAIN ? {} : { CLAUDE_CONFIG_DIR: account.configDir }) });
+// FRUGAL_ROLES is read by frugal's accounts server, so the setting applies to chats started after it changes.
+const accountEnv = (account) => ({ ...cleanEnv(), FRUGAL_ROLES: accounts.roles() ? 'on' : 'off', ...(account.id === accounts.MAIN ? {} : { CLAUDE_CONFIG_DIR: account.configDir }) });
 
 const isSize = (n) => Number.isInteger(n) && n > 0 && n <= 1000;
 
@@ -153,6 +154,10 @@ ipcMain.handle('chat:switch-account', async (_, { id, accountId, cols, rows }) =
 });
 
 ipcMain.handle('accounts:get', () => accounts.snapshot());
+ipcMain.handle('settings:roles', () => accounts.roles());
+ipcMain.on('settings:set-roles', (_, on) => {
+  if (typeof on === 'boolean') accounts.setRoles(on);
+});
 
 ipcMain.handle('accounts:rename', (_, { id, name }) => {
   if (accounts.renameAccount(id, name)) publishAccounts();

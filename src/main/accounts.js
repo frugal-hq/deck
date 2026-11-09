@@ -71,6 +71,10 @@ function setPrimary(id) {
   save({ ...load(), primary: id });
 }
 
+// Automatic roles: a chat never delegates to the account it runs on. On unless turned off.
+const roles = () => load().roles !== false;
+const setRoles = (on) => save({ ...load(), roles: on });
+
 // The login Claude Code reports: the main account's lives beside ~/.claude, the others' inside their folder.
 const emails = new Map();
 
@@ -286,7 +290,7 @@ async function refreshReadings(claude, env, openAccounts) {
 
 const clearEmails = () => emails.clear();
 
-module.exports = { MAIN, claudeAccounts, primary, setPrimary, snapshot, renameAccount, saveReading, prepareAccount, ensureOnboarded, finishAccount, removeAccount, clearEmails, shareTranscript, parseUsage, refreshReadings };
+module.exports = { MAIN, claudeAccounts, primary, setPrimary, roles, setRoles, snapshot, renameAccount, saveReading, prepareAccount, ensureOnboarded, finishAccount, removeAccount, clearEmails, shareTranscript, parseUsage, refreshReadings };
 
 if (require.main === module) {
   const assert = require('assert');

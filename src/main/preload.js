@@ -20,6 +20,8 @@ contextBridge.exposeInMainWorld('deck', {
   logout: (id) => ipcRenderer.invoke('accounts:logout', { id }),
   removeAccount: (id) => ipcRenderer.invoke('accounts:remove', { id }),
   getAccounts: () => ipcRenderer.invoke('accounts:get'),
+  getRoles: () => ipcRenderer.invoke('settings:roles'),
+  setRoles: (on) => ipcRenderer.send('settings:set-roles', on),
   renameAccount: (id, name) => ipcRenderer.invoke('accounts:rename', { id, name }),
   refreshAccounts: () => ipcRenderer.invoke('accounts:refresh'),
   onAccounts: (callback) => ipcRenderer.on('accounts:changed', (_, state) => callback(state)),

@@ -1194,12 +1194,14 @@ for (const radio of viewRadios) {
   radio.checked = radio.value === sessionView;
   radio.onchange = () => setSessionView(radio.value);
 }
-$('settings-open').onclick = () => {
+$('settings-open').onclick = async () => {
   $('settings-confirm-close').checked = confirmsClose();
   $('settings-always-trust').checked = alwaysTrusts();
+  $('settings-roles').checked = await deck.getRoles();
   $('settings-dialog').showModal();
 };
 $('settings-confirm-close').onchange = (event) => setConfirmsClose(event.target.checked);
+$('settings-roles').onchange = (event) => deck.setRoles(event.target.checked);
 $('settings-always-trust').onchange = (event) => {
   if (!event.target.checked) {
     localStorage.setItem('alwaysTrust', false);
