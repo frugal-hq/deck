@@ -1,7 +1,9 @@
-const { contextBridge, ipcRenderer } = require('electron');
+const { contextBridge, ipcRenderer, webUtils } = require('electron');
 
 contextBridge.exposeInMainWorld('deck', {
   pickFolder: () => ipcRenderer.invoke('folder:pick'),
+  pickFiles: () => ipcRenderer.invoke('files:pick'),
+  pathForFile: (file) => webUtils.getPathForFile(file),
   defaultFolder: () => ipcRenderer.invoke('folder:default'),
   estimateTopics: (options) => ipcRenderer.invoke('topics:estimate', options),
   runTopics: (options) => ipcRenderer.invoke('topics:run', options),

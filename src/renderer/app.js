@@ -165,6 +165,7 @@ function render() {
   drawHandoff();
   const activeSession = currentIndex?.sessions?.find((s) => s.id === activeId);
   $('link-chat').hidden = !activeSession;
+  $('attach').hidden = chat?.state !== 'running';
   const activeChat = activeSession && chatsById.get(activeSession.chatId);
   const chatCount = activeChat ? activeChat.earlier.length + 1 : 0;
   const historyButton = $('chat-history');
@@ -707,6 +708,34 @@ function resetStatus(chat) {
   chat.busy = false;
   setStatus(chat, null);
 }
+
+const IMAGE_FILE = /\.(png|jpe?g|gif|webp)$/i;
+// A pasted image path turns into [Image #n] in place; other files and folders attach only as @"path", quoted for spaces (test 2).
+const attachment = (file) => (IMAGE_FILE.test(file) ? `"${file}"` : `@"${file}"`);
+
+function attach(chat, files) {
+  if (!files.length || chat.state !== 'running') return;
+  chat.term.paste(`${files.map(attachment).join(' ')} `);
+  chat.term.focus();
+}
+
+$('attach').onclick = async () => {
+  const chat = chats.get(activeId);
+  if (chat) attach(chat, await deck.pickFiles());
+};
+
+stage.addEventListener('dragover', (event) => {
+  if (chats.get(activeId)?.state !== 'running' || !event.dataTransfer.types.includes('Files')) return;
+  event.preventDefault();
+  event.dataTransfer.dropEffect = 'copy';
+});
+
+stage.addEventListener('drop', (event) => {
+  const chat = chats.get(activeId);
+  if (!chat || !event.dataTransfer.files.length) return;
+  event.preventDefault();
+  attach(chat, [...event.dataTransfer.files].map((file) => deck.pathForFile(file)).filter(Boolean));
+});
 
 deck.onExit((id, code) => {
   const chat = chats.get(id);

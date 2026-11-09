@@ -67,6 +67,11 @@ const accountEnv = (account) => ({ ...cleanEnv(), FRUGAL_ROLES: accounts.roles()
 
 const isSize = (n) => Number.isInteger(n) && n > 0 && n <= 1000;
 
+ipcMain.handle('files:pick', async () => {
+  const { canceled, filePaths } = await dialog.showOpenDialog(win, { properties: ['openFile', 'multiSelections'] });
+  return canceled ? [] : filePaths;
+});
+
 ipcMain.handle('folder:pick', async () => {
   const { canceled, filePaths } = await dialog.showOpenDialog(win, { properties: ['openDirectory'] });
   if (canceled) return null;
