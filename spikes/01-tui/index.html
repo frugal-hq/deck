@@ -1,0 +1,74 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>html,body,#t {height:100%;margin:0;background:#000}</style>
+<link rel="stylesheet" href="./node_modules/@xterm/xterm/css/xterm.css">
+</head>
+<body>
+<div id="t"></div>
+<script>
+const { ipcRenderer } = require('electron');
+const { Terminal } = require('@xterm/xterm');
+const { FitAddon } = require('@xterm/addon-fit');
+
+const term = new Terminal({
+  scrollback: 10000,
+  fontFamily: 'Cascadia Mono, Consolas, monospace',
+  fontSize: 14,
+});
+const fit = new FitAddon();
+term.loadAddon(fit);
+term.open(document.getElementById('t'));
+fit.fit();
+ipcRenderer.send('pty:start', term.cols, term.rows);
+
+ipcRenderer.on('pty:data', (_, d) => term.write(d));
+term.onData((d) => ipcRenderer.send('pty:input', d));
+
+const DEBOUNCE = Number(process.env.SPIKE_RESIZE_DEBOUNCE || 0);
+let lastCols = term.cols;
+let lastRows = term.rows;
+let frame = 0;
+let resizeTimer = 0;
+const sendResize = () => {
+  lastCols = term.cols;
+  lastRows = term.rows;
+  ipcRenderer.send('pty:resize', term.cols, term.rows);
+};
+const scheduleResize = () => {
+  if (DEBOUNCE > 0) {
+    clearTimeout(resizeTimer);
+    resizeTimer = setTimeout(sendResize, DEBOUNCE);
+  } else {
+    sendResize();
+  }
+};
+new ResizeObserver(() => {
+  if (frame) return;
+  frame = requestAnimationFrame(() => {
+    frame = 0;
+    fit.fit();
+    if (term.cols !== lastCols || term.rows !== lastRows) scheduleResize();
+  });
+}).observe(document.getElementById('t'));
+
+ipcRenderer.on('spike:scroll', (_, n) => term.scrollLines(n));
+ipcRenderer.on('spike:paste', (_, d) => term.paste(d));
+ipcRenderer.on('spike:dump', () => {
+  const buf = term.buffer.active;
+  const lines = [];
+  for (let i = 0; i < buf.length; i++) {
+    lines.push(buf.getLine(i).translateToString(true));
+  }
+  ipcRenderer.send('spike:dump', {
+    cols: term.cols,
+    rows: term.rows,
+    bufferLength: buf.length,
+    type: buf.type,
+    lines,
+  });
+});
+</script>
+</body>
+</html>
