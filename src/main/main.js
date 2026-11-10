@@ -122,7 +122,7 @@ ipcMain.handle('sessions:get', sidebarIndex);
 ipcMain.handle('sessions:all', () => index.sessions);
 ipcMain.on('sessions:organize', (_, id, organization) => indexer?.postMessage({ id, organization }));
 
-function launchChat({ id, folder, cols, rows, resume, group, account, file, prompt }) {
+function launchChat({ id, folder, cols, rows, resume, group, account, file, prompt, bypass }) {
   const claude = findClaude();
   if (!claude) return { error: NO_CLAUDE };
   const env = accountEnv(account);
@@ -136,9 +136,10 @@ function launchChat({ id, folder, cols, rows, resume, group, account, file, prom
     if (resume) accounts.shareTranscript(file, account.configDir);
     const args = [resume ? '--resume' : '--session-id', id, '--settings', JSON.stringify({ statusLine: status.statusLine })];
     if (prompt) args.push(prompt);
+    if (bypass === true) args.push('--dangerously-skip-permissions');
     const child = pty.spawn(claude, args, { name: 'xterm-256color', cols, rows, cwd: folder, env });
     chats.set(id, child);
-    chatInfo.set(id, { account: account.id, folder, lastOutput: Date.now() });
+    chatInfo.set(id, { account: account.id, folder, lastOutput: Date.now(), bypass: bypass === true });
     if (typeof group === 'string' && group) indexer?.postMessage({ setGroup: { id, name: group } });
     child.onData((data) => {
       if (chats.get(id) !== child) return;
@@ -162,19 +163,19 @@ function launchChat({ id, folder, cols, rows, resume, group, account, file, prom
   }
 }
 
-ipcMain.handle('chat:start', (_, { id, cwd, cols, rows, resume, group }) => {
+ipcMain.handle('chat:start', (_, { id, cwd, cols, rows, resume, group, bypass }) => {
   const session = resume ? index.sessions.find((s) => s.id === id) : null;
   // A resumed chat always runs in the folder the index recorded, never one sent by the renderer.
   const folder = resume ? session?.cwd : (pickedFolders.has(cwd) || index.sessions.some((s) => s.cwd === cwd)) && cwd;
   if (!UUID.test(id) || chats.has(id) || !folder || !isSize(cols) || !isSize(rows)) {
     return { error: 'Invalid request.' };
   }
-  return launchChat({ id, folder, cols, rows, resume, group, account: accounts.primary(), file: session?.file });
+  return launchChat({ id, folder, cols, rows, resume, group, account: accounts.primary(), file: session?.file, bypass: bypass === true });
 });
 
 // A handoff continues in the folder its chat runs in, or the one the index recorded once it exits, on the account it ran on.
-// frugal: no permission flags exist yet, so "same permissions" holds; pass them here when Phase 4 adds them.
-ipcMain.handle('chat:continue', (_, { id, from, accountId, prompt, cols, rows }) => {
+// frugal: the chat's bypass flag rides along, so a continued session keeps the permissions it already ran with.
+ipcMain.handle('chat:continue', (_, { id, from, accountId, prompt, cols, rows, bypass }) => {
   const folder = chatInfo.get(from)?.folder ?? index.sessions.find((s) => s.id === from)?.cwd;
   const account = accounts.claudeAccounts().find((candidate) => candidate.id === accountId);
   const text = typeof prompt === 'string' ? prompt.trim() : '';
@@ -182,7 +183,7 @@ ipcMain.handle('chat:continue', (_, { id, from, accountId, prompt, cols, rows })
   if (!UUID.test(id) || chats.has(id) || !folder || !account || !text || text.startsWith('-') || !isSize(cols) || !isSize(rows)) {
     return { error: 'Invalid request.' };
   }
-  return launchChat({ id, folder, cols, rows, account, prompt: text });
+  return launchChat({ id, folder, cols, rows, account, prompt: text, bypass: bypass === true });
 });
 
 // Every live end_turn comes as an entry without a prompt; a handoff block adds one with it.
@@ -194,17 +195,21 @@ function offerHandoffs(handoffs) {
   }
 }
 
-ipcMain.handle('chat:switch-account', async (_, { id, accountId, cols, rows }) => {
+ipcMain.handle('chat:switch-account', async (_, { id, accountId, cols, rows, bypass }) => {
   const child = chats.get(id);
   const info = chatInfo.get(id);
   const account = accounts.claudeAccounts().find((candidate) => candidate.id === accountId);
   if (!child || !info || !account || !isSize(cols) || !isSize(rows)) return { error: 'Invalid request.' };
   const session = index.sessions.find((s) => s.id === id);
-  // Refused before the primary changes, so a chat that stays put never disagrees with the panel.
-  if (session && info.account !== account.id && Date.now() - info.lastOutput < IDLE_MS) return { error: 'Claude is working. Switch accounts when it is idle.' };
-  accounts.setPrimary(account.id);
-  publishAccounts();
-  if (info.account === account.id) return { ok: true, account: account.id };
+  const bypassOn = bypass === true;
+  // A bypass change restarts the chat, so it is subject to the same idle guard as an account change.
+  if (session && (info.account !== account.id || bypassOn !== Boolean(info.bypass)) && Date.now() - info.lastOutput < IDLE_MS) return { error: 'Claude is working. Switch accounts when it is idle.' };
+  // A bypass toggle restarts on the chat's own account, which is no reason to make it the primary.
+  if (info.account !== account.id || bypassOn === Boolean(info.bypass)) {
+    accounts.setPrimary(account.id);
+    publishAccounts();
+  }
+  if (info.account === account.id && bypassOn === Boolean(info.bypass)) return { ok: true, account: account.id };
   if (!session) return { error: 'Send a first message before switching this chat. New chats will use this account.' };
   const exited = new Promise((resolve) => child.onExit(resolve));
   chats.delete(id);
@@ -212,7 +217,7 @@ ipcMain.handle('chat:switch-account', async (_, { id, accountId, cols, rows }) =
   child.kill();
   await exited;
   send('chat:restarting', id);
-  const started = launchChat({ id, folder: session.cwd, cols, rows, resume: true, account, file: session.file });
+  const started = launchChat({ id, folder: session.cwd, cols, rows, resume: true, account, file: session.file, bypass: bypassOn });
   return started.error ? { ...started, stopped: true } : started;
 });
 

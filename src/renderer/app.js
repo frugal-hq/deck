@@ -147,6 +147,7 @@ function fadeOut(element) {
 function render() {
   // Tabs persist between renders: rebuilding them would replay the fade-in on every state change.
   for (const chat of chats.values()) {
+    drawBadge(chat);
     chat.name = currentIndex?.sessions?.find((s) => s.id === chat.id)?.title ?? chat.name;
     chat.tab ??= $('tabs').appendChild(tabElement(chat));
     const [open, close] = chat.tab.children;
@@ -367,7 +368,7 @@ function drawAccounts() {
 
 async function useAccount(chat, account) {
   $('usage').hidePopover();
-  const result = await deck.switchAccount({ id: chat.id, accountId: account.id, cols: chat.cols, rows: chat.rows });
+  const result = await deck.switchAccount({ id: chat.id, accountId: account.id, cols: chat.cols, rows: chat.rows, bypass: chatBypass(chat, null) });
   chat.error = result.error ?? null;
   if (result.stopped) chat.state = 'error';
   if (result.account) chat.account = result.account;
@@ -482,24 +483,40 @@ function makeBadge(chat) {
   dot.append(icon('more'));
   dot.dataset.tip = 'Session details. Click to show or hide them';
   const info = node('span', 'term-badge__info');
-  badge.append(dot, info);
+  const bypass = node('button', 'term-badge__bypass', 'Bypass permissions');
+  bypass.type = 'button';
+  bypass.dataset.tip = 'Restart this chat with Claude Code running every tool without asking';
+  bypass.onclick = () => toggleBypass(chat);
+  badge.append(dot, info, bypass);
   dot.onclick = () => setInfoCollapsed(!infoCollapsed);
   chat.el.append(badge);
   drawBadge(chat);
 }
 
+async function toggleBypass(chat) {
+  if (!chat.bypassOn && !confirm(BYPASS_WARNING)) return;
+  const previous = chat.bypassOn;
+  chat.bypassOn = !previous;
+  drawBadge(chat);
+  const result = await deck.switchAccount({ id: chat.id, accountId: chat.account, cols: chat.cols, rows: chat.rows, bypass: chat.bypassOn });
+  if (result.error) {
+    chat.bypassOn = previous;
+    drawBadge(chat);
+    report(result);
+  }
+}
+
 function drawBadge(chat) {
   if (!chat.badge) return;
-  const parts = [
-    chat.model,
-    chat.effort && `${chat.effort} effort`,
-    chat.context != null && `${Math.round(chat.context)}% ctx`,
-    chat.cost != null && `$${chat.cost.toFixed(2)}`,
-  ].filter(Boolean);
+  const running = chat.state === 'running' || chat.state === 'starting';
+  const parts = [chat.model, chat.effort && `${chat.effort} effort`, chat.context != null && `${Math.round(chat.context)}% ctx`, chat.cost != null && `$${chat.cost.toFixed(2)}`].filter(Boolean);
   const text = parts.join(' · ');
   const info = chat.badge.querySelector('.term-badge__info');
   info.textContent = text;
-  info.dataset.tip = text || 'Shows the model, effort, context and cost once the chat sends a status line';
+  info.dataset.tip = `${chat.bypassOn ? 'Bypass permissions is on: ' : ''}${text || 'Shows the model, effort, context and cost once the chat sends a status line'}`;
+  chat.badge.querySelector('.term-badge__bypass').hidden = !running || !chat.account;
+  chat.badge.querySelector('.term-badge__bypass').classList.toggle('is-on', chat.bypassOn === true);
+  chat.badge.classList.toggle('is-bypass', chat.bypassOn === true);
   chat.badge.classList.toggle('is-collapsed', infoCollapsed);
 }
 
@@ -610,9 +627,10 @@ async function openChat({ id, cwd, name, resume, group, login, accountId, handof
   makeBadge(chat);
 
   const size = { id, cols: term.cols, rows: term.rows };
+  chat.bypassOn = !login && chatBypass(chat, handoff);
   const result = await (login ? deck.login({ ...size, name: login, accountId })
-    : handoff ? deck.continueIn({ ...size, ...handoff })
-    : deck.start({ ...size, cwd, resume, group }));
+    : handoff ? deck.continueIn({ ...size, ...handoff, bypass: chat.bypassOn })
+    : deck.start({ ...size, cwd, resume, group, bypass: chat.bypassOn }));
   if (result.error) {
     chat.state = 'error';
     chat.error = result.error;
@@ -709,6 +727,13 @@ function answerTrustPrompt(chat) {
 
 const confirmsClose = () => localStorage.getItem('confirmClose') !== 'false';
 const setConfirmsClose = (on) => localStorage.setItem('confirmClose', on);
+
+const bypassOn = () => localStorage.getItem('bypassPermissions') === 'true';
+const setBypass = (on) => localStorage.setItem('bypassPermissions', on);
+const BYPASS_WARNING = 'Claude will run every tool, including shell commands and file edits, without asking for permission. Turn on Bypass permissions?';
+
+// One flag per chat: what it was launched with, or what its badge toggle asked for.
+const chatBypass = (chat, handoff) => bypassOn() || (handoff ? Boolean(chats.get(handoff.from)?.bypassOn) : Boolean(chat?.bypassOn));
 
 function askToClose(chat) {
   const dialog = $('close-dialog');
@@ -1728,10 +1753,18 @@ for (const radio of viewRadios) {
 $('settings-open').onclick = async () => {
   $('settings-confirm-close').checked = confirmsClose();
   $('settings-always-trust').checked = alwaysTrusts();
+  $('settings-bypass').checked = bypassOn();
   $('settings-roles').checked = await deck.getRoles();
   $('settings-dialog').showModal();
 };
 $('settings-confirm-close').onchange = (event) => setConfirmsClose(event.target.checked);
+$('settings-bypass').onchange = (event) => {
+  if (!event.target.checked) return setBypass(false);
+  event.target.checked = false; // Stays off until the warning is accepted.
+  if (!confirm(BYPASS_WARNING)) return;
+  setBypass(true);
+  event.target.checked = true;
+};
 $('settings-roles').onchange = (event) => deck.setRoles(event.target.checked);
 $('settings-always-trust').onchange = (event) => {
   if (!event.target.checked) {
