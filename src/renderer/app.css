@@ -298,12 +298,14 @@ body {
   white-space: nowrap;
 }
 
-.readout__session { color: var(--color-cool); white-space: nowrap; }
+.readout__session { color: var(--color-ink-2); white-space: nowrap; }
 .readout__state { color: var(--color-muted); white-space: nowrap; }
-.readout__state[data-state="running"] { color: var(--color-ok); }
+.readout__state[data-state="running"] { color: var(--color-accent); }
 .readout__state[data-state="error"] { color: var(--color-bad); }
 
-#usage-open { anchor-name: --usage; min-height: 24px; padding-inline: var(--space-xs); }
+#usage-open { anchor-name: --usage; min-height: 24px; padding-inline: var(--space-xs); background: none; box-shadow: none; color: var(--color-muted); }
+#usage-open:hover { color: var(--color-ink); filter: none; }
+#usage-open:active { filter: none; scale: 1; }
 .usage { inset: auto; position-anchor: --usage; bottom: anchor(top); right: anchor(right); margin: 0 0 var(--space-2xs); width: 23rem; max-width: 90vw; gap: var(--space-sm); padding: var(--space-sm) var(--space-md); font-size: var(--text-sm); border: 0; border-radius: var(--radius-card); background: var(--color-control-2); box-shadow: var(--shadow-float); color: var(--color-ink); }
 .usage:popover-open { display: grid; transition: opacity var(--dur-short) var(--ease-out), translate var(--dur-short) var(--ease-out); }
 @starting-style { .usage:popover-open { opacity: 0; translate: 0 var(--space-2xs); } }
@@ -312,7 +314,7 @@ body {
 .usage .meter .measured { margin-inline-start: auto; }
 #accounts-open { anchor-name: --accounts; }
 .usage.usage--top { position-anchor: --accounts; top: anchor(bottom); bottom: auto; margin: var(--space-2xs) 0 0; }
-#usage-open.is-warn { color: var(--color-accent); }
+#usage-open.is-warn, #usage-open.is-warn:hover { color: var(--color-accent); }
 .accounts { display: grid; gap: var(--space-sm); }
 .accounts > * + *, .usage__others, .usage > .meter:not([hidden]) ~ .accounts { padding-block-start: var(--space-sm); border-block-start: var(--rule-hair) solid var(--color-rule); }
 .account__head { display: flex; align-items: center; justify-content: space-between; gap: var(--space-xs); }
