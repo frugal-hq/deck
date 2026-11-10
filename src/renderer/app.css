@@ -121,6 +121,7 @@ body {
 .tab__open:focus-visible, .tab__close:focus-visible { outline-offset: -2px; }
 
 .tab:has([aria-current]) { background: var(--color-control); box-shadow: inset 0 1px 0 var(--color-highlight); }
+.tab.is-attention { background: var(--color-accent-soft); box-shadow: inset 0 1px 0 var(--color-highlight); }
 .tab__open[aria-current] { color: var(--color-ink); }
 .tab__open[aria-current] .icon:not(.status) { color: var(--color-accent); }
 
@@ -234,6 +235,7 @@ body {
 .session:active { background: var(--color-paper-3); }
 .session:focus-visible { outline-offset: -2px; }
 .session[aria-current] { background: var(--color-accent-soft); color: var(--color-ink); }
+.session.is-attention { background: var(--color-highlight); box-shadow: inset 2px 0 0 var(--color-accent-soft); color: var(--color-ink); }
 
 .session__title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 

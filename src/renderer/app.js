@@ -43,6 +43,7 @@ function statusIcon(status) {
 
 function setRowStatus(row, status) {
   row.querySelector('.session__status')?.remove();
+  row.classList.toggle('is-attention', Boolean(chats.get(row.dataset.session)?.attention));
   if (!status) return;
   const svg = statusIcon(status);
   svg.classList.add('session__status');
@@ -418,6 +419,7 @@ function activate(id) {
   markActiveSession();
   const chat = chats.get(id);
   if (!chat) return;
+  setAttention(chat, false);
   if (chat.status === 'replied') setStatus(chat, null);
   syncSize(chat);
   chat.term.focus();
@@ -667,9 +669,45 @@ const INTERRUPT_MS = 1000;
 
 const seen = (chat) => chat.id === activeId && document.hasFocus();
 
+let audioContext;
+
+function chime() {
+  audioContext ??= new AudioContext();
+  if (audioContext.state === 'suspended') audioContext.resume();
+  const start = audioContext.currentTime;
+  for (const [frequency, offset] of [[659.25, 0], [830.61, 0.12]]) {
+    const gain = audioContext.createGain();
+    gain.gain.setValueAtTime(0.0001, start + offset);
+    gain.gain.exponentialRampToValueAtTime(0.04, start + offset + 0.02);
+    gain.gain.exponentialRampToValueAtTime(0.0001, start + offset + 0.22);
+    const oscillator = audioContext.createOscillator();
+    oscillator.type = 'sine';
+    oscillator.frequency.value = frequency;
+    oscillator.connect(gain).connect(audioContext.destination);
+    oscillator.start(start + offset);
+    oscillator.stop(start + offset + 0.24);
+  }
+}
+
+function drawAttention(chat) {
+  chat.tab?.classList.toggle('is-attention', Boolean(chat.attention));
+  for (const row of $('groups').querySelectorAll(`[data-session="${chat.id}"]`)) row.classList.toggle('is-attention', Boolean(chat.attention));
+}
+
+function setAttention(chat, on) {
+  if (chat.attention === on) return;
+  chat.attention = on;
+  drawAttention(chat);
+}
+
 function setStatus(chat, status) {
   if (chat.status === status) return;
+  const wasWorking = chat.status === 'working';
   chat.status = status;
+  if ((status === 'waiting' || status === 'replied') && wasWorking && !seen(chat)) {
+    setAttention(chat, true);
+    chime();
+  }
   drawStatus(chat);
 }
 
@@ -700,6 +738,7 @@ deck.onTurnEnd((id) => {
 
 window.addEventListener('focus', () => {
   const chat = chats.get(activeId);
+  if (chat) setAttention(chat, false);
   if (chat?.status === 'replied') setStatus(chat, null);
 });
 
