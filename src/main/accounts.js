@@ -71,6 +71,9 @@ function setPrimary(id) {
   save({ ...load(), primary: id });
 }
 
+// A /frugal prompt in an account without the plugin only gets Claude Code's unknown-command reply.
+const hasFrugal = (account) => Boolean(readJson(path.join(account.configDir, 'plugins', 'installed_plugins.json'), {}).plugins?.['frugal@frugal']?.length);
+
 // Automatic roles: a chat never delegates to the account it runs on. On unless turned off.
 const roles = () => load().roles !== false;
 const setRoles = (on) => save({ ...load(), roles: on });
@@ -434,7 +437,7 @@ async function refreshReadings(claude, env, openAccounts) {
 
 const clearEmails = () => emails.clear();
 
-module.exports = { MAIN, claudeAccounts, primary, setPrimary, roles, setRoles, snapshot, renameAccount, saveReading, setAccountCap, applyCodexCaps, capExhaustedUntil, prepareAccount, ensureOnboarded, finishAccount, removeAccount, clearEmails, shareTranscript, parseUsage, refreshReadings, codexLimits };
+module.exports = { MAIN, claudeAccounts, primary, setPrimary, hasFrugal, roles, setRoles, snapshot, renameAccount, saveReading, setAccountCap, applyCodexCaps, capExhaustedUntil, prepareAccount, ensureOnboarded, finishAccount, removeAccount, clearEmails, shareTranscript, parseUsage, refreshReadings, codexLimits };
 
 if (require.main === module) {
   const assert = require('assert');

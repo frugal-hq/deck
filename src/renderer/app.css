@@ -582,9 +582,9 @@ body { transition: opacity var(--dur-short) var(--ease-out); }
   font-size: var(--text-xs);
 }
 .term-badge.is-collapsed { padding: var(--space-3xs) var(--space-md); background: none; box-shadow: none; }
-.term-badge.is-collapsed .term-badge__info, .term-badge.is-collapsed .term-badge__bypass { display: none; }
+.term-badge.is-collapsed .term-badge__info, .term-badge.is-collapsed .term-badge__action { display: none; }
 .term-badge.is-bypass .term-badge__dot { color: var(--color-cool); }
-.term-badge__bypass {
+.term-badge__action {
   flex: none;
   border: 0;
   background: none;
@@ -594,7 +594,7 @@ body { transition: opacity var(--dur-short) var(--ease-out); }
   cursor: pointer;
   transition: color var(--dur-micro) var(--ease-out);
 }
-.term-badge__bypass:hover { color: var(--color-cool); }
+.term-badge__action:hover { color: var(--color-cool); }
 .term-badge__dot {
   display: grid;
   place-items: center;

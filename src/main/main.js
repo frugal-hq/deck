@@ -168,14 +168,17 @@ function launchChat({ id, folder, cols, rows, resume, group, account, file, prom
   }
 }
 
-ipcMain.handle('chat:start', (_, { id, cwd, cols, rows, resume, group, bypass }) => {
+ipcMain.handle('chat:start', (_, { id, cwd, cols, rows, resume, group, bypass, frugal }) => {
   const session = resume ? index.sessions.find((s) => s.id === id) : null;
   // A resumed chat always runs in the folder the index recorded, never one sent by the renderer.
   const folder = resume ? session?.cwd : (pickedFolders.has(cwd) || index.sessions.some((s) => s.cwd === cwd)) && cwd;
   if (!UUID.test(id) || chats.has(id) || !folder || !isSize(cols) || !isSize(rows)) {
     return { error: 'Invalid request.' };
   }
-  return launchChat({ id, folder, cols, rows, resume, group, account: accounts.primary(), file: session?.file, bypass: bypass === true });
+  const account = accounts.primary();
+  const withFrugal = !resume && frugal === true && accounts.hasFrugal(account);
+  const started = launchChat({ id, folder, cols, rows, resume, group, account, file: session?.file, bypass: bypass === true, prompt: withFrugal ? '/frugal:frugal' : undefined });
+  return started.ok ? { ...started, frugal: withFrugal } : started;
 });
 
 // A handoff continues in the folder its chat runs in, or the one the index recorded once it exits, on the account it ran on.

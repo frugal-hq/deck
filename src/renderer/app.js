@@ -524,11 +524,20 @@ function makeBadge(chat) {
   dot.append(icon('more'));
   dot.dataset.tip = 'Session details. Click to show or hide them';
   const info = node('span', 'term-badge__info');
-  const bypass = node('button', 'term-badge__bypass', 'Bypass permissions');
+  const frugal = node('button', 'term-badge__action term-badge__frugal', 'Frugal');
+  frugal.type = 'button';
+  frugal.dataset.tip = 'Type /frugal:frugal in the prompt, so the next message runs in Frugal mode';
+  frugal.onclick = () => {
+    chat.term.paste('/frugal:frugal ');
+    chat.term.focus();
+    chat.frugal = true;
+    drawBadge(chat);
+  };
+  const bypass = node('button', 'term-badge__action term-badge__bypass', 'Bypass permissions');
   bypass.type = 'button';
   bypass.dataset.tip = 'Restart this chat with Claude Code running every tool without asking';
   bypass.onclick = () => toggleBypass(chat);
-  badge.append(dot, info, bypass);
+  badge.append(dot, info, frugal, bypass);
   dot.onclick = () => setInfoCollapsed(!infoCollapsed);
   chat.badge = badge;
   chat.el.append(badge);
@@ -558,6 +567,7 @@ function drawBadge(chat) {
   info.dataset.tip = `${chat.bypassOn ? 'Bypass permissions is on: ' : ''}${text || 'Shows the model, effort, context and cost once the chat sends a status line'}`;
   // Once on, here or for every chat, there is nothing left to turn on: the dot's color and tip say it is on.
   chat.badge.querySelector('.term-badge__bypass').hidden = !running || !chat.account || chat.bypassOn === true || bypassOn();
+  chat.badge.querySelector('.term-badge__frugal').hidden = !running || !chat.account || chat.frugal === true;
   chat.badge.classList.toggle('is-bypass', chat.bypassOn === true);
   chat.badge.classList.toggle('is-collapsed', infoCollapsed);
 }
@@ -691,12 +701,14 @@ async function openChat({ id, cwd, name, resume, group, login, accountId, handof
   chat.bypassOn = !login && chatBypass(chat, handoff);
   const result = await (login ? deck.login({ ...size, name: login, accountId })
     : handoff ? deck.continueIn({ ...size, ...handoff, bypass: chat.bypassOn })
-    : deck.start({ ...size, cwd, resume, group, bypass: chat.bypassOn }));
+    : deck.start({ ...size, cwd, resume, group, bypass: chat.bypassOn, frugal: !resume && startsWithFrugal() }));
   if (result.error) {
     chat.state = 'error';
     chat.error = result.error;
   }
   chat.account = result.account;
+  // A handoff block opens with /frugal, so that chat already runs in Frugal mode.
+  chat.frugal = Boolean(handoff) || result.frugal === true;
   render();
   return result;
 }
@@ -790,6 +802,7 @@ const confirmsClose = () => localStorage.getItem('confirmClose') !== 'false';
 const setConfirmsClose = (on) => localStorage.setItem('confirmClose', on);
 
 const bypassOn = () => localStorage.getItem('bypassPermissions') === 'true';
+const startsWithFrugal = () => localStorage.getItem('startWithFrugal') === 'true';
 const setBypass = (on) => localStorage.setItem('bypassPermissions', on);
 // The Deck's own confirm(): native dialogs never show in this window.
 function askConfirm(title, message, ok) {
@@ -1848,6 +1861,7 @@ $('settings-open').onclick = async () => {
   $('settings-always-trust').checked = alwaysTrusts();
   $('settings-bypass').checked = bypassOn();
   $('settings-roles').checked = await deck.getRoles();
+  $('settings-frugal').checked = startsWithFrugal();
   $('settings-tooltips').value = tooltipPlacement();
   $('settings-dialog').showModal();
 };
@@ -1862,6 +1876,7 @@ $('settings-bypass').onchange = async (event) => {
   for (const chat of chats.values()) drawBadge(chat);
 };
 $('settings-roles').onchange = (event) => deck.setRoles(event.target.checked);
+$('settings-frugal').onchange = (event) => localStorage.setItem('startWithFrugal', event.target.checked);
 $('settings-tooltips').onchange = (event) => localStorage.setItem('tooltipPlacement', event.target.value);
 $('settings-always-trust').onchange = (event) => {
   if (!event.target.checked) {
