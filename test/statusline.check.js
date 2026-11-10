@@ -6,10 +6,13 @@ const os = require('os');
 const path = require('path');
 const { createStatusBridge, readMeters, readUserStatusLine } = require('../src/main/statusline.js');
 
-const EMPTY = { context: null, contextTokens: null, contextSize: null, inputTokens: null, outputTokens: null, fiveHour: null, sevenDay: null };
+const EMPTY = { context: null, contextTokens: null, contextSize: null, inputTokens: null, outputTokens: null, fiveHour: null, sevenDay: null, model: null, effort: null, cost: null };
 const FULL = {
   context_window: { used_percentage: 34.5, context_window_size: 200000, total_input_tokens: 12000, total_output_tokens: 3456 },
   rate_limits: { five_hour: { used_percentage: 67, resets_at: 1800000000 }, seven_day: { used_percentage: 13 } },
+  model: { display_name: 'Opus' },
+  effort: { level: 'high' },
+  cost: { total_cost_usd: 1.25 },
 };
 
 assert.deepStrictEqual(readMeters({}), EMPTY);
@@ -26,11 +29,25 @@ assert.deepStrictEqual(readMeters(FULL), {
   outputTokens: 3456,
   fiveHour: { pct: 67, resetsAt: 1800000000 },
   sevenDay: { pct: 13, resetsAt: null },
+  model: 'Opus',
+  effort: 'high',
+  cost: 1.25,
 });
 
 for (const value of [undefined, null, '20', NaN, Infinity, -Infinity]) {
   assert.deepStrictEqual(readMeters({ context_window: { used_percentage: value, context_window_size: value, total_input_tokens: value, total_output_tokens: value } }), EMPTY);
 }
+assert.strictEqual(readMeters({ model: { display_name: 'Opus' }, effort: { level: 'high' }, cost: { total_cost_usd: 1.25 } }).model, 'Opus');
+assert.strictEqual(readMeters({ effort: { level: 'high' } }).effort, 'high');
+assert.strictEqual(readMeters({ cost: { total_cost_usd: 1.25 } }).cost, 1.25);
+assert.strictEqual(readMeters({ model: {} }).model, null);
+assert.strictEqual(readMeters({ model: { display_name: null } }).model, null);
+assert.strictEqual(readMeters({ model: { display_name: 5 } }).model, null);
+assert.strictEqual(readMeters({ effort: { level: 'high' } }).cost, null);
+assert.strictEqual(readMeters({ effort: {} }).effort, null);
+assert.strictEqual(readMeters({ effort: { level: 3 } }).effort, null);
+assert.strictEqual(readMeters({ cost: { total_cost_usd: '1.25' } }).cost, null);
+assert.strictEqual(readMeters({ cost: { total_cost_usd: -1.25 } }).cost, null);
 assert.equal(readMeters({ context_window: { context_window_size: 200000 } }).contextTokens, null);
 assert.equal(readMeters({ context_window: { used_percentage: 20 } }).contextTokens, null);
 assert.equal(readMeters({ context_window: { used_percentage: 33.3, context_window_size: 101 } }).contextTokens, 34);

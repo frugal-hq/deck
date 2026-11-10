@@ -460,6 +460,49 @@ function handleTerminalKey(chat, event) {
 
 const folderName = (cwd) => cwd.split(/[\\/]/).filter(Boolean).pop() ?? cwd;
 
+// One collapse state for every chat badge, so the readout stays the place for the full picture.
+let infoCollapsed = false;
+try {
+  infoCollapsed = localStorage.getItem('chatInfoCollapsed') === 'true';
+} catch {}
+
+function setInfoCollapsed(value) {
+  infoCollapsed = value;
+  try {
+    localStorage.setItem('chatInfoCollapsed', value);
+  } catch {}
+  for (const chat of chats.values()) drawBadge(chat);
+}
+
+// Sits over the top-right corner of the terminal pane and only reads what the status line already sent.
+function makeBadge(chat) {
+  const badge = node('div', 'term-badge');
+  const dot = node('button', 'term-badge__dot');
+  dot.type = 'button';
+  dot.append(icon('more'));
+  dot.dataset.tip = 'Session details. Click to show or hide them';
+  const info = node('span', 'term-badge__info');
+  badge.append(dot, info);
+  dot.onclick = () => setInfoCollapsed(!infoCollapsed);
+  chat.el.append(badge);
+  drawBadge(chat);
+}
+
+function drawBadge(chat) {
+  if (!chat.badge) return;
+  const parts = [
+    chat.model,
+    chat.effort && `${chat.effort} effort`,
+    chat.context != null && `${Math.round(chat.context)}% ctx`,
+    chat.cost != null && `$${chat.cost.toFixed(2)}`,
+  ].filter(Boolean);
+  const text = parts.join(' · ');
+  const info = chat.badge.querySelector('.term-badge__info');
+  info.textContent = text;
+  info.dataset.tip = text || 'Shows the model, effort, context and cost once the chat sends a status line';
+  chat.badge.classList.toggle('is-collapsed', infoCollapsed);
+}
+
 // Claude Code opens $VISUAL on a Ctrl+G prompt file; the Deck shows it here instead of an OS editor.
 // The response stays open until Save ends it, so the panel replaces itself when Claude opens again.
 function promptPanel(chat, text) {
@@ -564,6 +607,7 @@ async function openChat({ id, cwd, name, resume, group, login, accountId, handof
   });
   term.onTitleChange((title) => onTitle(chat, title));
   term.attachCustomKeyEventHandler((event) => handleTerminalKey(chat, event));
+  makeBadge(chat);
 
   const size = { id, cols: term.cols, rows: term.rows };
   const result = await (login ? deck.login({ ...size, name: login, accountId })
@@ -882,9 +926,10 @@ deck.onMeters((id, meters) => {
   const chat = chats.get(id);
   if (chat) {
     if (meters.context != null) chat.context = meters.context;
-    for (const key of ['contextTokens', 'contextSize', 'inputTokens', 'outputTokens']) {
+    for (const key of ['contextTokens', 'contextSize', 'inputTokens', 'outputTokens', 'model', 'effort', 'cost']) {
       if (meters[key] != null) chat[key] = meters[key];
     }
+    drawBadge(chat);
   }
   if (chats.has(activeId)) drawMeters();
 });

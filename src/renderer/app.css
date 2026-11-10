@@ -548,3 +548,36 @@ body { transition: opacity var(--dur-short) var(--ease-out); }
 .prompt-edit__text { min-height: 8lh; max-height: 50vh; padding: var(--space-xs) var(--space-sm); border: 0; border-radius: var(--radius-card); background: var(--color-paper-3); color: var(--color-ink); font: var(--text-sm) / 1.4 var(--font-term); resize: vertical; }
 .prompt-edit__actions { display: flex; justify-content: flex-end; gap: var(--space-xs); }
 .prompt-edit__text:focus-visible { outline: 2px solid var(--color-focus); outline-offset: -1px; }
+
+/* The chat info badge: model, effort, context and cost in the terminal pane's corner. */
+.term-badge {
+  position: absolute;
+  top: var(--space-2xs);
+  right: var(--space-2xs);
+  z-index: calc(var(--z-raised) + 1);
+  display: flex;
+  align-items: center;
+  gap: var(--space-xs);
+  max-width: calc(100% - var(--space-md));
+  padding: var(--space-3xs) var(--space-2xs);
+  border-radius: var(--radius-pill);
+  background: var(--color-control-2);
+  box-shadow: var(--shadow-card);
+  font-size: var(--text-xs);
+}
+.term-badge.is-collapsed { padding: var(--space-3xs) var(--space-md); background: none; box-shadow: none; }
+.term-badge.is-collapsed .term-badge__info { display: none; }
+.term-badge__dot {
+  display: grid;
+  place-items: center;
+  border: 0;
+  background: none;
+  color: var(--color-muted);
+  cursor: pointer;
+  transition: color var(--dur-micro) var(--ease-out);
+}
+.term-badge__dot .icon { width: 12px; height: 12px; }
+.term-badge__dot:hover { color: var(--color-ink); }
+.term-badge__dot:focus-visible { outline-offset: -1px; }
+.term-badge__info { overflow: hidden; color: var(--color-ink-2); text-overflow: ellipsis; white-space: nowrap; }
+.term-badge__info:empty { display: none; }

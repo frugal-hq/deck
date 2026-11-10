@@ -25,6 +25,9 @@ function readMeters(input) {
     outputTokens: finite(window?.total_output_tokens),
     fiveHour: limit(input?.rate_limits?.five_hour),
     sevenDay: limit(input?.rate_limits?.seven_day),
+    model: typeof input?.model?.display_name === 'string' && input.model.display_name ? input.model.display_name : null,
+    effort: typeof input?.effort?.level === 'string' && input.effort.level ? input.effort.level : null,
+    cost: Number.isFinite(input?.cost?.total_cost_usd) && input.cost.total_cost_usd >= 0 ? input.cost.total_cost_usd : null,
   };
 }
 
