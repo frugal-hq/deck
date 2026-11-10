@@ -460,6 +460,57 @@ function handleTerminalKey(chat, event) {
 
 const folderName = (cwd) => cwd.split(/[\\/]/).filter(Boolean).pop() ?? cwd;
 
+// Claude Code opens $VISUAL on a Ctrl+G prompt file; the Deck shows it here instead of an OS editor.
+// The response stays open until Save ends it, so the panel replaces itself when Claude opens again.
+function promptPanel(chat, text) {
+  chat.editPanel?.remove();
+  chat.editPanel = null;
+  const form = node('form', 'prompt-edit');
+  form.setAttribute('aria-label', 'Prompt Claude Code asked to edit');
+  const area = node('textarea', 'prompt-edit__text');
+  area.spellcheck = false;
+  area.value = text;
+  const actions = node('div', 'prompt-edit__actions');
+  const cancel = node('button', 'btn', 'Cancel');
+  cancel.type = 'button';
+  cancel.dataset.tip = 'Discard the edit and leave the prompt as it was';
+  const save = node('button', 'btn btn--primary', 'Save');
+  save.type = 'submit';
+  save.dataset.tip = 'Save the prompt back to Claude Code';
+  actions.append(cancel, save);
+  const done = (text) => {
+    deck.saveEdit(chat.id, text);
+    if (chat.editPanel === form) chat.editPanel = null;
+    form.remove();
+    if (chat.id === activeId) chat.term.focus();
+  };
+  cancel.onclick = () => done(null);
+  form.onsubmit = (event) => {
+    event.preventDefault();
+    done(area.value);
+  };
+  form.addEventListener('keydown', (event) => {
+    if (event.key === 'Enter' && (event.ctrlKey || event.metaKey) && !event.altKey && !event.shiftKey) {
+      event.preventDefault();
+      form.onsubmit(event);
+    } else if (event.key === 'Escape') {
+      event.preventDefault();
+      cancel.click();
+    }
+  });
+  form.append(area, actions);
+  chat.editPanel = form;
+  chat.el.append(form);
+  area.focus();
+}
+
+deck.onEdit((id, text) => {
+  // A chat the renderer does not hold can never be saved or cancelled by the user.
+  const chat = chats.get(id);
+  if (!chat) return deck.saveEdit(id, null);
+  promptPanel(chat, text);
+});
+
 function startChat(cwd, group) {
   if (cwd) openChat({ id: crypto.randomUUID(), cwd, name: 'New chat', resume: false, group });
 }
@@ -745,6 +796,8 @@ window.addEventListener('focus', () => {
 function resetStatus(chat) {
   clearTimeout(chat.settle);
   chat.busy = false;
+  chat.editPanel?.remove();
+  chat.editPanel = null;
   setStatus(chat, null);
 }
 

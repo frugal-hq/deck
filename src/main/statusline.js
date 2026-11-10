@@ -58,11 +58,13 @@ const runChain = ({ shell, command, cwd, env }, stdin) => new Promise((resolve) 
 
 // curl.exe ships with Windows and runs the same from Git Bash and PowerShell, so a native
 // Claude install needs neither Node nor ELECTRON_RUN_AS_NODE in its environment.
-function createStatusBridge(onMeters) {
+// The /edit route stays open while the Deck edits the file: onEdit ends it, save or cancel.
+function createStatusBridge(onMeters, onEdit) {
   const clients = new Map();
 
   const server = http.createServer((req, res) => {
-    const client = clients.get(req.url.slice(1));
+    const match = /^\/([\da-f]+)(\/edit)?$/.exec(req.url);
+    const client = match && clients.get(match[1]);
     if (req.method !== 'POST' || !client) {
       res.writeHead(404).end();
       return;
@@ -71,6 +73,7 @@ function createStatusBridge(onMeters) {
     req.setEncoding('utf8');
     req.on('data', (chunk) => { body += chunk; });
     req.on('end', async () => {
+      if (match[2]) return onEdit(client.id, body, res);
       let input;
       try {
         input = JSON.parse(body);
@@ -91,7 +94,7 @@ function createStatusBridge(onMeters) {
       clients.set(token, { id, chain });
       const url = `http://127.0.0.1:${server.address().port}/${token}`;
       const command = `curl.exe -s -m 5 --noproxy 127.0.0.1 --data-binary "@-" ${url}`;
-      return { token, statusLine: { ...statusLine, type: 'command', command } };
+      return { token, statusLine: { ...statusLine, type: 'command', command }, editUrl: `${url}/edit` };
     },
     release: (token) => clients.delete(token),
     close: () => server.close(),

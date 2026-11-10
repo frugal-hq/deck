@@ -529,3 +529,22 @@ body { transition: opacity var(--dur-short) var(--ease-out); }
 .handoff__status { margin: 0; color: var(--color-muted); font-size: var(--text-sm); }
 .handoff__text { min-height: 10lh; max-height: 50vh; padding: var(--space-xs) var(--space-sm); border: 0; border-radius: var(--radius-card); background: var(--color-paper-3); color: var(--color-ink); font: var(--text-sm) / 1.4 var(--font-term); resize: vertical; }
 .handoff__actions { display: flex; justify-content: flex-end; gap: var(--space-xs); }
+
+/* The Ctrl+G prompt editor: sits over the bottom of its own chat's terminal, never a new window. */
+.prompt-edit {
+  position: absolute;
+  bottom: var(--space-md);
+  left: 50%;
+  translate: -50%;
+  z-index: calc(var(--z-raised) + 1);
+  display: grid;
+  gap: var(--space-xs);
+  width: min(60%, 40rem);
+  padding: var(--space-sm) var(--space-md);
+  border-radius: var(--radius-card);
+  background: var(--color-control-2);
+  box-shadow: var(--shadow-float);
+}
+.prompt-edit__text { min-height: 8lh; max-height: 50vh; padding: var(--space-xs) var(--space-sm); border: 0; border-radius: var(--radius-card); background: var(--color-paper-3); color: var(--color-ink); font: var(--text-sm) / 1.4 var(--font-term); resize: vertical; }
+.prompt-edit__actions { display: flex; justify-content: flex-end; gap: var(--space-xs); }
+.prompt-edit__text:focus-visible { outline: 2px solid var(--color-focus); outline-offset: -1px; }

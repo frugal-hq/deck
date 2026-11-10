@@ -14,6 +14,8 @@ contextBridge.exposeInMainWorld('deck', {
   resize: (id, cols, rows) => ipcRenderer.send('chat:resize', id, cols, rows),
   kill: (id) => ipcRenderer.send('chat:kill', id),
   onData: (callback) => ipcRenderer.on('chat:data', (_, id, data) => callback(id, data)),
+  onEdit: (callback) => ipcRenderer.on('chat:edit', (_, id, text) => callback(id, text)),
+  saveEdit: (id, text) => ipcRenderer.send('chat:save-edit', id, text),
   onExit: (callback) => ipcRenderer.on('chat:exit', (_, id, code) => callback(id, code)),
   onMeters: (callback) => ipcRenderer.on('chat:meters', (_, id, meters) => callback(id, meters)),
   onRestarting: (callback) => ipcRenderer.on('chat:restarting', (_, id) => callback(id)),

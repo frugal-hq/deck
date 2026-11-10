@@ -22,6 +22,23 @@ const pickedFolders = new Set();
 let index = { indexing: true, sessions: [], error: null, ambiguous: [], modelJoins: 0, workspaces: {}, modelWorkspaces: 0 };
 let win;
 let indexer;
+// Written to userData at startup: the .cmd runs the script with Deck's own binary as plain Node.
+let editorCommand;
+// frugal: one edit per chat is kept, so a second Ctrl+G replaces the waiting response.
+const pendingEdits = new Map();
+
+function endEdit(id, text) {
+  const edit = pendingEdits.get(id);
+  if (!edit) return;
+  pendingEdits.delete(id);
+  if (typeof text === 'string') fs.writeFileSync(edit.file, text, 'utf8');
+  edit.res.end();
+}
+
+const dropEdits = () => {
+  for (const edit of pendingEdits.values()) edit.res.end();
+  pendingEdits.clear();
+};
 // frugal: the sidebar shows the newest sessions plus every organized one and every open chat, and never cuts a chat in half; the palette and resume use all of them.
 const SIDEBAR_LIMIT = 500;
 const sidebarIndex = () => {
@@ -60,6 +77,19 @@ const statusBridge = createStatusBridge((id, meters) => {
   const info = chatInfo.get(id);
   if (info && accounts.saveReading(info.account, meters)) publishAccounts();
   send('chat:meters', id, meters);
+}, (id, file, res) => {
+  // The body is the temp file Claude Code wants edited by $VISUAL.
+  let text = '';
+  try {
+    text = fs.readFileSync(file, 'utf8');
+  } catch {
+    res.writeHead(400).end();
+    return;
+  }
+  endEdit(id);
+  pendingEdits.set(id, { file, res });
+  if (!win || win.isDestroyed()) endEdit(id);
+  else send('chat:edit', id, text);
 });
 
 // FRUGAL_ROLES is read by frugal's accounts server, so the setting applies to chats started after it changes.
@@ -97,6 +127,10 @@ function launchChat({ id, folder, cols, rows, resume, group, account, file, prom
   if (!claude) return { error: NO_CLAUDE };
   const env = accountEnv(account);
   const status = statusBridge.register({ id, cwd: folder, env, statusLine: readUserStatusLine(path.join(account.configDir, 'settings.json')) });
+  // Claude Code runs $VISUAL with the prompt file path appended and waits for it to exit.
+  // Quoted: Claude Code runs it through the shell, and the user folder may contain spaces.
+  env.VISUAL = `"${editorCommand}"`;
+  env.DECK_EDIT_URL = status.editUrl;
   try {
     if (account.id !== accounts.MAIN) accounts.ensureOnboarded(account.configDir);
     if (resume) accounts.shareTranscript(file, account.configDir);
@@ -113,6 +147,7 @@ function launchChat({ id, folder, cols, rows, resume, group, account, file, prom
     });
     child.onExit(({ exitCode }) => {
       statusBridge.release(status.token);
+      endEdit(id);
       // An account switch removes the chat first, so the restart never reads as an exit.
       if (chats.get(id) !== child) return;
       chats.delete(id);
@@ -279,6 +314,8 @@ ipcMain.on('chat:resize', (_, id, cols, rows) => {
   if (isSize(cols) && isSize(rows)) chats.get(id)?.resize(cols, rows);
 });
 ipcMain.on('chat:kill', (_, id) => chats.get(id)?.kill());
+// A save writes the text back before the response ends; a cancel (text === null) ends it without writing.
+ipcMain.on('chat:save-edit', (_, id, text) => endEdit(id, text));
 
 let topicRun = null;
 
@@ -359,13 +396,35 @@ function createWindow() {
   });
   win.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
   win.webContents.on('will-navigate', (event) => event.preventDefault());
+  // A gone renderer can neither save nor cancel, so Claude must not wait on it.
+  win.webContents.on('render-process-gone', dropEdits);
   win.on('maximize', () => send('window:maximized', true));
   win.on('unmaximize', () => send('window:maximized', false));
   win.loadFile(path.join(__dirname, '../renderer/index.html'));
 }
 
+// The prompt editor: Claude Code runs the .cmd with the file path appended and waits for it,
+// the .cmd swaps in the Deck's own binary as plain Node, and the script waits on the chat's edit URL.
+const EDITOR_SCRIPT = [
+  '// Waits for the Deck to finish the file, then exits so Claude Code can read it.',
+  'const { request } = require("http");',
+  'const req = request(process.env.DECK_EDIT_URL, { method: "POST", headers: { "content-type": "text/plain" } }, (res) => res.resume().on("end", () => process.exit(0)));',
+  'req.on("error", () => process.exit(0));',
+  'req.end(process.argv[2] ?? "");',
+].join('\n');
+
+function writePromptEditor() {
+  const dir = app.getPath('userData');
+  const script = path.join(dir, 'prompt-editor.js');
+  fs.writeFileSync(script, `${EDITOR_SCRIPT}\n`);
+  // ELECTRON_RUN_AS_NODE is set only inside the .cmd, so the chat env itself stays clean.
+  fs.writeFileSync(path.join(dir, 'prompt-editor.cmd'), `@echo off\r\nset ELECTRON_RUN_AS_NODE=1\r\n"${process.execPath}" "${script}" %*\r\n`);
+  return path.join(dir, 'prompt-editor.cmd');
+}
+
 // app.quit() hung for 80 s with a dialog open in the TUI (Test 1); app.exit does not.
 app.on('window-all-closed', () => {
+  dropEdits();
   for (const child of chats.values()) child.kill();
   stopTopics();
   setTimeout(() => app.exit(0), 1000);
@@ -390,6 +449,7 @@ function startIndexer() {
 }
 
 app.whenReady().then(() => {
+  editorCommand = writePromptEditor();
   createWindow();
   startIndexer();
 });
