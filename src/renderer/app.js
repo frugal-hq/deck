@@ -3,6 +3,7 @@ import { FitAddon } from '../../node_modules/@xterm/addon-fit/lib/addon-fit.mjs'
 import { matchSessions } from './palette.mjs';
 import { groupChats, buildTree } from './chats.mjs';
 import { trustPromptKey } from './trust.mjs';
+import { trimSilence, encodeWav, joinChunks } from './voice.mjs';
 
 const $ = (id) => document.getElementById(id);
 const stage = $('stage');
@@ -261,6 +262,88 @@ function accountName(account, details) {
 
 function report(result) {
   if (result?.error) ask({ title: 'Account', text: result.error, action: 'OK', run: () => {} });
+}
+
+// Voice: the badge records here, whisper.cpp transcribes in the main process, and the text lands at the cursor unsent.
+const VOICE_RATE = 16000;
+const voiceMode = () => localStorage.getItem('voiceMode') ?? 'off';
+const voiceModel = () => localStorage.getItem('voiceModel') ?? 'medium';
+const voiceLanguage = () => localStorage.getItem('voiceLanguage') ?? 'en';
+const decimal = new Intl.NumberFormat('en-US', { maximumFractionDigits: 1 });
+const sizeText = (bytes) => (bytes >= 1e9 ? `${decimal.format(bytes / 1e9)} GB` : `${decimal.format(bytes / 1e6)} MB`);
+const voiceError = (text) => ask({ title: 'Voice', text, action: 'OK', run: () => {} });
+let recording = null;
+let downloadingFor = null;
+
+function setVoice(chat, label) {
+  chat.voice = label;
+  drawBadge(chat);
+}
+
+deck.onVoiceProgress((received, total) => {
+  if (downloadingFor) setVoice(downloadingFor, `Downloading ${Math.floor((received / total) * 100)}%`);
+});
+
+async function toggleDictation(chat) {
+  // frugal: /voice is untested inside the PTY (Test 8), so it is typed for the user to send.
+  if (voiceMode() === 'anthropic') {
+    chat.term.paste('/voice');
+    return chat.term.focus();
+  }
+  if (recording) return stopDictation();
+  if (chat.voice) return;
+  const model = voiceModel();
+  const status = await deck.voiceStatus(model);
+  if (status.error) return voiceError(status.error);
+  if (status.needs > 0) {
+    const what = status.cli ? `the ${model} model` : `whisper.cpp and the ${model} model`;
+    if (!await askConfirm('Download voice files?', `Local dictation needs ${what}: ${sizeText(status.needs)}. They download once and stay on this computer.`, 'Download')) return;
+    downloadingFor = chat;
+    setVoice(chat, 'Downloading');
+    const result = await deck.voicePrepare(model);
+    downloadingFor = null;
+    setVoice(chat, null);
+    if (result.error) return voiceError(result.error);
+  }
+  try {
+    const stream = await navigator.mediaDevices.getUserMedia({ audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true } });
+    const context = new AudioContext({ sampleRate: VOICE_RATE });
+    const source = context.createMediaStreamSource(stream);
+    // frugal: ScriptProcessorNode is deprecated; an AudioWorklet module from 'self' is the upgrade.
+    const processor = context.createScriptProcessor(4096, 1, 1);
+    const chunks = [];
+    processor.onaudioprocess = (event) => chunks.push(new Float32Array(event.inputBuffer.getChannelData(0)));
+    source.connect(processor);
+    processor.connect(context.destination);
+    recording = { chat, stream, context, chunks };
+    setVoice(chat, 'Listening');
+  } catch (error) {
+    voiceError(`The microphone is not available: ${error.message}`);
+  }
+}
+
+async function stopDictation() {
+  const { chat, stream, context, chunks } = recording;
+  recording = null;
+  for (const track of stream.getTracks()) track.stop();
+  await context.close();
+  const samples = trimSilence(joinChunks(chunks), VOICE_RATE);
+  if (!samples.length) {
+    setVoice(chat, null);
+    return voiceError('No speech was heard.');
+  }
+  setVoice(chat, 'Transcribing');
+  const result = await deck.voiceTranscribe({ audio: encodeWav(samples, VOICE_RATE), model: voiceModel(), language: voiceLanguage() });
+  setVoice(chat, null);
+  if (result.error) return voiceError(result.error);
+  if (result.text && chats.has(chat.id)) {
+    chat.term.paste(result.text);
+    chat.term.focus();
+  }
+}
+
+function showVoiceOptions() {
+  for (const row of document.querySelectorAll('.settings__voice')) row.hidden = voiceMode() !== 'local';
 }
 
 function signIn(account) {
@@ -544,7 +627,10 @@ function makeBadge(chat) {
   admin.type = 'button';
   admin.dataset.tip = 'Restart this chat with Windows administrator rights';
   admin.onclick = () => toggleAdmin(chat);
-  badge.append(dot, info, frugal, bypass, admin);
+  const voice = node('button', 'term-badge__action term-badge__voice', 'Dictate');
+  voice.type = 'button';
+  voice.onclick = () => toggleDictation(chat);
+  badge.append(dot, info, voice, frugal, bypass, admin);
   dot.onclick = () => setInfoCollapsed(!infoCollapsed);
   chat.badge = badge;
   chat.el.append(badge);
@@ -588,6 +674,12 @@ function drawBadge(chat) {
   // Once on, here or for every chat, there is nothing left to turn on: the dot's color and tip say it is on.
   chat.badge.querySelector('.term-badge__bypass').hidden = !running || !chat.account || chat.bypassOn === true || bypassOn();
   chat.badge.querySelector('.term-badge__frugal').hidden = !running || !chat.account || chat.frugal === true;
+  const voice = chat.badge.querySelector('.term-badge__voice');
+  const anthropic = voiceMode() === 'anthropic';
+  voice.hidden = !running || !chat.account || voiceMode() === 'off';
+  voice.textContent = anthropic ? 'Voice' : chat.voice === 'Listening' ? 'Stop dictation' : chat.voice ? `${chat.voice}…` : 'Dictate';
+  voice.disabled = !anthropic && Boolean(chat.voice) && chat.voice !== 'Listening';
+  voice.dataset.tip = anthropic ? 'Type /voice in the prompt: Claude Code records and transcribes on Anthropic servers' : chat.voice === 'Listening' ? 'Stop and type what was said into the prompt, unsent' : 'Record from the microphone and type the text into the prompt, unsent';
   chat.badge.querySelector('.term-badge__admin').hidden = !running || !chat.account || chat.adminOn === true || adminOn();
   chat.badge.classList.toggle('is-bypass', chat.bypassOn === true);
   chat.badge.classList.toggle('is-admin', chat.adminOn === true);
@@ -1890,6 +1982,10 @@ $('settings-open').onclick = async () => {
   $('settings-always-trust').checked = alwaysTrusts();
   $('settings-bypass').checked = bypassOn();
   $('settings-admin').checked = adminOn();
+  $('settings-voice').value = voiceMode();
+  $('settings-voice-model').value = voiceModel();
+  $('settings-voice-language').value = voiceLanguage();
+  showVoiceOptions();
   $('settings-roles').checked = await deck.getRoles();
   $('settings-frugal').checked = startsWithFrugal();
   $('settings-tooltips').value = tooltipPlacement();
@@ -1915,6 +2011,23 @@ $('settings-admin').onchange = async (event) => {
   for (const chat of chats.values()) drawBadge(chat);
 };
 $('settings-roles').onchange = (event) => deck.setRoles(event.target.checked);
+const VOICE_NOTICES = {
+  local: ['Use local dictation?', 'Audio stays on this computer. The first dictation downloads whisper.cpp (8.9 MB) and the model you choose. Names and technical terms often come out wrong, so the text lands in the prompt for you to edit and is never sent by itself. Windows dictation (Win+H) needs no download.', 'Use local dictation'],
+  anthropic: ['Use Anthropic voice?', 'The Voice button types /voice in the chat, and Claude Code sends your audio to Anthropic servers to transcribe it. It uses no tokens, needs a claude.ai account, and does not work with ANTHROPIC_API_KEY or ANTHROPIC_AUTH_TOKEN set. Windows dictation (Win+H) needs no download.', 'Use Anthropic voice'],
+};
+$('settings-voice').onchange = async (event) => {
+  const choice = event.target.value;
+  if (VOICE_NOTICES[choice]) {
+    event.target.value = voiceMode(); // Stays as it was until the notice is accepted.
+    if (!await askConfirm(...VOICE_NOTICES[choice])) return;
+    event.target.value = choice;
+  }
+  localStorage.setItem('voiceMode', event.target.value);
+  showVoiceOptions();
+  for (const chat of chats.values()) drawBadge(chat);
+};
+$('settings-voice-model').onchange = (event) => localStorage.setItem('voiceModel', event.target.value);
+$('settings-voice-language').onchange = (event) => localStorage.setItem('voiceLanguage', event.target.value);
 $('settings-frugal').onchange = (event) => localStorage.setItem('startWithFrugal', event.target.checked);
 $('settings-tooltips').onchange = (event) => localStorage.setItem('tooltipPlacement', event.target.value);
 $('settings-always-trust').onchange = (event) => {

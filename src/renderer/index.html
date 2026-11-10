@@ -186,6 +186,27 @@
     <label class="organize__check" data-tip="Applies to chats started after the change. Windows asks for permission for each chat"><input id="settings-admin" type="checkbox"> Run all chats as administrator</label>
     <label class="organize__check" data-tip="Applies to chats started after the change"><input id="settings-roles" type="checkbox"> Never delegate to the account a chat runs on</label>
     <label class="organize__check" data-tip="Applies to chats started after the change. Needs the Frugal plugin in the account"><input id="settings-frugal" type="checkbox"> Start new chats with Frugal</label>
+    <label class="organize__check" data-tip="Win+H starts Windows dictation in any app, with no download">Voice input
+      <select id="settings-voice" class="settings__select">
+        <option value="off">off</option>
+        <option value="local">local model (whisper.cpp)</option>
+        <option value="anthropic">Anthropic (/voice in Claude Code)</option>
+      </select>
+    </label>
+    <label class="organize__check settings__voice">Voice model
+      <select id="settings-voice-model" class="settings__select">
+        <option value="small">small, 488 MB, fastest</option>
+        <option value="medium">medium, 1.5 GB</option>
+        <option value="large-v3">large-v3, 3.1 GB, most accurate</option>
+      </select>
+    </label>
+    <label class="organize__check settings__voice">Dictation language
+      <select id="settings-voice-language" class="settings__select">
+        <option value="en">English</option>
+        <option value="es">Spanish</option>
+        <option value="auto">detect</option>
+      </select>
+    </label>
     <label class="organize__check">Show tooltips
       <select id="settings-tooltips" class="settings__select">
         <option value="above">above the pointer</option>

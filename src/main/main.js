@@ -14,6 +14,7 @@ const pty = require('node-pty');
 const { createStatusBridge, readUserStatusLine } = require('./statusline');
 const { validOptions, estimate, organize, estimateJoins, resolveJoins, estimateWorkspaces, resolveWorkspaces } = require('./organizer');
 const accounts = require('./accounts');
+const { createVoice } = require('./voice');
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const DROPPED_ENV = /^(CLAUDE.*|ELECTRON_RUN_AS_NODE|NO_COLOR|npm_.*|INIT_CWD)$/i;
@@ -377,6 +378,25 @@ ipcMain.on('link:open', (_, url) => {
 });
 
 let topicRun = null;
+
+let voice;
+const voiceFiles = () => (voice ??= createVoice(path.join(app.getPath('userData'), 'voice')));
+ipcMain.handle('voice:status', (_, model) => voiceFiles().status(model));
+ipcMain.handle('voice:prepare', async (_, model) => {
+  try {
+    await voiceFiles().prepare(model, (received, total) => send('voice:progress', received, total));
+    return { ok: true };
+  } catch (error) {
+    return { error: `The voice download failed: ${error.message}` };
+  }
+});
+ipcMain.handle('voice:transcribe', async (_, { audio, model, language } = {}) => {
+  try {
+    return { text: await voiceFiles().transcribe(audio, model, language) };
+  } catch (error) {
+    return { error: `Transcription failed: ${error.message}` };
+  }
+});
 
 ipcMain.handle('topics:estimate', (_, options) => (validOptions(options) ? estimate(index.sessions, options) : { sessions: 0, tokens: 0 }));
 
