@@ -26,6 +26,7 @@ contextBridge.exposeInMainWorld('deck', {
   login: (options) => ipcRenderer.invoke('accounts:login', options),
   logout: (id) => ipcRenderer.invoke('accounts:logout', { id }),
   removeAccount: (id) => ipcRenderer.invoke('accounts:remove', { id }),
+  setPrimary: (id) => ipcRenderer.invoke('accounts:set-primary', { id }),
   getAccounts: () => ipcRenderer.invoke('accounts:get'),
   getRoles: () => ipcRenderer.invoke('settings:roles'),
   setRoles: (on) => ipcRenderer.send('settings:set-roles', on),

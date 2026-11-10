@@ -339,16 +339,13 @@ function accountBlock(account, primary, chat, caps) {
   const age = account.limits?.at ? `Read ${spanText(Date.now() - account.limits.at)} ago` : '';
   head.append(accountName(account, [account.configDir, primary ? '' : age]));
   if (primary) head.append(node('span', 'tag tag--primary', 'Primary'));
-  else if (account.signedIn && chat?.account && chat.state === 'running') {
+  else if (account.signedIn) {
+    const running = chat?.account && chat.state === 'running';
     const button = node('button', 'btn', 'Use');
     button.type = 'button';
-    button.dataset.tip = 'Restart this chat on this account. New chats use it too';
-    button.onclick = () => useAccount(chat, account);
+    button.dataset.tip = running ? 'Restart this chat on this account. New chats use it too' : 'New chats start on this account';
+    button.onclick = async () => (running ? useAccount(chat, account) : report(await deck.setPrimary(account.id)));
     head.append(button);
-  } else if (account.signedIn) {
-    const hint = node('span', 'tag tag--switch', 'Can be primary');
-    hint.dataset.tip = 'This account can take over as primary. Use, from a running chat, restarts it on this account';
-    head.append(hint);
   }
   head.append(withMenu(block, account));
   block.append(head, ...loginLines(account));

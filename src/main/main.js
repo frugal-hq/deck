@@ -221,6 +221,13 @@ ipcMain.handle('chat:switch-account', async (_, { id, accountId, cols, rows, byp
   return started.error ? { ...started, stopped: true } : started;
 });
 
+// With no running chat to restart, Use only picks the account new chats start on.
+ipcMain.handle('accounts:set-primary', (_, { id }) => {
+  if (!accounts.claudeAccounts().some((account) => account.id === id)) return { error: 'Invalid request.' };
+  accounts.setPrimary(id);
+  publishAccounts();
+  return { ok: true };
+});
 ipcMain.handle('accounts:get', () => accounts.snapshot());
 ipcMain.handle('settings:roles', () => accounts.roles());
 ipcMain.on('settings:set-roles', (_, on) => {
