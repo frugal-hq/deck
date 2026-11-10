@@ -1848,6 +1848,7 @@ $('settings-open').onclick = async () => {
   $('settings-bypass').checked = bypassOn();
   $('settings-roles').checked = await deck.getRoles();
   $('settings-dialog').showModal();
+  $('settings-tooltips').value = tooltipPlacement();
 };
 $('settings-confirm-close').onchange = (event) => setConfirmsClose(event.target.checked);
 $('settings-bypass').onchange = async (event) => {
@@ -1861,6 +1862,7 @@ $('settings-roles').onchange = (event) => deck.setRoles(event.target.checked);
 $('settings-always-trust').onchange = (event) => {
   if (!event.target.checked) {
     localStorage.setItem('alwaysTrust', false);
+$('settings-tooltips').onchange = (event) => localStorage.setItem('tooltipPlacement', event.target.value);
     return;
   }
   event.target.checked = false; // Stays off until the warning is accepted.
@@ -1997,11 +1999,12 @@ const tooltip = $('tooltip');
 const TOOLTIP_DELAY = 400;
 const TOOLTIP_GAP = 6;
 const TOOLTIP_EDGE = 8;
-// frugal: the default Windows arrow; a larger system cursor can still reach a tip below it.
+// frugal: the default Windows arrow; a larger or custom cursor can still reach a tip placed below it.
 const TOOLTIP_CURSOR = 20;
 let tooltipTarget = null;
 let tooltipPointer = null;
 let tooltipTimer;
+const tooltipPlacement = () => localStorage.getItem('tooltipPlacement') ?? 'above';
 
 function openTooltip() {
   if (!tooltipTarget.isConnected) return;
@@ -2010,11 +2013,14 @@ function openTooltip() {
   tooltip.showPopover();
   const anchor = tooltipTarget.getBoundingClientRect();
   const { offsetWidth: width, offsetHeight: height } = tooltip;
-  // Clear of the cursor too, which hangs below its hot spot and would cover a tip placed only by the anchor.
-  const pointer = tooltipPointer ?? { top: anchor.bottom, bottom: anchor.top };
-  const below = Math.max(anchor.bottom, pointer.top + TOOLTIP_CURSOR) + TOOLTIP_GAP;
-  const above = Math.min(anchor.top, pointer.bottom) - height - TOOLTIP_GAP;
-  tooltip.style.top = `${below + height > innerHeight - TOOLTIP_EDGE ? above : below}px`;
+  // Clear of the cursor, which hangs below its hot spot: above it by default, or below with room for the arrow.
+  const pointer = tooltipPointer ?? anchor.top;
+  const above = Math.min(anchor.top, pointer) - height - TOOLTIP_GAP;
+  const below = Math.max(anchor.bottom, tooltipPointer == null ? 0 : pointer + TOOLTIP_CURSOR) + TOOLTIP_GAP;
+  const fitsAbove = above >= TOOLTIP_EDGE;
+  const fitsBelow = below + height <= innerHeight - TOOLTIP_EDGE;
+  const preferAbove = tooltipPlacement() === 'above';
+  tooltip.style.top = `${(preferAbove ? fitsAbove || !fitsBelow : !fitsBelow && fitsAbove) ? above : below}px`;
   tooltip.style.left = `${Math.min(Math.max(TOOLTIP_EDGE, anchor.left + (anchor.width - width) / 2), innerWidth - width - TOOLTIP_EDGE)}px`;
 }
 
@@ -2033,7 +2039,7 @@ function aimTooltip(target) {
 
 document.addEventListener('pointerover', (event) => aimTooltip(event.target.closest('[data-tip]')));
 document.addEventListener('pointermove', (event) => {
-  tooltipPointer = { top: event.clientY, bottom: event.clientY };
+  tooltipPointer = event.clientY;
 }, { passive: true });
 document.addEventListener('focusin', (event) => {
   if (!event.target.matches(':focus-visible')) return;
