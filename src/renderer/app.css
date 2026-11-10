@@ -240,6 +240,9 @@ body {
 .session[aria-current] { background: var(--color-accent-soft); color: var(--color-ink); }
 .session.is-attention { background: var(--color-highlight); box-shadow: inset 2px 0 0 var(--color-accent-soft); color: var(--color-ink); }
 
+#groups .session:has(> .session__status) { padding-inline-start: calc(var(--space-xl) - var(--space-md) - var(--space-xs)); }
+#groups .chat__history .session:has(> .session__status) { padding-inline-start: calc(var(--space-2xl) - var(--space-md) - var(--space-xs)); }
+
 .session__title { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 .stage { grid-column: 2; grid-row: 2; position: relative; min-height: 0; overflow: hidden; background: var(--color-paper-3); border-radius: var(--radius-card); }
