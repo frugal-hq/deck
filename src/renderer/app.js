@@ -1975,7 +1975,10 @@ const tooltip = $('tooltip');
 const TOOLTIP_DELAY = 400;
 const TOOLTIP_GAP = 6;
 const TOOLTIP_EDGE = 8;
+// frugal: the default Windows arrow; a larger system cursor can still reach a tip below it.
+const TOOLTIP_CURSOR = 20;
 let tooltipTarget = null;
+let tooltipPointer = null;
 let tooltipTimer;
 
 function openTooltip() {
@@ -1985,8 +1988,11 @@ function openTooltip() {
   tooltip.showPopover();
   const anchor = tooltipTarget.getBoundingClientRect();
   const { offsetWidth: width, offsetHeight: height } = tooltip;
-  const below = anchor.bottom + TOOLTIP_GAP;
-  tooltip.style.top = `${below + height > innerHeight - TOOLTIP_EDGE ? anchor.top - height - TOOLTIP_GAP : below}px`;
+  // Clear of the cursor too, which hangs below its hot spot and would cover a tip placed only by the anchor.
+  const pointer = tooltipPointer ?? { top: anchor.bottom, bottom: anchor.top };
+  const below = Math.max(anchor.bottom, pointer.top + TOOLTIP_CURSOR) + TOOLTIP_GAP;
+  const above = Math.min(anchor.top, pointer.bottom) - height - TOOLTIP_GAP;
+  tooltip.style.top = `${below + height > innerHeight - TOOLTIP_EDGE ? above : below}px`;
   tooltip.style.left = `${Math.min(Math.max(TOOLTIP_EDGE, anchor.left + (anchor.width - width) / 2), innerWidth - width - TOOLTIP_EDGE)}px`;
 }
 
@@ -2004,8 +2010,13 @@ function aimTooltip(target) {
 }
 
 document.addEventListener('pointerover', (event) => aimTooltip(event.target.closest('[data-tip]')));
+document.addEventListener('pointermove', (event) => {
+  tooltipPointer = { top: event.clientY, bottom: event.clientY };
+}, { passive: true });
 document.addEventListener('focusin', (event) => {
-  if (event.target.matches(':focus-visible')) aimTooltip(event.target.closest('[data-tip]'));
+  if (!event.target.matches(':focus-visible')) return;
+  tooltipPointer = null; // A keyboard tip sits by its anchor, wherever the mouse rests.
+  aimTooltip(event.target.closest('[data-tip]'));
 });
 document.addEventListener('focusout', () => aimTooltip(null));
 document.documentElement.addEventListener('pointerleave', () => aimTooltip(null));
