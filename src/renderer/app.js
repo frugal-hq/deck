@@ -254,7 +254,7 @@ function askRename(account) {
 function accountName(account, details) {
   const button = node('button', 'account__name', account.name);
   button.type = 'button';
-  button.dataset.tip = [...details, 'Click to rename'].filter(Boolean).join('\n');
+  button.dataset.tip = [account.email, ...details, 'Click to rename'].filter(Boolean).join('\n');
   button.onclick = () => askRename(account);
   return button;
 }
@@ -298,9 +298,9 @@ function withMenu(target, account) {
   return button;
 }
 
-// What the panel says under a name: the login or that there is none, and a warning when another account shares it.
+// What the panel says under a name: that there is no login, and a warning when another account shares it. The email is in the name's tooltip.
 function loginLines(account) {
-  const lines = [node('span', 'account__email', account.signedIn ? account.email ?? 'Signed in' : 'Signed out')];
+  const lines = account.signedIn ? [] : [node('span', 'account__email', 'Signed out')];
   if (account.sameLogin.length) lines.push(node('span', 'account__detail is-warn', `Same login as ${account.sameLogin.join(', ')}`));
   return lines;
 }
