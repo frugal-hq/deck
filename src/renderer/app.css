@@ -594,8 +594,7 @@ body { transition: opacity var(--dur-short) var(--ease-out); }
   cursor: pointer;
   transition: color var(--dur-micro) var(--ease-out);
 }
-.term-badge__bypass:hover, .term-badge__bypass.is-on { color: var(--color-cool); }
-.term-badge__bypass.is-on { text-decoration: underline; text-underline-offset: 2px; }
+.term-badge__bypass:hover { color: var(--color-cool); }
 .term-badge__dot {
   display: grid;
   place-items: center;

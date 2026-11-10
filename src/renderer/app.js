@@ -530,6 +530,7 @@ function makeBadge(chat) {
   bypass.onclick = () => toggleBypass(chat);
   badge.append(dot, info, bypass);
   dot.onclick = () => setInfoCollapsed(!infoCollapsed);
+  chat.badge = badge;
   chat.el.append(badge);
   drawBadge(chat);
 }
@@ -555,8 +556,8 @@ function drawBadge(chat) {
   const info = chat.badge.querySelector('.term-badge__info');
   info.textContent = text;
   info.dataset.tip = `${chat.bypassOn ? 'Bypass permissions is on: ' : ''}${text || 'Shows the model, effort, context and cost once the chat sends a status line'}`;
-  chat.badge.querySelector('.term-badge__bypass').hidden = !running || !chat.account;
-  chat.badge.querySelector('.term-badge__bypass').classList.toggle('is-on', chat.bypassOn === true);
+  // Once on, here or for every chat, there is nothing left to turn on: the dot's color and tip say it is on.
+  chat.badge.querySelector('.term-badge__bypass').hidden = !running || !chat.account || chat.bypassOn === true || bypassOn();
   chat.badge.classList.toggle('is-bypass', chat.bypassOn === true);
   chat.badge.classList.toggle('is-collapsed', infoCollapsed);
 }
@@ -1847,22 +1848,24 @@ $('settings-open').onclick = async () => {
   $('settings-always-trust').checked = alwaysTrusts();
   $('settings-bypass').checked = bypassOn();
   $('settings-roles').checked = await deck.getRoles();
-  $('settings-dialog').showModal();
   $('settings-tooltips').value = tooltipPlacement();
+  $('settings-dialog').showModal();
 };
 $('settings-confirm-close').onchange = (event) => setConfirmsClose(event.target.checked);
 $('settings-bypass').onchange = async (event) => {
-  if (!event.target.checked) return setBypass(false);
-  event.target.checked = false; // Stays off until the warning is accepted.
-  if (!await askBypass()) return;
-  setBypass(true);
-  event.target.checked = true;
+  if (event.target.checked) {
+    event.target.checked = false; // Stays off until the warning is accepted.
+    if (!await askBypass()) return;
+    event.target.checked = true;
+  }
+  setBypass(event.target.checked);
+  for (const chat of chats.values()) drawBadge(chat);
 };
 $('settings-roles').onchange = (event) => deck.setRoles(event.target.checked);
+$('settings-tooltips').onchange = (event) => localStorage.setItem('tooltipPlacement', event.target.value);
 $('settings-always-trust').onchange = (event) => {
   if (!event.target.checked) {
     localStorage.setItem('alwaysTrust', false);
-$('settings-tooltips').onchange = (event) => localStorage.setItem('tooltipPlacement', event.target.value);
     return;
   }
   event.target.checked = false; // Stays off until the warning is accepted.
@@ -2001,10 +2004,10 @@ const TOOLTIP_GAP = 6;
 const TOOLTIP_EDGE = 8;
 // frugal: the default Windows arrow; a larger or custom cursor can still reach a tip placed below it.
 const TOOLTIP_CURSOR = 20;
+const tooltipPlacement = () => localStorage.getItem('tooltipPlacement') ?? 'above';
 let tooltipTarget = null;
 let tooltipPointer = null;
 let tooltipTimer;
-const tooltipPlacement = () => localStorage.getItem('tooltipPlacement') ?? 'above';
 
 function openTooltip() {
   if (!tooltipTarget.isConnected) return;
