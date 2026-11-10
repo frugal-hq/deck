@@ -516,7 +516,7 @@ function makeBadge(chat) {
 }
 
 async function toggleBypass(chat) {
-  if (!chat.bypassOn && !confirm(BYPASS_WARNING)) return;
+  if (!chat.bypassOn && !await askBypass()) return;
   const previous = chat.bypassOn;
   chat.bypassOn = !previous;
   drawBadge(chat);
@@ -659,8 +659,8 @@ async function openChat({ id, cwd, name, resume, group, login, accountId, handof
   chat.rows = term.rows;
   term.onData((data) => {
     chat.inputAt = Date.now();
-    deck.input(id, data);
     if (data === '\x07') holdOutput(chat); // Ctrl+G: Claude Code clears the screen before it opens $VISUAL.
+    deck.input(id, data);
   });
   term.onTitleChange((title) => onTitle(chat, title));
   term.attachCustomKeyEventHandler((event) => handleTerminalKey(chat, event));
@@ -770,8 +770,20 @@ const setConfirmsClose = (on) => localStorage.setItem('confirmClose', on);
 
 const bypassOn = () => localStorage.getItem('bypassPermissions') === 'true';
 const setBypass = (on) => localStorage.setItem('bypassPermissions', on);
-const BYPASS_WARNING = 'Claude will run every tool, including shell commands and file edits, without asking for permission. Turn on Bypass permissions?';
+// The Deck's own confirm(): native dialogs never show in this window.
+function askConfirm(title, message, ok) {
+  const dialog = $('confirm-dialog');
+  $('confirm-title').textContent = title;
+  $('confirm-message').textContent = message;
+  $('confirm-ok').textContent = ok;
+  dialog.returnValue = ''; // Esc and the backdrop leave the last value in place.
+  dialog.showModal();
+  return new Promise((resolve) => {
+    dialog.addEventListener('close', () => resolve(dialog.returnValue === 'ok'), { once: true });
+  });
+}
 
+const askBypass = () => askConfirm('Bypass permissions?', 'Claude will run every tool, including shell commands and file edits, without asking for permission.', 'Bypass permissions');
 // One flag per chat: what it was launched with, or what its badge toggle asked for.
 const chatBypass = (chat, handoff) => bypassOn() || (handoff ? Boolean(chats.get(handoff.from)?.bypassOn) : Boolean(chat?.bypassOn));
 
@@ -908,6 +920,7 @@ function resetStatus(chat) {
   chat.busy = false;
   chat.editPanel?.remove();
   chat.editPanel = null;
+  releaseOutput(chat);
   setStatus(chat, null);
 }
 
@@ -930,7 +943,6 @@ stage.addEventListener('dragover', (event) => {
   if (chats.get(activeId)?.state !== 'running' || !event.dataTransfer.types.includes('Files')) return;
   event.preventDefault();
   event.dataTransfer.dropEffect = 'copy';
-  releaseOutput(chat);
 });
 
 stage.addEventListener('drop', (event) => {
@@ -1810,10 +1822,10 @@ $('settings-open').onclick = async () => {
   $('settings-dialog').showModal();
 };
 $('settings-confirm-close').onchange = (event) => setConfirmsClose(event.target.checked);
-$('settings-bypass').onchange = (event) => {
+$('settings-bypass').onchange = async (event) => {
   if (!event.target.checked) return setBypass(false);
   event.target.checked = false; // Stays off until the warning is accepted.
-  if (!confirm(BYPASS_WARNING)) return;
+  if (!await askBypass()) return;
   setBypass(true);
   event.target.checked = true;
 };

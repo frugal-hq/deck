@@ -189,6 +189,16 @@
     </div>
   </form>
 </dialog>
+<dialog id="confirm-dialog" class="organize" closedby="any" aria-labelledby="confirm-title" aria-describedby="confirm-message">
+  <form method="dialog">
+    <h2 id="confirm-title" class="organize__title"></h2>
+    <p id="confirm-message" class="sort__warning" role="note"></p>
+    <div class="organize__actions">
+      <button class="btn" type="submit" value="cancel" autofocus>Cancel</button>
+      <button id="confirm-ok" class="btn btn--primary" type="submit" value="ok"></button>
+    </div>
+  </form>
+</dialog>
 <dialog id="trust-dialog" class="organize" closedby="any" aria-labelledby="trust-title" aria-describedby="trust-warning">
   <form method="dialog">
     <h2 id="trust-title" class="organize__title">Always trust folders?</h2>
