@@ -134,7 +134,9 @@ function launchChat({ id, folder, cols, rows, resume, group, account, file, prom
   try {
     if (account.id !== accounts.MAIN) accounts.ensureOnboarded(account.configDir);
     if (resume) accounts.shareTranscript(file, account.configDir);
-    const args = [resume ? '--resume' : '--session-id', id, '--settings', JSON.stringify({ statusLine: status.statusLine })];
+    // The Deck's own warning took the consent, so Claude Code's disclaimer is skipped (it reads this key from flag settings too).
+    const settings = { statusLine: status.statusLine, ...(bypass === true && { skipDangerousModePermissionPrompt: true }) };
+    const args = [resume ? '--resume' : '--session-id', id, '--settings', JSON.stringify(settings)];
     if (prompt) args.push(prompt);
     if (bypass === true) args.push('--dangerously-skip-permissions');
     const child = pty.spawn(claude, args, { name: 'xterm-256color', cols, rows, cwd: folder, env });
