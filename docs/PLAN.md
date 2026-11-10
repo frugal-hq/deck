@@ -194,7 +194,7 @@ Not verified: multiple voices, other microphones, and `/voice` inside the PTY, w
 - "Start with Frugal" option, per session or global.
 
 **Changes in frugal-plugin**
-- `ready()` in `plugin/accounts/server.py:111`: exclude the account whose `config_dir` matches the session's `CLAUDE_CONFIG_DIR`.
+- `ready()` in `accounts/server.py`: exclude the account whose `config_dir` matches the session's `CLAUDE_CONFIG_DIR`.
 - Omit the handoff `Usage:` line inside Deck.
 - Test a `Read first:` field with a maximum of 3 paths.
 - That repository has uncommitted local changes, including `server.py`: review them before editing.
@@ -203,12 +203,16 @@ Not verified: multiple voices, other microphones, and `/voice` inside the PTY, w
 - TUI with another account, full `projects` junction, plugins loaded in a session, and per-account trust (Test 3).
 - That each account's percentages are its organization's (Test 7).
 
+**Status (2026-11-10): done.** "Start new chats with Frugal" is a setting, and the chat badge's Frugal button types `/frugal:frugal` for one chat; both skip accounts without the plugin. The handoff template has a `Read first:` line with up to 3 paths; whether new sessions read them is untested. Transcripts are shared per file instead of a `projects` junction, and per-account limits and trust were confirmed on 2026-11-09.
+
 ## Phase 4: permissions and administrator
 
 - Global and per-session setting, off by default. Changing it in a live session restarts it with `--resume`.
 - Bypass: `--dangerously-skip-permissions`.
 - Administrator: elevated helper process, with UAC on each elevated session.
 - Pending from Phase 0: elevated `claude` TUI and its resize in xterm.js (Test 4).
+
+**Status (2026-11-10): built, not yet run with UAC.** `src/main/elevated.js` relaunches the Deck with `--elevated-helper`, and each end proves it holds the secret (HMAC over the other's nonce) before a PTY starts. `test/elevated.check.js` covers the handshake and an impostor pipe server; the relay itself only runs in an elevated shell. Bypass and administrator together are confirmed on every start. Still untested: the elevated `claude` TUI, its resize, and Ctrl+G from an elevated chat.
 
 **Warning texts (draft)**
 
@@ -229,6 +233,8 @@ Not verified: multiple voices, other microphones, and `/voice` inside the PTY, w
 - Text is pasted at the cursor, editable, and not sent by itself.
 - Pending from Phase 0: `/voice` in the PTY, other voices, and other microphones (Test 8).
 
+**Status (2026-11-10): local dictation built.** whisper.cpp b5454 and the chosen model download to `userData/voice` after a size prompt, each checked against its size and SHA-256. The recording is trimmed by an energy gate on both ends, not Silero VAD. `src/main/voice.js` transcribed the Test 8 sample with `small`; the microphone path in the window is untested. Anthropic is a voice choice whose button types `/voice` for the user to send, since it is untested in the PTY. Dictation defaults to English. Parakeet stays later.
+
 ## Phase 6: Git, chains, and archive
 
 - Collapsible right panel: `git diff` and `git worktree list`, without tokens.
@@ -245,6 +251,7 @@ Not verified: multiple voices, other microphones, and `/voice` inside the PTY, w
 - README with screenshots and terms notice: individual use, no credential brokering.
 - Public repository on GitHub, `frugal-hq/deck`, MIT license.
 - No code signing, SmartScreen will show a warning.
+- The installer must put the Deck, and so its elevated helper, where non-admins cannot write (Test 4). Until then an administrator chat runs code from a user-writable folder.
 
 **The Phase 6 archive copy is mandatory before release**, because Claude Code deletes CLI transcripts after 30 days by default.
 
