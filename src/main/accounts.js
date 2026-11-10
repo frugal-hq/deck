@@ -151,10 +151,11 @@ function codexLimits(home = process.env.CODEX_HOME || path.join(os.homedir(), '.
 }
 
 function snapshot(now = Date.now()) {
-  const { readings = {}, labels = {} } = load();
+  const settings = load();
+  const { readings = {}, labels = {} } = settings;
   const list = claudeAccounts().map((account) => {
     const signedIn = isSignedIn(account);
-    return { ...account, name: labels[account.id] ?? account.name, signedIn, email: signedIn ? signedInEmail(account) : null, limits: readings[account.id] ?? null };
+    return { ...account, name: labels[account.id] ?? account.name, signedIn, email: signedIn ? signedInEmail(account) : null, limits: readings[account.id] ?? null, ...(account.id === MAIN ? {} : { caps: accountCaps(account.id, settings) }) };
   });
   // Two folders on one login share its limits, so switching between them gains nothing.
   for (const account of list) account.sameLogin = account.email ? list.filter((other) => other !== account && other.email?.toLowerCase() === account.email.toLowerCase()).map((other) => other.name) : [];
@@ -175,12 +176,80 @@ function renameAccount(id, name) {
   return true;
 }
 
+const DEFAULT_CAP = 100;
+
+function capOf(value) {
+  return Number.isFinite(value) && value >= 0 && value <= 100 ? value : DEFAULT_CAP;
+}
+
+function accountCaps(id, settings = load()) {
+  const stored = settings.caps?.[id];
+  return { fiveHour: capOf(stored?.fiveHour), sevenDay: capOf(stored?.sevenDay) };
+}
+
+function resetUnix(resetsAt, now) {
+  if (resetsAt == null || resetsAt === '') return Math.floor(now / 1000) + 3600;
+  if (typeof resetsAt === 'number' && Number.isFinite(resetsAt)) return Math.floor(resetsAt > 1e12 ? resetsAt / 1000 : resetsAt);
+  const parsed = Date.parse(resetsAt);
+  return Number.isFinite(parsed) ? Math.floor(parsed / 1000) : Math.floor(now / 1000) + 3600;
+}
+
+function capExhaustedUntil(reading, caps, previous, now = Date.now()) {
+  const windows = [
+    [reading?.fiveHour, capOf(caps?.fiveHour)],
+    [reading?.sevenDay, capOf(caps?.sevenDay)],
+  ];
+  let until = null;
+  for (const [window, cap] of windows) {
+    if (window == null || typeof window.pct !== 'number' || !Number.isFinite(window.pct) || window.pct < cap) continue;
+    const resets = resetUnix(window.resetsAt, now);
+    if (until == null || resets > until) until = resets;
+  }
+  if (until == null) return null;
+  const existing = typeof previous === 'number' && Number.isFinite(previous) ? previous : 0;
+  return until > existing ? until : null;
+}
+
+// frugal: caps only apply as fresh readings arrive while the Deck runs.
+function applyAccountCaps(id, reading, now = Date.now()) {
+  if (id === MAIN) return;
+  const settings = load();
+  const limits = reading ?? settings.readings?.[id];
+  if (!limits) return;
+  try {
+    withFrugalLock(frugalFile, () => {
+      const data = readStrict(frugalFile, null);
+      const entry = (data?.accounts ?? []).find((item) => item?.kind === 'claude' && item.id === id);
+      if (!entry) return;
+      const until = capExhaustedUntil(limits, accountCaps(id, settings), entry.exhausted_until, now);
+      if (until == null) return;
+      entry.exhausted_until = until;
+      writeJson(frugalFile, data);
+    });
+  } catch {
+    // An unreadable accounts.json is left alone.
+  }
+}
+
+function setAccountCap(id, field, value) {
+  if (id === MAIN || (field !== 'fiveHour' && field !== 'sevenDay')) return false;
+  if (!claudeAccounts().some((account) => account.id === id)) return false;
+  if (!Number.isFinite(Number(value))) return false;
+  const n = Math.min(100, Math.max(0, Math.round(Number(value) / 5) * 5));
+  const settings = load();
+  save({ ...settings, caps: { ...settings.caps, [id]: { ...accountCaps(id, settings), [field]: n } } });
+  applyAccountCaps(id);
+  return true;
+}
+
 function saveReading(id, { fiveHour, sevenDay }, at = Date.now()) {
   if (!fiveHour && !sevenDay) return false;
   const settings = load();
   const previous = settings.readings?.[id] ?? {};
-  settings.readings = { ...settings.readings, [id]: { fiveHour: fiveHour ?? previous.fiveHour ?? null, sevenDay: sevenDay ?? previous.sevenDay ?? null, at } };
+  const reading = { fiveHour: fiveHour ?? previous.fiveHour ?? null, sevenDay: sevenDay ?? previous.sevenDay ?? null, at };
+  settings.readings = { ...settings.readings, [id]: reading };
   save(settings);
+  applyAccountCaps(id, reading, at);
   return true;
 }
 
@@ -292,11 +361,12 @@ function removeAccount(id) {
     removeTree(account.configDir);
   }
   leaveFrugalPool(id);
-  const { accounts: list = [], labels = {}, readings = {}, ...settings } = load();
+  const { accounts: list = [], labels = {}, readings = {}, caps = {}, ...settings } = load();
   delete labels[id];
   delete readings[id];
+  delete caps[id];
   if (settings.primary === id) delete settings.primary;
-  save({ ...settings, accounts: list.filter((entry) => entry.id !== id), labels, readings });
+  save({ ...settings, accounts: list.filter((entry) => entry.id !== id), labels, readings, caps });
   emails.delete(id);
   return true;
 }
@@ -354,7 +424,7 @@ async function refreshReadings(claude, env, openAccounts) {
 
 const clearEmails = () => emails.clear();
 
-module.exports = { MAIN, claudeAccounts, primary, setPrimary, roles, setRoles, snapshot, renameAccount, saveReading, prepareAccount, ensureOnboarded, finishAccount, removeAccount, clearEmails, shareTranscript, parseUsage, refreshReadings, codexLimits };
+module.exports = { MAIN, claudeAccounts, primary, setPrimary, roles, setRoles, snapshot, renameAccount, saveReading, setAccountCap, capExhaustedUntil, prepareAccount, ensureOnboarded, finishAccount, removeAccount, clearEmails, shareTranscript, parseUsage, refreshReadings, codexLimits };
 
 if (require.main === module) {
   const assert = require('assert');

@@ -30,6 +30,7 @@ contextBridge.exposeInMainWorld('deck', {
   getRoles: () => ipcRenderer.invoke('settings:roles'),
   setRoles: (on) => ipcRenderer.send('settings:set-roles', on),
   renameAccount: (id, name) => ipcRenderer.invoke('accounts:rename', { id, name }),
+  setAccountCap: (id, field, value) => ipcRenderer.invoke('accounts:set-cap', { id, field, value }),
   refreshAccounts: () => ipcRenderer.invoke('accounts:refresh'),
   onAccounts: (callback) => ipcRenderer.on('accounts:changed', (_, state) => callback(state)),
   getSessions: () => ipcRenderer.invoke('sessions:get'),

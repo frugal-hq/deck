@@ -317,8 +317,23 @@ function limitRow(label, limit) {
   return row;
 }
 
+function capControl(account, field, label) {
+  const value = account.caps?.[field] ?? 100;
+  const row = node('label', 'cap');
+  const slider = Object.assign(node('input'), { type: 'range', min: 0, max: 100, step: 5, value });
+  slider.setAttribute('aria-label', label);
+  const number = Object.assign(node('input'), { type: 'number', min: 0, max: 100, step: 5, value });
+  number.setAttribute('aria-label', label);
+  slider.oninput = () => { number.value = slider.value; };
+  number.oninput = () => { slider.value = number.value; };
+  slider.onchange = () => { number.value = slider.value; deck.setAccountCap(account.id, field, slider.value); };
+  number.onchange = () => { slider.value = number.value; deck.setAccountCap(account.id, field, number.value); };
+  row.append(node('span', 'cap__label', label), slider, number);
+  return row;
+}
+
 // frugal: blocks are redrawn on every status line, so keyboard focus on Use is lost when a reading arrives.
-function accountBlock(account, primary, chat) {
+function accountBlock(account, primary, chat, caps) {
   const block = node('section', 'account');
   const head = node('div', 'account__head');
   const age = account.limits?.at ? `Read ${spanText(Date.now() - account.limits.at)} ago` : '';
@@ -339,6 +354,7 @@ function accountBlock(account, primary, chat) {
   block.append(head, ...loginLines(account));
   const limits = accountLimits(account).filter(([, limit]) => limit);
   block.append(...(limits.length ? limits.map(([label, limit]) => limitRow(label, limit)) : [node('span', 'account__detail', 'No reading yet')]));
+  if (caps && account.id !== 'main') block.append(capControl(account, 'fiveHour', 'Max 5h %'), capControl(account, 'sevenDay', 'Max weekly %'));
   return block;
 }
 
@@ -368,7 +384,7 @@ function drawAccounts() {
     return;
   }
   const rest = accountState.accounts.filter((account) => account !== current);
-  $('accounts').replaceChildren(...(current ? [accountBlock(current, true, chat)] : []), ...(rest.length ? [node('h3', 'accounts__heading', 'Other Claude accounts')] : []), ...rest.map((account) => accountBlock(account, false, chat)));
+  $('accounts').replaceChildren(...(current ? [accountBlock(current, true, chat, true)] : []), ...(rest.length ? [node('h3', 'accounts__heading', 'Other Claude accounts')] : []), ...rest.map((account) => accountBlock(account, false, chat, true)));
   drawOthers();
 }
 

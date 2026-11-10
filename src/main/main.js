@@ -231,6 +231,10 @@ ipcMain.handle('accounts:rename', (_, { id, name }) => {
   if (accounts.renameAccount(id, name)) publishAccounts();
 });
 
+ipcMain.handle('accounts:set-cap', (_, { id, field, value }) => {
+  if (accounts.setAccountCap(id, field, value)) publishAccounts();
+});
+
 const findAccount = (id) => accounts.claudeAccounts().find((account) => account.id === id);
 const isOpen = (accountId) => [...chatInfo.values()].some((info) => info.account === accountId);
 const IN_USE = 'Close the chats on this account first, then open Accounts in the top bar.';
