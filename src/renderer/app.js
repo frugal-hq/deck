@@ -888,6 +888,102 @@ let currentIndex;
 const NO_TOPIC = 'No topic';
 let sessionView = localStorage.getItem('sessionView') === 'topics' ? 'topics' : 'folders';
 
+function readGroupOrder() {
+  try {
+    const order = JSON.parse(localStorage.getItem('groupOrder'));
+    return Array.isArray(order) ? order : [];
+  } catch {
+    return [];
+  }
+}
+
+function saveGroupOrder(order) {
+  try {
+    localStorage.setItem('groupOrder', JSON.stringify(order));
+  } catch {
+    // Ordering stays for this session only.
+  }
+}
+
+function orderGroups(tree) {
+  const keys = [
+    ...tree.workspaces.map((workspace) => `workspace:${workspace.name}`),
+    ...tree.workspaces.flatMap((workspace) => workspace.groups.map(([key]) => key)),
+    ...tree.groups.map(([key]) => key),
+  ];
+  const saved = readGroupOrder();
+  const missing = keys.filter((key, index) => !saved.includes(key) && keys.indexOf(key) === index);
+  if (missing.length) {
+    saved.unshift(...missing);
+    saveGroupOrder(saved);
+  }
+  const rank = new Map(saved.map((key, index) => [key, index]));
+  const compare = (a, b) => (a === NO_TOPIC) - (b === NO_TOPIC) || rank.get(a) - rank.get(b);
+  tree.groups.sort(([a], [b]) => compare(a, b));
+  tree.workspaces.sort((a, b) => compare(`workspace:${a.name}`, `workspace:${b.name}`));
+  for (const workspace of tree.workspaces) workspace.groups.sort(([a], [b]) => compare(a, b));
+}
+
+let draggedGroup = null;
+let dropTarget = null;
+
+function clearDropTarget() {
+  dropTarget?.classList.remove('is-drop-before', 'is-drop-after');
+  dropTarget = null;
+}
+
+function moveGroup(from, to, before) {
+  if (from === to) return;
+  const order = readGroupOrder().filter((key) => key !== from);
+  const index = order.indexOf(to);
+  if (index === -1) return;
+  order.splice(before ? index : index + 1, 0, from);
+  saveGroupOrder(order);
+  drawnSignature = '';
+  renderSessions(currentIndex);
+}
+
+function configureGroupDrag(summary, group, key) {
+  summary.draggable = true;
+  summary.addEventListener('dragstart', (event) => {
+    draggedGroup = { key, group };
+    event.dataTransfer.effectAllowed = 'move';
+    event.dataTransfer.setData('text/plain', key);
+    group.classList.add('is-dragging');
+  });
+  summary.addEventListener('dragend', () => {
+    group.classList.remove('is-dragging');
+    clearDropTarget();
+    draggedGroup = null;
+  });
+  summary.addEventListener('dragover', (event) => {
+    if (!draggedGroup || draggedGroup.group === group || draggedGroup.group.parentElement !== group.parentElement) return;
+    event.preventDefault();
+    if (dropTarget !== summary) {
+      clearDropTarget();
+      dropTarget = summary;
+    }
+    const { top, height } = group.getBoundingClientRect();
+    const before = event.clientY < top + height / 2;
+    summary.classList.toggle('is-drop-before', before);
+    summary.classList.toggle('is-drop-after', !before);
+    summary.dataset.dropBefore = String(before);
+  });
+  summary.addEventListener('dragleave', (event) => {
+    if (event.relatedTarget && group.contains(event.relatedTarget)) return;
+    if (dropTarget === summary) clearDropTarget();
+  });
+  summary.addEventListener('drop', (event) => {
+    if (!draggedGroup || dropTarget !== summary) return;
+    event.preventDefault();
+    const before = summary.dataset.dropBefore === 'true';
+    const { key: from } = draggedGroup;
+    clearDropTarget();
+    draggedGroup = null;
+    moveGroup(from, key, before);
+  });
+}
+
 function sessionTip(session) {
   const started = session.startedAt && session.startedAt !== session.lastAt ? `Started ${resetExact.format(new Date(session.startedAt))}` : null;
   const prompts = session.turns ? `${session.turns} prompt${session.turns === 1 ? '' : 's'}` : null;
@@ -1084,6 +1180,7 @@ function groupElement(key, chats, byTopic) {
     addMenu(summary, label, () => groupMenu(key, label, byTopic));
   }
   group.append(summary, ...chats.map((chat) => chatElement(chat, byTopic ? addFolderLabel : null)));
+  configureGroupDrag(summary, group, key);
   return group;
 }
 
@@ -1111,6 +1208,7 @@ function workspaceElement(workspace, byTopic) {
     ...workspace.groups.map(([groupKey, list]) => groupElement(groupKey, list, byTopic)),
     ...workspace.chats.map((chat) => chatElement(chat, byTopic ? addFolderLabel : null)),
   );
+  configureGroupDrag(summary, group, key);
   return group;
 }
 
@@ -1172,7 +1270,7 @@ function renderSessions(index) {
   const visible = space ? allChats.filter((c) => (c.space ?? index.workspaces?.[keyOf(c)]) === space) : allChats;
   const pinned = visible.filter((c) => c.pinned);
   const tree = buildTree(visible.filter((c) => !c.pinned), keyOf, index.workspaces ?? {});
-  tree.groups.sort(([a], [b]) => (a === NO_TOPIC) - (b === NO_TOPIC));
+  orderGroups(tree);
   if (!groupsDrawn && (tree.workspaces.length || tree.groups.length) && !index.indexing) {
     groupsDrawn = true;
     openGroups.add(tree.workspaces.length ? `workspace:${tree.workspaces[0].name}` : tree.groups[0][0]);

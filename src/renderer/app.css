@@ -213,6 +213,9 @@ body {
 .group__name .group__new:hover { background: var(--color-paper-3); filter: none; }
 .group__name:hover .group__new, .group__name:focus-within .group__new { width: 24px; margin-inline-start: 0; opacity: 1; }
 .group--workspace::details-content { padding-inline-start: var(--space-sm); }
+.group.is-dragging > .group__name { opacity: 0.5; }
+.group__name.is-drop-before { box-shadow: inset 0 2px 0 var(--color-accent); }
+.group__name.is-drop-after { box-shadow: inset 0 -2px 0 var(--color-accent); }
 
 .session {
   display: flex;
