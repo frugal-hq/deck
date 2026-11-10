@@ -11,7 +11,7 @@ const { validOptions, estimate, organize, estimateJoins, resolveJoins, estimateW
 const accounts = require('./accounts');
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
-const DROPPED_ENV = /^(CLAUDE.*|ELECTRON_RUN_AS_NODE|NO_COLOR)$/i;
+const DROPPED_ENV = /^(CLAUDE.*|ELECTRON_RUN_AS_NODE|NO_COLOR|npm_.*|INIT_CWD)$/i;
 const NO_CLAUDE = 'claude.exe not found in PATH. Install Claude Code and reopen Deck.';
 // The TUI animates while it works, so a quiet terminal means Claude is idle.
 const IDLE_MS = 2000;
