@@ -359,8 +359,14 @@ function drawOthers() {
 
 function drawAccounts() {
   const chat = chats.get(activeId);
+  const top = $('usage').classList.contains('usage--top');
   const currentId = chat?.account ?? accountState.primary;
   const current = accountState.accounts.find((account) => account.id === currentId);
+  if (!top) {
+    const main = accountState.accounts.find((account) => account.id === accountState.primary) ?? current;
+    $('accounts').replaceChildren(...(main ? [accountBlock(main, true, chat)] : []));
+    return;
+  }
   const rest = accountState.accounts.filter((account) => account !== current);
   $('accounts').replaceChildren(...(current ? [accountBlock(current, true, chat)] : []), ...(rest.length ? [node('h3', 'accounts__heading', 'Other Claude accounts')] : []), ...rest.map((account) => accountBlock(account, false, chat)));
   drawOthers();
@@ -1608,8 +1614,18 @@ askDialog.addEventListener('close', () => {
   if (askReturn && !$('usage').matches(':popover-open')) $('usage').showPopover();
 });
 // The panel opens under the bar button or over the footer one, whichever was clicked.
-$('accounts-open').addEventListener('click', () => $('usage').classList.add('usage--top'));
-$('usage-open').addEventListener('click', () => $('usage').classList.remove('usage--top'));
+$('accounts-open').addEventListener('click', () => {
+  $('usage').classList.add('usage--top');
+  drawAccounts();
+});
+$('usage-open').addEventListener('click', () => {
+  $('usage').classList.remove('usage--top');
+  drawAccounts();
+});
+$('usage-all').addEventListener('click', () => {
+  $('usage').hidePopover();
+  $('accounts-open').click();
+});
 
 // The native datalist popup cannot be styled, so these fields share the app's list.
 function attachCombo(input, names) {

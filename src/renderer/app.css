@@ -315,6 +315,10 @@ body {
 #accounts-open { anchor-name: --accounts; }
 .usage.usage--top { position-anchor: --accounts; top: anchor(bottom); bottom: auto; margin: var(--space-2xs) 0 0; }
 #usage-open.is-warn, #usage-open.is-warn:hover { color: var(--color-accent); }
+.usage:not(.usage--top) #account-add, .usage:not(.usage--top) .usage__others { display: none; }
+.usage.usage--top #usage-all { display: none; }
+.usage__all { justify-self: start; padding: 0; border: 0; background: none; box-shadow: none; color: var(--color-muted); font: inherit; font-size: var(--text-xs); cursor: pointer; }
+.usage__all:hover { color: var(--color-ink); }
 .accounts { display: grid; gap: var(--space-sm); }
 .accounts > * + *, .usage__others, .usage > .meter:not([hidden]) ~ .accounts { padding-block-start: var(--space-sm); border-block-start: var(--rule-hair) solid var(--color-rule); }
 .account__head { display: flex; align-items: center; justify-content: space-between; gap: var(--space-xs); }
