@@ -584,6 +584,7 @@ body { transition: opacity var(--dur-short) var(--ease-out); }
 .term-badge.is-collapsed { padding: var(--space-3xs) var(--space-md); background: none; box-shadow: none; }
 .term-badge.is-collapsed .term-badge__info, .term-badge.is-collapsed .term-badge__action { display: none; }
 .term-badge.is-bypass .term-badge__dot { color: var(--color-cool); }
+.term-badge.is-admin .term-badge__dot { color: var(--color-bad); }
 .term-badge__action {
   flex: none;
   border: 0;

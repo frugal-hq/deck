@@ -409,7 +409,10 @@ function drawAccounts() {
 
 async function useAccount(chat, account) {
   $('usage').hidePopover();
-  const result = await deck.switchAccount({ id: chat.id, accountId: account.id, cols: chat.cols, rows: chat.rows, bypass: chatBypass(chat, null) });
+  const bypass = chatBypass(chat, null);
+  const admin = await confirmAdmin(bypass, chatAdmin(chat, null));
+  const result = await deck.switchAccount({ id: chat.id, accountId: account.id, cols: chat.cols, rows: chat.rows, bypass, admin });
+  if (!result.error) chat.adminOn = admin;
   chat.error = result.error ?? null;
   if (result.stopped) chat.state = 'error';
   if (result.account) chat.account = result.account;
@@ -537,7 +540,11 @@ function makeBadge(chat) {
   bypass.type = 'button';
   bypass.dataset.tip = 'Restart this chat with Claude Code running every tool without asking';
   bypass.onclick = () => toggleBypass(chat);
-  badge.append(dot, info, frugal, bypass);
+  const admin = node('button', 'term-badge__action term-badge__admin', 'Administrator');
+  admin.type = 'button';
+  admin.dataset.tip = 'Restart this chat with Windows administrator rights';
+  admin.onclick = () => toggleAdmin(chat);
+  badge.append(dot, info, frugal, bypass, admin);
   dot.onclick = () => setInfoCollapsed(!infoCollapsed);
   chat.badge = badge;
   chat.el.append(badge);
@@ -546,12 +553,25 @@ function makeBadge(chat) {
 
 async function toggleBypass(chat) {
   if (!chat.bypassOn && !await askBypass()) return;
+  if (!chat.bypassOn && chat.adminOn && !await askBoth()) return;
   const previous = chat.bypassOn;
   chat.bypassOn = !previous;
   drawBadge(chat);
-  const result = await deck.switchAccount({ id: chat.id, accountId: chat.account, cols: chat.cols, rows: chat.rows, bypass: chat.bypassOn });
+  const result = await deck.switchAccount({ id: chat.id, accountId: chat.account, cols: chat.cols, rows: chat.rows, bypass: chat.bypassOn, admin: chat.adminOn });
   if (result.error) {
     chat.bypassOn = previous;
+    drawBadge(chat);
+    report(result);
+  }
+}
+
+async function toggleAdmin(chat) {
+  if (!await askAdmin() || (chat.bypassOn && !await askBoth())) return;
+  chat.adminOn = true;
+  drawBadge(chat);
+  const result = await deck.switchAccount({ id: chat.id, accountId: chat.account, cols: chat.cols, rows: chat.rows, bypass: chat.bypassOn, admin: true });
+  if (result.error) {
+    chat.adminOn = false;
     drawBadge(chat);
     report(result);
   }
@@ -564,11 +584,13 @@ function drawBadge(chat) {
   const text = parts.join(' · ');
   const info = chat.badge.querySelector('.term-badge__info');
   info.textContent = text;
-  info.dataset.tip = `${chat.bypassOn ? 'Bypass permissions is on: ' : ''}${text || 'Shows the model, effort, context and cost once the chat sends a status line'}`;
+  info.dataset.tip = `${chat.adminOn ? 'Running as administrator: ' : ''}${chat.bypassOn ? 'Bypass permissions is on: ' : ''}${text || 'Shows the model, effort, context and cost once the chat sends a status line'}`;
   // Once on, here or for every chat, there is nothing left to turn on: the dot's color and tip say it is on.
   chat.badge.querySelector('.term-badge__bypass').hidden = !running || !chat.account || chat.bypassOn === true || bypassOn();
   chat.badge.querySelector('.term-badge__frugal').hidden = !running || !chat.account || chat.frugal === true;
+  chat.badge.querySelector('.term-badge__admin').hidden = !running || !chat.account || chat.adminOn === true || adminOn();
   chat.badge.classList.toggle('is-bypass', chat.bypassOn === true);
+  chat.badge.classList.toggle('is-admin', chat.adminOn === true);
   chat.badge.classList.toggle('is-collapsed', infoCollapsed);
 }
 
@@ -699,9 +721,10 @@ async function openChat({ id, cwd, name, resume, group, login, accountId, handof
 
   const size = { id, cols: term.cols, rows: term.rows };
   chat.bypassOn = !login && chatBypass(chat, handoff);
+  chat.adminOn = !login && await confirmAdmin(chat.bypassOn, chatAdmin(chat, handoff));
   const result = await (login ? deck.login({ ...size, name: login, accountId })
-    : handoff ? deck.continueIn({ ...size, ...handoff, bypass: chat.bypassOn })
-    : deck.start({ ...size, cwd, resume, group, bypass: chat.bypassOn, frugal: !resume && startsWithFrugal() }));
+    : handoff ? deck.continueIn({ ...size, ...handoff, bypass: chat.bypassOn, admin: chat.adminOn })
+    : deck.start({ ...size, cwd, resume, group, bypass: chat.bypassOn, admin: chat.adminOn, frugal: !resume && startsWithFrugal() }));
   if (result.error) {
     chat.state = 'error';
     chat.error = result.error;
@@ -804,6 +827,7 @@ const setConfirmsClose = (on) => localStorage.setItem('confirmClose', on);
 const bypassOn = () => localStorage.getItem('bypassPermissions') === 'true';
 const startsWithFrugal = () => localStorage.getItem('startWithFrugal') === 'true';
 const setBypass = (on) => localStorage.setItem('bypassPermissions', on);
+const adminOn = () => localStorage.getItem('runAsAdmin') === 'true';
 // The Deck's own confirm(): native dialogs never show in this window.
 function askConfirm(title, message, ok) {
   const dialog = $('confirm-dialog');
@@ -818,6 +842,10 @@ function askConfirm(title, message, ok) {
 }
 
 const askBypass = () => askConfirm('Bypass permissions?', 'Claude will run every tool, including shell commands and file edits, without asking for permission.', 'Bypass permissions');
+const askAdmin = () => askConfirm('Run as administrator?', "Claude will have Windows administrator permissions and can change system configuration, services, programs, and any user's files. Those changes can leave the machine unstable or insecure. Windows asks for permission for each administrator chat.", 'Run as administrator');
+const askBoth = () => askConfirm('Administrator with bypass permissions?', 'Claude can make system-wide changes with no confirmation. A single error can damage Windows or your data irreversibly. This is asked every time such a chat starts.', 'Start anyway');
+// Bypass and administrator together are confirmed on every start; declined, the chat starts without administrator rights.
+const confirmAdmin = async (bypass, admin) => admin && (!bypass || await askBoth());
 
 // Replaces xterm's confirm() for OSC 8 links; only web links leave the Deck.
 const linkHandler = {
@@ -828,6 +856,7 @@ const linkHandler = {
 };
 // One flag per chat: what it was launched with, or what its badge toggle asked for.
 const chatBypass = (chat, handoff) => bypassOn() || (handoff ? Boolean(chats.get(handoff.from)?.bypassOn) : Boolean(chat?.bypassOn));
+const chatAdmin = (chat, handoff) => adminOn() || (handoff ? Boolean(chats.get(handoff.from)?.adminOn) : Boolean(chat?.adminOn));
 
 function askToClose(chat) {
   const dialog = $('close-dialog');
@@ -1860,6 +1889,7 @@ $('settings-open').onclick = async () => {
   $('settings-confirm-close').checked = confirmsClose();
   $('settings-always-trust').checked = alwaysTrusts();
   $('settings-bypass').checked = bypassOn();
+  $('settings-admin').checked = adminOn();
   $('settings-roles').checked = await deck.getRoles();
   $('settings-frugal').checked = startsWithFrugal();
   $('settings-tooltips').value = tooltipPlacement();
@@ -1873,6 +1903,15 @@ $('settings-bypass').onchange = async (event) => {
     event.target.checked = true;
   }
   setBypass(event.target.checked);
+  for (const chat of chats.values()) drawBadge(chat);
+};
+$('settings-admin').onchange = async (event) => {
+  if (event.target.checked) {
+    event.target.checked = false; // Stays off until the warning is accepted.
+    if (!await askAdmin()) return;
+    event.target.checked = true;
+  }
+  localStorage.setItem('runAsAdmin', event.target.checked);
   for (const chat of chats.values()) drawBadge(chat);
 };
 $('settings-roles').onchange = (event) => deck.setRoles(event.target.checked);

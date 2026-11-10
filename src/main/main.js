@@ -1,3 +1,8 @@
+const elevated = require('./elevated');
+
+// An administrator chat starts a UAC-elevated copy of the Deck with this flag, and that copy only hosts the PTY.
+if (process.argv.includes(elevated.HELPER_FLAG)) return elevated.runHelper(process.argv);
+
 const { app, BrowserWindow, Menu, dialog, ipcMain, shell } = require('electron');
 const { execFile, execFileSync } = require('child_process');
 const fs = require('fs');
@@ -18,6 +23,8 @@ const IDLE_MS = 2000;
 
 const chats = new Map();
 const chatInfo = new Map();
+// Administrator chats wait on the UAC prompt; closing one there must not leave it running unseen.
+const launching = new Map();
 const pickedFolders = new Set();
 let index = { indexing: true, sessions: [], error: null, ambiguous: [], modelJoins: 0, workspaces: {}, modelWorkspaces: 0 };
 let win;
@@ -125,7 +132,10 @@ ipcMain.handle('sessions:get', sidebarIndex);
 ipcMain.handle('sessions:all', () => index.sessions);
 ipcMain.on('sessions:organize', (_, id, organization) => indexer?.postMessage({ id, organization }));
 
-function launchChat({ id, folder, cols, rows, resume, group, account, file, prompt, bypass }) {
+// Dev runs Electron with the app folder; a packaged build is the app itself.
+const helperCommand = () => ({ exe: process.execPath, args: app.isPackaged ? [] : [app.getAppPath()] });
+
+async function launchChat({ id, folder, cols, rows, resume, group, account, file, prompt, bypass, admin }) {
   const claude = findClaude();
   if (!claude) return { error: NO_CLAUDE };
   const env = accountEnv(account);
@@ -142,9 +152,25 @@ function launchChat({ id, folder, cols, rows, resume, group, account, file, prom
     const args = [resume ? '--resume' : '--session-id', id, '--settings', JSON.stringify(settings)];
     if (prompt) args.push(prompt);
     if (bypass === true) args.push('--dangerously-skip-permissions');
-    const child = pty.spawn(claude, args, { name: 'xterm-256color', cols, rows, cwd: folder, env });
+    let child;
+    if (admin === true) {
+      const launch = { cancelled: false };
+      launching.set(id, launch);
+      try {
+        child = await elevated.spawnElevated(claude, args, { cols, rows, cwd: folder, env }, helperCommand());
+      } finally {
+        launching.delete(id);
+      }
+      if (launch.cancelled) {
+        child.kill();
+        statusBridge.release(status.token);
+        return { error: 'The chat was closed before it started.' };
+      }
+    } else {
+      child = pty.spawn(claude, args, { name: 'xterm-256color', cols, rows, cwd: folder, env });
+    }
     chats.set(id, child);
-    chatInfo.set(id, { account: account.id, folder, lastOutput: Date.now(), bypass: bypass === true });
+    chatInfo.set(id, { account: account.id, folder, lastOutput: Date.now(), bypass: bypass === true, admin: admin === true });
     if (typeof group === 'string' && group) indexer?.postMessage({ setGroup: { id, name: group } });
     child.onData((data) => {
       if (chats.get(id) !== child) return;
@@ -168,30 +194,30 @@ function launchChat({ id, folder, cols, rows, resume, group, account, file, prom
   }
 }
 
-ipcMain.handle('chat:start', (_, { id, cwd, cols, rows, resume, group, bypass, frugal }) => {
+ipcMain.handle('chat:start', async (_, { id, cwd, cols, rows, resume, group, bypass, admin, frugal }) => {
   const session = resume ? index.sessions.find((s) => s.id === id) : null;
   // A resumed chat always runs in the folder the index recorded, never one sent by the renderer.
   const folder = resume ? session?.cwd : (pickedFolders.has(cwd) || index.sessions.some((s) => s.cwd === cwd)) && cwd;
-  if (!UUID.test(id) || chats.has(id) || !folder || !isSize(cols) || !isSize(rows)) {
+  if (!UUID.test(id) || chats.has(id) || launching.has(id) || !folder || !isSize(cols) || !isSize(rows)) {
     return { error: 'Invalid request.' };
   }
   const account = accounts.primary();
   const withFrugal = !resume && frugal === true && accounts.hasFrugal(account);
-  const started = launchChat({ id, folder, cols, rows, resume, group, account, file: session?.file, bypass: bypass === true, prompt: withFrugal ? '/frugal:frugal' : undefined });
+  const started = await launchChat({ id, folder, cols, rows, resume, group, account, file: session?.file, bypass: bypass === true, admin: admin === true, prompt: withFrugal ? '/frugal:frugal' : undefined });
   return started.ok ? { ...started, frugal: withFrugal } : started;
 });
 
 // A handoff continues in the folder its chat runs in, or the one the index recorded once it exits, on the account it ran on.
 // frugal: the chat's bypass flag rides along, so a continued session keeps the permissions it already ran with.
-ipcMain.handle('chat:continue', (_, { id, from, accountId, prompt, cols, rows, bypass }) => {
+ipcMain.handle('chat:continue', (_, { id, from, accountId, prompt, cols, rows, bypass, admin }) => {
   const folder = chatInfo.get(from)?.folder ?? index.sessions.find((s) => s.id === from)?.cwd;
   const account = accounts.claudeAccounts().find((candidate) => candidate.id === accountId);
   const text = typeof prompt === 'string' ? prompt.trim() : '';
   // A leading dash would be read as a flag of claude.exe.
-  if (!UUID.test(id) || chats.has(id) || !folder || !account || !text || text.startsWith('-') || !isSize(cols) || !isSize(rows)) {
+  if (!UUID.test(id) || chats.has(id) || launching.has(id) || !folder || !account || !text || text.startsWith('-') || !isSize(cols) || !isSize(rows)) {
     return { error: 'Invalid request.' };
   }
-  return launchChat({ id, folder, cols, rows, account, prompt: text, bypass: bypass === true });
+  return launchChat({ id, folder, cols, rows, account, prompt: text, bypass: bypass === true, admin: admin === true });
 });
 
 // Every live end_turn comes as an entry without a prompt; a handoff block adds one with it.
@@ -203,21 +229,23 @@ function offerHandoffs(handoffs) {
   }
 }
 
-ipcMain.handle('chat:switch-account', async (_, { id, accountId, cols, rows, bypass }) => {
+ipcMain.handle('chat:switch-account', async (_, { id, accountId, cols, rows, bypass, admin }) => {
   const child = chats.get(id);
   const info = chatInfo.get(id);
   const account = accounts.claudeAccounts().find((candidate) => candidate.id === accountId);
   if (!child || !info || !account || !isSize(cols) || !isSize(rows)) return { error: 'Invalid request.' };
   const session = index.sessions.find((s) => s.id === id);
   const bypassOn = bypass === true;
-  // A bypass change restarts the chat, so it is subject to the same idle guard as an account change.
-  if (session && (info.account !== account.id || bypassOn !== Boolean(info.bypass)) && Date.now() - info.lastOutput < IDLE_MS) return { error: 'Claude is working. Switch accounts when it is idle.' };
-  // A bypass toggle restarts on the chat's own account, which is no reason to make it the primary.
-  if (info.account !== account.id || bypassOn === Boolean(info.bypass)) {
+  const adminOn = admin === true;
+  const flagsChanged = bypassOn !== Boolean(info.bypass) || adminOn !== Boolean(info.admin);
+  // A bypass or administrator change restarts the chat, so it is subject to the same idle guard as an account change.
+  if (session && (info.account !== account.id || flagsChanged) && Date.now() - info.lastOutput < IDLE_MS) return { error: 'Claude is working. Switch accounts when it is idle.' };
+  // A bypass or administrator toggle restarts on the chat's own account, which is no reason to make it the primary.
+  if (info.account !== account.id || !flagsChanged) {
     accounts.setPrimary(account.id);
     publishAccounts();
   }
-  if (info.account === account.id && bypassOn === Boolean(info.bypass)) return { ok: true, account: account.id };
+  if (info.account === account.id && !flagsChanged) return { ok: true, account: account.id };
   if (!session) return { error: 'Send a first message before switching this chat. New chats will use this account.' };
   const exited = new Promise((resolve) => child.onExit(resolve));
   chats.delete(id);
@@ -225,7 +253,7 @@ ipcMain.handle('chat:switch-account', async (_, { id, accountId, cols, rows, byp
   child.kill();
   await exited;
   send('chat:restarting', id);
-  const started = launchChat({ id, folder: session.cwd, cols, rows, resume: true, account, file: session.file, bypass: bypassOn });
+  const started = await launchChat({ id, folder: session.cwd, cols, rows, resume: true, account, file: session.file, bypass: bypassOn, admin: adminOn });
   return started.error ? { ...started, stopped: true } : started;
 });
 
@@ -337,7 +365,10 @@ ipcMain.on('chat:input', (_, id, data) => chats.get(id)?.write(data));
 ipcMain.on('chat:resize', (_, id, cols, rows) => {
   if (isSize(cols) && isSize(rows)) chats.get(id)?.resize(cols, rows);
 });
-ipcMain.on('chat:kill', (_, id) => chats.get(id)?.kill());
+ipcMain.on('chat:kill', (_, id) => {
+  if (launching.has(id)) launching.get(id).cancelled = true;
+  chats.get(id)?.kill();
+});
 // A save writes the text back before the response ends; a cancel (text === null) ends it without writing.
 ipcMain.on('chat:save-edit', (_, id, text) => endEdit(id, text));
 // The renderer is not trusted with the protocol: only web links reach the OS.
