@@ -542,6 +542,21 @@ function drawBadge(chat) {
   chat.badge.classList.toggle('is-collapsed', infoCollapsed);
 }
 
+// Output is held while the prompt editor is open, so the terminal keeps its last screen under the panel.
+// A Ctrl+G that opens no editor releases it after a moment.
+function holdOutput(chat, timeout = 1500) {
+  chat.held ??= [];
+  clearTimeout(chat.holdTimer);
+  chat.holdTimer = timeout ? setTimeout(() => releaseOutput(chat), timeout) : null;
+}
+
+function releaseOutput(chat) {
+  clearTimeout(chat.holdTimer);
+  const held = chat.held;
+  chat.held = null;
+  if (held?.length) chat.term.write(held.join(''), () => answerTrustPrompt(chat));
+}
+
 // Claude Code opens $VISUAL on a Ctrl+G prompt file; the Deck shows it here instead of an OS editor.
 // The response stays open until Save ends it, so the panel replaces itself when Claude opens again.
 function promptPanel(chat, text) {
@@ -564,6 +579,7 @@ function promptPanel(chat, text) {
     deck.saveEdit(chat.id, text);
     if (chat.editPanel === form) chat.editPanel = null;
     form.remove();
+    releaseOutput(chat);
     if (chat.id === activeId) chat.term.focus();
   };
   cancel.onclick = () => done(null);
@@ -590,6 +606,7 @@ deck.onEdit((id, text) => {
   // A chat the renderer does not hold can never be saved or cancelled by the user.
   const chat = chats.get(id);
   if (!chat) return deck.saveEdit(id, null);
+  holdOutput(chat, 0);
   promptPanel(chat, text);
 });
 
@@ -643,6 +660,7 @@ async function openChat({ id, cwd, name, resume, group, login, accountId, handof
   term.onData((data) => {
     chat.inputAt = Date.now();
     deck.input(id, data);
+    if (data === '\x07') holdOutput(chat); // Ctrl+G: Claude Code clears the screen before it opens $VISUAL.
   });
   term.onTitleChange((title) => onTitle(chat, title));
   term.attachCustomKeyEventHandler((event) => handleTerminalKey(chat, event));
@@ -791,7 +809,8 @@ async function closeChat(id) {
 deck.onData((id, data) => {
   const chat = chats.get(id);
   if (!chat) return;
-  chat.term.write(data, () => answerTrustPrompt(chat));
+  if (chat.held) chat.held.push(data);
+  else chat.term.write(data, () => answerTrustPrompt(chat));
   if (chat.state === 'starting') {
     chat.state = 'running';
     render();
@@ -911,6 +930,7 @@ stage.addEventListener('dragover', (event) => {
   if (chats.get(activeId)?.state !== 'running' || !event.dataTransfer.types.includes('Files')) return;
   event.preventDefault();
   event.dataTransfer.dropEffect = 'copy';
+  releaseOutput(chat);
 });
 
 stage.addEventListener('drop', (event) => {
