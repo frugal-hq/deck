@@ -639,6 +639,7 @@ async function openChat({ id, cwd, name, resume, group, login, accountId, handof
   stage.append(el);
   const term = new Terminal({
     scrollback: 10000,
+    linkHandler,
     fontFamily: token('--font-term'),
     fontSize: 14,
     theme: {
@@ -784,6 +785,14 @@ function askConfirm(title, message, ok) {
 }
 
 const askBypass = () => askConfirm('Bypass permissions?', 'Claude will run every tool, including shell commands and file edits, without asking for permission.', 'Bypass permissions');
+
+// Replaces xterm's confirm() for OSC 8 links; only web links leave the Deck.
+const linkHandler = {
+  allowNonHttpProtocols: false,
+  activate: async (_, uri) => {
+    if (await askConfirm('Open this link?', uri, 'Open link')) deck.openLink(uri);
+  },
+};
 // One flag per chat: what it was launched with, or what its badge toggle asked for.
 const chatBypass = (chat, handoff) => bypassOn() || (handoff ? Boolean(chats.get(handoff.from)?.bypassOn) : Boolean(chat?.bypassOn));
 

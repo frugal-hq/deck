@@ -1,4 +1,4 @@
-const { app, BrowserWindow, Menu, dialog, ipcMain } = require('electron');
+const { app, BrowserWindow, Menu, dialog, ipcMain, shell } = require('electron');
 const { execFile, execFileSync } = require('child_process');
 const fs = require('fs');
 const os = require('os');
@@ -325,6 +325,10 @@ ipcMain.on('chat:resize', (_, id, cols, rows) => {
 ipcMain.on('chat:kill', (_, id) => chats.get(id)?.kill());
 // A save writes the text back before the response ends; a cancel (text === null) ends it without writing.
 ipcMain.on('chat:save-edit', (_, id, text) => endEdit(id, text));
+// The renderer is not trusted with the protocol: only web links reach the OS.
+ipcMain.on('link:open', (_, url) => {
+  if (typeof url === 'string' && /^https?:\/\//i.test(url)) shell.openExternal(url);
+});
 
 let topicRun = null;
 

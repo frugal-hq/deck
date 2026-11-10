@@ -51,6 +51,7 @@ contextBridge.exposeInMainWorld('deck', {
   runJoins: (options) => ipcRenderer.invoke('joins:run', options),
   clearJoins: () => ipcRenderer.send('joins:clear'),
   onSessions: (callback) => ipcRenderer.on('sessions:changed', (_, index) => callback(index)),
+  openLink: (url) => ipcRenderer.send('link:open', url),
   windowAction: (action) => ipcRenderer.send('window:action', action),
   onMaximized: (callback) => ipcRenderer.on('window:maximized', (_, maximized) => callback(maximized)),
 });
