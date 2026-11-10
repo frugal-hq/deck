@@ -71,7 +71,10 @@ function send(channel, ...args) {
   if (win && !win.isDestroyed()) win.webContents.send(channel, ...args);
 }
 
-const publishAccounts = () => send('accounts:changed', accounts.snapshot());
+const publishAccounts = () => {
+  accounts.applyCodexCaps();
+  send('accounts:changed', accounts.snapshot());
+};
 
 const statusBridge = createStatusBridge((id, meters) => {
   const info = chatInfo.get(id);

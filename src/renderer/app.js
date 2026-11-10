@@ -332,6 +332,26 @@ function capControl(account, field, label) {
   return row;
 }
 
+const CAPS_NOTE = {
+  'not-delegate': 'Frugal does not delegate to this account, so no limit applies.',
+  'no-reading': 'This account reports no usage, so no limit can apply.',
+};
+// Kept across redraws: the panel redraws on every status line.
+const openCaps = new Set();
+
+// The delegate limits fold into one line, so they do not crowd the panel.
+function capsBlock(account) {
+  const box = node('details', 'caps');
+  box.open = openCaps.has(account.id);
+  box.ontoggle = () => (box.open ? openCaps.add(account.id) : openCaps.delete(account.id));
+  const applies = account.capsApply === 'ok';
+  const value = applies ? `5h ${account.caps.fiveHour}% · weekly ${account.caps.sevenDay}%` : 'Not available';
+  const summary = node('summary', 'caps__summary');
+  summary.append(node('span', '', 'Delegate limits'), node('span', 'caps__value', value));
+  box.append(summary, ...(applies ? [capControl(account, 'fiveHour', 'Max 5h %'), capControl(account, 'sevenDay', 'Max weekly %')] : [node('span', 'account__detail', CAPS_NOTE[account.capsApply])]));
+  return box;
+}
+
 // frugal: blocks are redrawn on every status line, so keyboard focus on Use is lost when a reading arrives.
 function accountBlock(account, primary, chat, caps) {
   const block = node('section', 'account');
@@ -351,7 +371,7 @@ function accountBlock(account, primary, chat, caps) {
   block.append(head, ...loginLines(account));
   const limits = accountLimits(account).filter(([, limit]) => limit);
   block.append(...(limits.length ? limits.map(([label, limit]) => limitRow(label, limit)) : [node('span', 'account__detail', 'No reading yet')]));
-  if (caps && account.id !== 'main') block.append(capControl(account, 'fiveHour', 'Max 5h %'), capControl(account, 'sevenDay', 'Max weekly %'));
+  if (caps) block.append(capsBlock(account));
   return block;
 }
 
@@ -362,10 +382,12 @@ function drawOthers() {
   $('others-count').textContent = `${others.length - limited} ready${limited ? `, ${limited} at limit` : ''}`;
   $('others').replaceChildren(...others.flatMap((other) => {
     const state = other.exhaustedUntil ? `Until ${resetDay.format(other.exhaustedUntil * 1000)}` : 'Ready';
+    const limits = accountLimits(other).filter(([, limit]) => limit).map(([label, limit]) => limitRow(label, limit));
     return [
       accountName(other, [[other.kind, other.model].filter(Boolean).join(': ')]),
       node('span', '', other.usedToday ? `${state} · ${other.usedToday} today` : state),
-      ...accountLimits(other).filter(([, limit]) => limit).map(([label, limit]) => limitRow(label, limit)),
+      ...(limits.length ? limits : [node('span', 'others__none', 'No usage reading')]),
+      capsBlock(other),
     ];
   }));
 }

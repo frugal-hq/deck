@@ -155,7 +155,7 @@ function snapshot(now = Date.now()) {
   const { readings = {}, labels = {} } = settings;
   const list = claudeAccounts().map((account) => {
     const signedIn = isSignedIn(account);
-    return { ...account, name: labels[account.id] ?? account.name, signedIn, email: signedIn ? signedInEmail(account) : null, limits: readings[account.id] ?? null, ...(account.id === MAIN ? {} : { caps: accountCaps(account.id, settings) }) };
+    return { ...account, name: labels[account.id] ?? account.name, signedIn, email: signedIn ? signedInEmail(account) : null, limits: readings[account.id] ?? null, caps: accountCaps(account.id, settings), capsApply: capsApply(account.id) };
   });
   // Two folders on one login share its limits, so switching between them gains nothing.
   for (const account of list) account.sameLogin = account.email ? list.filter((other) => other !== account && other.email?.toLowerCase() === account.email.toLowerCase()).map((other) => other.name) : [];
@@ -164,7 +164,7 @@ function snapshot(now = Date.now()) {
     accounts: list,
     others: frugalAccounts()
       .filter((entry) => entry.kind !== 'claude' && entry.enabled !== false && typeof entry.id === 'string')
-      .map((entry) => ({ id: entry.id, name: labels[entry.id] ?? entry.id.replace(/^oc-/, ''), kind: String(entry.kind ?? ''), model: typeof entry.model === 'string' ? entry.model : null, exhaustedUntil: entry.exhausted_until > now / 1000 ? entry.exhausted_until : null, usedToday: entry.day === localDay(now) && typeof entry.used === 'number' ? entry.used : 0, limits: entry.kind === 'codex' ? codexLimits() : null })),
+      .map((entry) => ({ id: entry.id, name: labels[entry.id] ?? entry.id.replace(/^oc-/, ''), kind: String(entry.kind ?? ''), model: typeof entry.model === 'string' ? entry.model : null, exhaustedUntil: entry.exhausted_until > now / 1000 ? entry.exhausted_until : null, usedToday: entry.day === localDay(now) && typeof entry.used === 'number' ? entry.used : 0, limits: entry.kind === 'codex' ? codexLimits() : null, caps: accountCaps(entry.id, settings), capsApply: capsApply(entry.id) })),
   };
 }
 
@@ -186,6 +186,15 @@ function accountCaps(id, settings = load()) {
   const stored = settings.caps?.[id];
   return { fiveHour: capOf(stored?.fiveHour), sevenDay: capOf(stored?.sevenDay) };
 }
+
+// Why a cap can or cannot act: Frugal only marks its own delegates, and only from a usage reading.
+function capsApply(id) {
+  const entry = frugalAccounts().find((item) => item.id === id);
+  if (!entry) return 'not-delegate';
+  return entry.kind === 'claude' || entry.kind === 'codex' ? 'ok' : 'no-reading';
+}
+
+const capReading = (entry, settings) => (entry.kind === 'codex' ? codexLimits() : settings.readings?.[entry.id]);
 
 function resetUnix(resetsAt, now) {
   if (resetsAt == null || resetsAt === '') return Math.floor(now / 1000) + 3600;
@@ -212,15 +221,14 @@ function capExhaustedUntil(reading, caps, previous, now = Date.now()) {
 
 // frugal: caps only apply as fresh readings arrive while the Deck runs.
 function applyAccountCaps(id, reading, now = Date.now()) {
-  if (id === MAIN) return;
+  if (capsApply(id) !== 'ok') return;
   const settings = load();
-  const limits = reading ?? settings.readings?.[id];
-  if (!limits) return;
   try {
     withFrugalLock(frugalFile, () => {
       const data = readStrict(frugalFile, null);
-      const entry = (data?.accounts ?? []).find((item) => item?.kind === 'claude' && item.id === id);
-      if (!entry) return;
+      const entry = (data?.accounts ?? []).find((item) => item?.id === id);
+      const limits = entry && (reading ?? capReading(entry, settings));
+      if (!limits) return;
       const until = capExhaustedUntil(limits, accountCaps(id, settings), entry.exhausted_until, now);
       if (until == null) return;
       entry.exhausted_until = until;
@@ -231,9 +239,11 @@ function applyAccountCaps(id, reading, now = Date.now()) {
   }
 }
 
+// Codex readings come from its own session files, so its caps are checked each time the panel refreshes.
+const applyCodexCaps = () => frugalAccounts().filter((entry) => entry.kind === 'codex').forEach((entry) => applyAccountCaps(entry.id));
+
 function setAccountCap(id, field, value) {
-  if (id === MAIN || (field !== 'fiveHour' && field !== 'sevenDay')) return false;
-  if (!claudeAccounts().some((account) => account.id === id)) return false;
+  if ((field !== 'fiveHour' && field !== 'sevenDay') || capsApply(id) !== 'ok') return false;
   if (!Number.isFinite(Number(value))) return false;
   const n = Math.min(100, Math.max(0, Math.round(Number(value) / 5) * 5));
   const settings = load();
@@ -424,7 +434,7 @@ async function refreshReadings(claude, env, openAccounts) {
 
 const clearEmails = () => emails.clear();
 
-module.exports = { MAIN, claudeAccounts, primary, setPrimary, roles, setRoles, snapshot, renameAccount, saveReading, setAccountCap, capExhaustedUntil, prepareAccount, ensureOnboarded, finishAccount, removeAccount, clearEmails, shareTranscript, parseUsage, refreshReadings, codexLimits };
+module.exports = { MAIN, claudeAccounts, primary, setPrimary, roles, setRoles, snapshot, renameAccount, saveReading, setAccountCap, applyCodexCaps, capExhaustedUntil, prepareAccount, ensureOnboarded, finishAccount, removeAccount, clearEmails, shareTranscript, parseUsage, refreshReadings, codexLimits };
 
 if (require.main === module) {
   const assert = require('assert');
