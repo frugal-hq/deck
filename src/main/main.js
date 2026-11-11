@@ -3,7 +3,7 @@ const elevated = require('./elevated');
 // An administrator chat starts a UAC-elevated copy of the Deck with this flag, and that copy only hosts the PTY.
 if (process.argv.includes(elevated.HELPER_FLAG)) return elevated.runHelper(process.argv);
 
-const { app, BrowserWindow, Menu, dialog, ipcMain, nativeImage, shell } = require('electron');
+const { app, BrowserWindow, Menu, dialog, ipcMain, nativeImage, screen, shell } = require('electron');
 const { execFile, execFileSync } = require('child_process');
 const fs = require('fs');
 const os = require('os');
@@ -489,9 +489,21 @@ ipcMain.on('window:attention', (_, count) => {
 function createWindow() {
   // The default menu would take Ctrl+R and Ctrl+W away from the TUI.
   Menu.setApplicationMenu(null);
+  let saved = null;
+  try {
+    saved = JSON.parse(fs.readFileSync(path.join(app.getPath('userData'), 'window.json'), 'utf8'));
+  } catch {
+    // Missing or malformed file: use the defaults.
+  }
+  if (!saved || [saved.x, saved.y, saved.width, saved.height].some((n) => !Number.isInteger(n)) || saved.width < 400 || saved.height < 300) saved = null;
+  // Keep x/y only when the saved rect still intersects a display's workArea; otherwise recenter.
+  if (saved && !screen.getAllDisplays().some(({ workArea }) => saved.x < workArea.x + workArea.width && saved.x + saved.width > workArea.x && saved.y < workArea.y + workArea.height && saved.y + saved.height > workArea.y)) {
+    saved = { width: saved.width, height: saved.height, maximized: saved.maximized };
+  }
   win = new BrowserWindow({
-    width: 1200,
-    height: 800,
+    width: saved?.width ?? 1200,
+    height: saved?.height ?? 800,
+    ...(saved?.x !== undefined && { x: saved.x, y: saved.y }),
     frame: false,
     backgroundColor: '#14171b',
     icon: path.join(__dirname, '../../assets/icon.ico'),
@@ -508,6 +520,13 @@ function createWindow() {
   win.on('maximize', () => send('window:maximized', true));
   win.on('unmaximize', () => send('window:maximized', false));
   win.on('focus', () => win.flashFrame(false));
+  win.on('close', () => {
+    // A failed save must never block closing.
+    try {
+      fs.writeFileSync(path.join(app.getPath('userData'), 'window.json'), JSON.stringify({ ...win.getNormalBounds(), maximized: win.isMaximized() }));
+    } catch {}
+  });
+  if (saved?.maximized) win.maximize();
   win.loadFile(path.join(__dirname, '../renderer/index.html'));
 }
 
