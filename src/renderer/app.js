@@ -270,11 +270,21 @@ const VOICE_RATE = 16000;
 const voiceMode = () => localStorage.getItem('voiceMode') ?? 'off';
 const voiceModel = () => localStorage.getItem('voiceModel') ?? 'medium';
 const voiceLanguage = () => localStorage.getItem('voiceLanguage') ?? 'en';
+const voiceDevice = () => localStorage.getItem('voiceDevice');
 const decimal = new Intl.NumberFormat('en-US', { maximumFractionDigits: 1 });
 const sizeText = (bytes) => (bytes >= 1e9 ? `${decimal.format(bytes / 1e9)} GB` : `${decimal.format(bytes / 1e6)} MB`);
 const voiceError = (text) => ask({ title: 'Voice', text, action: 'OK', run: () => {} });
 let recording = null;
 let downloadingFor = null;
+// Whether the chosen local model is on disk; null until checked or when local dictation is off.
+let voiceReady = null;
+
+async function checkVoice() {
+  deck.setVoiceMode(voiceMode());
+  const status = voiceMode() === 'local' ? await deck.voiceStatus(voiceModel()) : null;
+  voiceReady = status ? !status.error && status.needs === 0 : null;
+  for (const chat of chats.values()) drawBadge(chat);
+}
 
 function setVoice(chat, label) {
   chat.voice = label;
@@ -285,14 +295,59 @@ deck.onVoiceProgress((received, total) => {
   if (downloadingFor) setVoice(downloadingFor, `Downloading ${Math.floor((received / total) * 100)}%`);
 });
 
-async function toggleDictation(chat) {
-  // frugal: /voice is untested inside the PTY (Test 8), so it is typed for the user to send.
-  if (voiceMode() === 'anthropic') {
-    chat.term.paste('/voice');
-    return chat.term.focus();
+// Claude Code records while Space is held, and a terminal sends a held key as repeated presses (checked with 2.1.322).
+const HOLD_MS = 30;
+
+// Opens the microphone and draws its live spectrum on the chat's voice control while it records.
+async function openMic(chat) {
+  const stream = await navigator.mediaDevices.getUserMedia({ audio: { deviceId: voiceDevice() ? { exact: voiceDevice() } : undefined, channelCount: 1, echoCancellation: true, noiseSuppression: true } });
+  const context = new AudioContext({ sampleRate: VOICE_RATE });
+  const source = context.createMediaStreamSource(stream);
+  // The live spectrum: 128 bins of 62.5 Hz at 16 kHz, and speech lives in the first 64 (up to 4 kHz).
+  const analyser = context.createAnalyser();
+  analyser.fftSize = 256;
+  analyser.smoothingTimeConstant = 0.6;
+  source.connect(analyser);
+  const bins = new Uint8Array(analyser.frequencyBinCount);
+  const wave = chat.mic.querySelector('.term-mic__wave');
+  const paint = wave.getContext('2d');
+  const BARS = 16;
+  const meter = () => {
+    paint.clearRect(0, 0, wave.width, wave.height);
+    if (recording?.context !== context) return;
+    analyser.getByteFrequencyData(bins);
+    paint.fillStyle = getComputedStyle(wave).color;
+    const slot = wave.width / BARS;
+    for (let bar = 0; bar < BARS; bar++) {
+      const peak = Math.max(...bins.subarray(bar * 4, bar * 4 + 4));
+      const height = Math.max(4, (peak / 255) * wave.height);
+      paint.fillRect(bar * slot + 2, (wave.height - height) / 2, slot - 4, height);
+    }
+    requestAnimationFrame(meter);
+  };
+  requestAnimationFrame(meter);
+  return { stream, context, source };
+}
+
+async function holdToTalk(chat) {
+  if (!chat.voiceOn) {
+    const result = await deck.switchAccount({ id: chat.id, accountId: chat.account, cols: chat.cols, rows: chat.rows, bypass: chat.bypassOn, admin: chat.adminOn });
+    if (result.stopped) chat.state = 'error';
+    if (result.error) report(result);
+    return;
   }
+  let mic = {};
+  try {
+    mic = await openMic(chat);
+  } catch {} // Only the spectrum needs it: Claude Code records on its own.
+  recording = { chat, stream: mic.stream, context: mic.context, hold: setInterval(() => deck.input(chat.id, ' '), HOLD_MS) };
+  setVoice(chat, 'Listening');
+}
+
+async function toggleDictation(chat) {
   if (recording) return stopDictation();
   if (chat.voice) return;
+  if (voiceMode() === 'anthropic') return holdToTalk(chat);
   const model = voiceModel();
   const status = await deck.voiceStatus(model);
   if (status.error) return voiceError(status.error);
@@ -304,12 +359,11 @@ async function toggleDictation(chat) {
     const result = await deck.voicePrepare(model);
     downloadingFor = null;
     setVoice(chat, null);
+    checkVoice();
     if (result.error) return voiceError(result.error);
   }
   try {
-    const stream = await navigator.mediaDevices.getUserMedia({ audio: { channelCount: 1, echoCancellation: true, noiseSuppression: true } });
-    const context = new AudioContext({ sampleRate: VOICE_RATE });
-    const source = context.createMediaStreamSource(stream);
+    const { stream, context, source } = await openMic(chat);
     // frugal: ScriptProcessorNode is deprecated; an AudioWorklet module from 'self' is the upgrade.
     const processor = context.createScriptProcessor(4096, 1, 1);
     const chunks = [];
@@ -324,10 +378,16 @@ async function toggleDictation(chat) {
 }
 
 async function stopDictation() {
-  const { chat, stream, context, chunks } = recording;
+  const { chat, stream, context, chunks, hold } = recording;
   recording = null;
-  for (const track of stream.getTracks()) track.stop();
-  await context.close();
+  clearInterval(hold);
+  for (const track of stream?.getTracks() ?? []) track.stop();
+  await context?.close();
+  // Claude Code transcribes once the spaces stop, and types the text into its prompt.
+  if (hold) {
+    setVoice(chat, null);
+    return chat.term.focus();
+  }
   const samples = trimSilence(joinChunks(chunks), VOICE_RATE);
   if (!samples.length) {
     setVoice(chat, null);
@@ -628,13 +688,26 @@ function makeBadge(chat) {
   admin.type = 'button';
   admin.dataset.tip = 'Restart this chat with Windows administrator rights';
   admin.onclick = () => toggleAdmin(chat);
-  const voice = node('button', 'term-badge__action term-badge__voice', 'Dictate');
-  voice.type = 'button';
-  voice.onclick = () => toggleDictation(chat);
-  badge.append(dot, info, voice, frugal, bypass, admin);
+  badge.append(dot, info, frugal, bypass, admin);
   dot.onclick = () => setInfoCollapsed(!infoCollapsed);
+  const mic = node('div', 'term-mic');
+  const record = node('button', 'term-mic__record');
+  record.type = 'button';
+  const wave = node('canvas', 'term-mic__wave');
+  wave.width = 128; // Twice the CSS size, so the bars stay sharp on scaled displays.
+  wave.height = 40;
+  record.append(icon('mic'), wave, node('span', 'term-mic__text'));
+  record.onclick = () => (recording?.chat === chat ? stopDictation() : voiceMode() === 'off' ? micMenu(chat) : toggleDictation(chat));
+  const more = node('button', 'term-mic__more');
+  more.type = 'button';
+  more.append(icon('chevron'));
+  more.dataset.tip = 'Voice options';
+  more.setAttribute('aria-label', 'Voice options');
+  more.onclick = () => micMenu(chat);
+  mic.append(record, more);
   chat.badge = badge;
-  chat.el.append(badge);
+  chat.mic = mic;
+  chat.el.append(badge, mic);
   drawBadge(chat);
 }
 
@@ -675,16 +748,62 @@ function drawBadge(chat) {
   // Once on, here or for every chat, there is nothing left to turn on: the dot's color and tip say it is on.
   chat.badge.querySelector('.term-badge__bypass').hidden = !running || !chat.account || chat.bypassOn === true || bypassOn();
   chat.badge.querySelector('.term-badge__frugal').hidden = !running || !chat.account || chat.frugal === true;
-  const voice = chat.badge.querySelector('.term-badge__voice');
-  const anthropic = voiceMode() === 'anthropic';
-  voice.hidden = !running || !chat.account || voiceMode() === 'off';
-  voice.textContent = anthropic ? 'Voice' : chat.voice === 'Listening' ? 'Stop dictation' : chat.voice ? `${chat.voice}…` : 'Dictate';
-  voice.disabled = !anthropic && Boolean(chat.voice) && chat.voice !== 'Listening';
-  voice.dataset.tip = anthropic ? 'Type /voice in the prompt: Claude Code records and transcribes on Anthropic servers' : chat.voice === 'Listening' ? 'Stop and type what was said into the prompt, unsent' : 'Record from the microphone and type the text into the prompt, unsent';
+  drawMic(chat, running);
   chat.badge.querySelector('.term-badge__admin').hidden = !running || !chat.account || chat.adminOn === true || adminOn();
   chat.badge.classList.toggle('is-bypass', chat.bypassOn === true);
   chat.badge.classList.toggle('is-admin', chat.adminOn === true);
   chat.badge.classList.toggle('is-collapsed', infoCollapsed);
+}
+
+const VOICE_MODES = [['off', 'Voice off'], ['local', 'Local model (whisper.cpp)'], ['anthropic', 'Anthropic (/voice)']];
+
+async function setVoiceMode(choice) {
+  if (VOICE_NOTICES[choice] && !await askConfirm(...VOICE_NOTICES[choice])) return false;
+  localStorage.setItem('voiceMode', choice);
+  showVoiceOptions();
+  checkVoice();
+  return true;
+}
+
+// Opens above the voice control: the voice mode, and for local dictation the microphone to record from.
+async function micMenu(chat) {
+  const mode = voiceMode();
+  const items = [];
+  for (const [value, label] of VOICE_MODES) items.push({ label, checked: mode === value, run: () => value !== mode && setVoiceMode(value) });
+  if (mode === 'local') {
+    const inputs = (await navigator.mediaDevices.enumerateDevices()).filter((device) => device.kind === 'audioinput' && device.deviceId !== 'default' && device.deviceId !== 'communications');
+    items.push({ label: 'Default microphone', checked: !voiceDevice(), run: () => localStorage.removeItem('voiceDevice') });
+    inputs.forEach((device, index) => items.push({ label: device.label || `Microphone ${index + 1}`, checked: voiceDevice() === device.deviceId, run: () => localStorage.setItem('voiceDevice', device.deviceId) }));
+  }
+  items.push({ label: 'Voice settings…', run: () => $('settings-open').click() });
+  const box = chat.mic.getBoundingClientRect();
+  openMenu(box.right, box.top, items, chat.mic.querySelector('.term-mic__more'));
+  menu.style.left = `${Math.max(8, box.right - menu.offsetWidth)}px`;
+  menu.style.top = `${Math.max(8, box.top - menu.offsetHeight - 4)}px`;
+}
+
+function drawMic(chat, running) {
+  const mode = voiceMode();
+  const busy = mode === 'off' ? null : chat.voice;
+  const state = mode === 'off' ? 'off' : busy === 'Listening' ? 'listening' : busy ? 'busy' : mode === 'local' && voiceReady === false ? 'missing' : 'ready';
+  const tip = {
+    off: 'Voice input is off. Click to turn it on',
+    missing: `Local dictation needs the ${voiceModel()} model. Click to download it, then speak`,
+    listening: 'Recording. Click to stop and type what was said into the prompt, unsent',
+    busy: `${busy}…`,
+    ready: mode === 'local' ? 'Click to record. Click again to stop, and the text lands in the prompt unsent'
+      : chat.voiceOn ? 'Click to record on Anthropic servers. Click again to stop, and Claude Code types the text into the prompt'
+      : 'Click to restart this chat with Anthropic voice on, then click again to record',
+  }[state];
+  chat.mic.dataset.state = state;
+  chat.mic.hidden = !chat.account;
+  chat.mic.toggleAttribute('data-idle', state !== 'listening' && !running);
+  const record = chat.mic.querySelector('.term-mic__record');
+  record.disabled = state === 'busy' || (state !== 'off' && state !== 'listening' && !running);
+  record.querySelector('use').setAttribute('href', state === 'off' ? '#i-mic-off' : '#i-mic');
+  record.querySelector('.term-mic__text').textContent = state === 'busy' ? `${busy}…` : '';
+  record.dataset.tip = tip;
+  record.setAttribute('aria-label', tip);
 }
 
 // Output is held while the prompt editor is open, so the terminal keeps its last screen under the panel.
@@ -999,6 +1118,7 @@ deck.onData((id, data) => {
   else chat.term.write(data, () => answerTrustPrompt(chat));
   if (chat.state === 'starting') {
     chat.state = 'running';
+    chat.voiceOn = voiceMode() === 'anthropic';
     render();
   }
 });
@@ -1806,11 +1926,12 @@ const menu = $('menu');
 // A source inside another popover nests the menu in it, so opening the menu leaves that popover open.
 function openMenu(x, y, items, source) {
   if (menu.matches(':popover-open')) menu.hidePopover();
-  menu.replaceChildren(...items.map(({ label, run, danger }) => {
+  menu.replaceChildren(...items.map(({ label, run, danger, checked }) => {
     const item = document.createElement('button');
     item.type = 'button';
     item.className = 'menu__item';
-    item.role = 'menuitem';
+    item.role = checked === undefined ? 'menuitem' : 'menuitemradio';
+    if (checked !== undefined) item.ariaChecked = String(checked);
     item.toggleAttribute('data-danger', Boolean(danger));
     item.textContent = label;
     item.onclick = () => {
@@ -2047,7 +2168,7 @@ $('settings-admin').onchange = async (event) => {
 $('settings-roles').onchange = (event) => deck.setRoles(event.target.checked);
 const VOICE_NOTICES = {
   local: ['Use local dictation?', 'Audio stays on this computer. The first dictation downloads whisper.cpp (8.9 MB) and the model you choose. Names and technical terms often come out wrong, so the text lands in the prompt for you to edit and is never sent by itself. Windows dictation (Win+H) needs no download.', 'Use local dictation'],
-  anthropic: ['Use Anthropic voice?', 'The Voice button types /voice in the chat, and Claude Code sends your audio to Anthropic servers to transcribe it. It uses no tokens, needs a claude.ai account, and does not work with ANTHROPIC_API_KEY or ANTHROPIC_AUTH_TOKEN set. Windows dictation (Win+H) needs no download.', 'Use Anthropic voice'],
+  anthropic: ['Use Anthropic voice?', 'The microphone button records through Claude Code, which sends your audio to Anthropic servers to transcribe it. Open chats restart once to turn it on. Claude Code sets the dictation language (/config). It uses no tokens, needs a claude.ai account, and does not work with ANTHROPIC_API_KEY or ANTHROPIC_AUTH_TOKEN set. Windows dictation (Win+H) needs no download.', 'Use Anthropic voice'],
 };
 $('settings-voice').onchange = async (event) => {
   const choice = event.target.value;

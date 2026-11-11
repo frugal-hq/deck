@@ -23,6 +23,7 @@ contextBridge.exposeInMainWorld('deck', {
   onHandoff: (callback) => ipcRenderer.on('chat:handoff', (_, id, handoff) => callback(id, handoff)),
   continueIn: (options) => ipcRenderer.invoke('chat:continue', options),
   switchAccount: (options) => ipcRenderer.invoke('chat:switch-account', options),
+  setVoiceMode: (mode) => ipcRenderer.send('voice:mode', mode),
   voiceStatus: (model) => ipcRenderer.invoke('voice:status', model),
   voicePrepare: (model) => ipcRenderer.invoke('voice:prepare', model),
   voiceTranscribe: (options) => ipcRenderer.invoke('voice:transcribe', options),

@@ -151,7 +151,7 @@ async function launchChat({ id, folder, cols, rows, resume, group, account, file
     if (account.id !== accounts.MAIN) accounts.ensureOnboarded(account.configDir);
     if (resume) accounts.shareTranscript(file, account.configDir);
     // The Deck's own warning took the consent, so Claude Code's disclaimer is skipped (it reads this key from flag settings too).
-    const settings = { statusLine: status.statusLine, ...(bypass === true && { skipDangerousModePermissionPrompt: true }) };
+    const settings = { statusLine: status.statusLine, ...(bypass === true && { skipDangerousModePermissionPrompt: true }), ...(anthropicVoice && { voiceEnabled: true }) };
     const args = [resume ? '--resume' : '--session-id', id, '--settings', JSON.stringify(settings)];
     if (prompt) args.push(prompt);
     if (bypass === true) args.push('--dangerously-skip-permissions');
@@ -174,7 +174,7 @@ async function launchChat({ id, folder, cols, rows, resume, group, account, file
       child = pty.spawn(claude, args, { name: 'xterm-256color', cols, rows, cwd: folder, env });
     }
     chats.set(id, child);
-    chatInfo.set(id, { account: account.id, folder, lastOutput: Date.now(), bypass: bypass === true, admin: admin === true });
+    chatInfo.set(id, { account: account.id, folder, lastOutput: Date.now(), bypass: bypass === true, admin: admin === true, voice: anthropicVoice });
     if (typeof group === 'string' && group) indexer?.postMessage({ setGroup: { id, name: group } });
     child.onData((data) => {
       if (chats.get(id) !== child) return;
@@ -241,7 +241,8 @@ ipcMain.handle('chat:switch-account', async (_, { id, accountId, cols, rows, byp
   const session = index.sessions.find((s) => s.id === id);
   const bypassOn = bypass === true;
   const adminOn = admin === true;
-  const flagsChanged = bypassOn !== Boolean(info.bypass) || adminOn !== Boolean(info.admin);
+  // Anthropic voice turns on at launch (Claude Code reads voiceEnabled only then), so a chat started without it restarts once.
+  const flagsChanged = bypassOn !== Boolean(info.bypass) || adminOn !== Boolean(info.admin) || (anthropicVoice && !info.voice);
   // A bypass or administrator change restarts the chat, so it is subject to the same idle guard as an account change.
   if (session && (info.account !== account.id || flagsChanged) && Date.now() - info.lastOutput < IDLE_MS) return { error: 'Claude is working. Switch accounts when it is idle.' };
   // A bypass or administrator toggle restarts on the chat's own account, which is no reason to make it the primary.
@@ -383,6 +384,8 @@ ipcMain.on('link:open', (_, url) => {
 let topicRun = null;
 
 let voice;
+let anthropicVoice = false;
+ipcMain.on('voice:mode', (_, mode) => (anthropicVoice = mode === 'anthropic'));
 const voiceFiles = () => (voice ??= createVoice(path.join(app.getPath('userData'), 'voice')));
 ipcMain.handle('voice:status', (_, model) => voiceFiles().status(model));
 ipcMain.handle('voice:prepare', async (_, model) => {

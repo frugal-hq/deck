@@ -447,6 +447,8 @@ option:focus-visible, .menu__item:focus-visible { outline-offset: -2px; }
 .menu:popover-open { display: grid; }
 .menu__item { width: 100%; border: 0; background: transparent; overflow: hidden; text-align: start; text-overflow: ellipsis; white-space: nowrap; transition: background-color var(--dur-micro) var(--ease-out), color var(--dur-micro) var(--ease-out); }
 .menu__item[data-danger] { color: var(--color-bad); }
+.menu__item[aria-checked]::before { content: ""; display: inline-block; width: 1.25em; }
+.menu__item[aria-checked="true"]::before { content: "\2713"; color: var(--color-accent); }
 .combo { top: anchor(bottom); left: anchor(left); width: anchor-size(width); min-width: 0; margin-top: var(--space-2xs); }
 option::checkmark { order: 1; margin-inline-start: auto; color: var(--color-accent); }
 
@@ -612,3 +614,49 @@ body { transition: opacity var(--dur-short) var(--ease-out); }
 .term-badge__dot:focus-visible { outline-offset: -1px; }
 .term-badge__info { overflow: hidden; color: var(--color-ink-2); text-overflow: ellipsis; white-space: nowrap; }
 .term-badge__info:empty { display: none; }
+
+/* The voice control in the terminal pane's bottom corner: the record button, which shows its state and the live
+   spectrum while it records, and an arrow for the voice options. */
+.term-mic {
+  position: absolute;
+  right: var(--space-md);
+  bottom: var(--space-2xs);
+  z-index: calc(var(--z-raised) + 1);
+  display: flex;
+  align-items: center;
+  border-radius: var(--radius-pill);
+  background: var(--color-control-2);
+  box-shadow: var(--shadow-card);
+  color: var(--color-ink-2);
+  transition: color var(--dur-micro) var(--ease-out), background-color var(--dur-micro) var(--ease-out);
+}
+.term-mic[hidden] { display: none; }
+.term-mic[data-state="off"], .term-mic[data-idle] { color: var(--color-muted); }
+.term-mic[data-state="busy"] { color: var(--color-accent); }
+.term-mic[data-state="listening"] { background: var(--color-bad-soft); color: var(--color-bad); }
+.term-mic__record, .term-mic__more {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--space-xs);
+  min-height: 40px;
+  border: 0;
+  border-radius: var(--radius-pill);
+  background: none;
+  color: inherit;
+  font: inherit;
+  font-size: var(--text-sm);
+  cursor: pointer;
+  transition: color var(--dur-micro) var(--ease-out);
+}
+.term-mic__record { min-width: 40px; padding: 0 var(--space-2xs) 0 var(--space-sm); }
+.term-mic__more { width: 26px; padding: 0 var(--space-2xs) 0 0; }
+.term-mic__record .icon { width: 20px; height: 20px; }
+.term-mic__more .icon { width: 14px; height: 14px; rotate: -90deg; }
+.term-mic__record:hover:not(:disabled), .term-mic__more:hover { color: var(--color-cool); }
+.term-mic__record:disabled { cursor: default; }
+.term-mic[data-state="busy"] .term-mic__record { cursor: progress; }
+.term-mic[data-state="missing"] .term-mic__record::after { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--color-accent); }
+.term-mic__wave { display: none; width: 64px; height: 20px; }
+.term-mic[data-state="listening"] .term-mic__wave { display: block; }
+.term-mic__text:empty { display: none; }
