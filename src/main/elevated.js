@@ -1,5 +1,6 @@
-// An administrator chat: a UAC-elevated copy of the Deck hosts the PTY and relays it over a named pipe.
-// The unelevated Deck owns the pipe, and each end proves it holds the secret before a PTY starts (spikes/04-elevated).
+// Administrator chats: one UAC-elevated copy of the Deck hosts their PTYs and relays them over a named pipe, so Windows
+// asks once per Deck run. The unelevated Deck owns the pipe, and each end proves it holds the secret before a PTY starts
+// (spikes/04-elevated). Every message after the handshake names its chat's channel in `c`.
 // frugal: the secret rides in the helper's arguments; a release build must install the helper where non-admins cannot write.
 const crypto = require('crypto');
 const net = require('net');
@@ -41,28 +42,27 @@ function onLines(socket, onMessage) {
   });
 }
 
-// The same surface launchChat uses from node-pty.
-function remotePty(socket) {
+// The same surface launchChat uses from node-pty, for one channel of the shared pipe.
+function remotePty(socket, c, onEnd) {
   const dataListeners = new Set();
   const exitListeners = new Set();
   let exited = false;
   const exit = (exitCode) => {
     if (exited) return;
     exited = true;
+    onEnd();
     for (const listener of exitListeners) listener({ exitCode });
-    socket.destroy();
   };
-  socket.on('close', () => exit(1));
-  socket.on('error', () => {});
   return {
     handle(message) {
       if (message.t === 'out' && typeof message.d === 'string') for (const listener of dataListeners) listener(message.d);
       else if (message.t === 'exit') exit(Number.isInteger(message.code) ? message.code : 1);
     },
-    write: (data) => sendTo(socket, { t: 'in', d: data }),
-    resize: (cols, rows) => sendTo(socket, { t: 'resize', cols, rows }),
-    // The helper kills its PTY and quits when the pipe closes.
-    kill: () => socket.destroy(),
+    exit,
+    write: (data) => !exited && sendTo(socket, { t: 'in', c, d: data }),
+    resize: (cols, rows) => !exited && sendTo(socket, { t: 'resize', c, cols, rows }),
+    // The helper kills the PTY, and its exit message comes back on the channel.
+    kill: () => !exited && sendTo(socket, { t: 'kill', c }),
     onData: (listener) => (dataListeners.add(listener), { dispose: () => dataListeners.delete(listener) }),
     onExit: (listener) => (exitListeners.add(listener), { dispose: () => exitListeners.delete(listener) }),
   };
@@ -79,17 +79,43 @@ function launchElevated(exe, args, onFail) {
 }
 
 // helper: { exe, args } that start this app; Windows shows the UAC prompt for it. launch is swapped only by the check.
-function spawnElevated(file, args, { cols, rows, cwd, env }, helper, launch = launchElevated) {
-  const pipe = `\\\\.\\pipe\\frugal-deck-${crypto.randomBytes(16).toString('hex')}`;
-  const secret = crypto.randomBytes(32).toString('hex');
-  return new Promise((resolve, reject) => {
+// The first administrator chat starts the helper; later ones reuse it until the pipe closes, which ends all of them.
+function createElevatedHost(helper, launch = launchElevated) {
+  let connection = null;
+
+  async function spawn(file, args, { cols, rows, cwd, env }) {
+    connection ??= connect().catch((error) => {
+      connection = null;
+      throw error;
+    });
+    const { socket, channels } = await connection;
+    // The helper quit while this chat waited on it: start a new one.
+    if (!socket.writable) {
+      connection = null;
+      return spawn(file, args, { cols, rows, cwd, env });
+    }
+    const c = nonce();
+    const child = remotePty(socket, c, () => channels.delete(c));
+    channels.set(c, child);
+    sendTo(socket, { t: 'start', c, file, args, cols, rows, cwd, env });
+    return child;
+  }
+
+  const connect = () => new Promise((resolve, reject) => {
+    const pipe = `\\\\.\\pipe\\frugal-deck-${crypto.randomBytes(16).toString('hex')}`;
+    const secret = crypto.randomBytes(32).toString('hex');
     let settled = false;
     const server = net.createServer((socket) => {
       if (settled) return socket.destroy();
       const mine = nonce();
+      const channels = new Map();
       let step = 'hello';
-      let child;
       socket.on('error', () => {});
+      socket.on('close', () => {
+        if (step !== 'running') return;
+        connection = null;
+        for (const child of channels.values()) child.exit(1);
+      });
       onLines(socket, (message) => {
         if (step === 'hello' && message.t === 'hello' && typeof message.nonce === 'string') {
           step = 'proof';
@@ -103,11 +129,9 @@ function spawnElevated(file, args, { cols, rows, cwd, env }, helper, launch = la
           settled = true;
           clearTimeout(timer);
           server.close();
-          child = remotePty(socket);
-          sendTo(socket, { t: 'start', file, args, cols, rows, cwd, env });
-          resolve(child);
-        } else if (step === 'running') {
-          child.handle(message);
+          resolve({ socket, channels });
+        } else if (step === 'running' && typeof message.c === 'string') {
+          channels.get(message.c)?.handle(message);
         } else {
           socket.destroy();
         }
@@ -124,6 +148,8 @@ function spawnElevated(file, args, { cols, rows, cwd, env }, helper, launch = la
     server.on('error', (error) => fail(error.message));
     server.listen(pipe, () => launch(helper.exe, [...helper.args, HELPER_FLAG, pipe, secret], () => fail('Windows administrator permission was not granted.')));
   });
+
+  return { spawn };
 }
 
 // Runs in the elevated copy instead of the app.
@@ -135,37 +161,49 @@ function runHelper(argv) {
   const mine = nonce();
   const socket = net.connect(pipe);
   let step = 'proof';
-  let term = null;
+  const terms = new Map();
   const quit = () => {
-    try {
-      term?.kill();
-    } catch {}
+    for (const term of terms.values()) {
+      try {
+        term.kill();
+      } catch {}
+    }
     process.exit(0);
   };
   socket.on('connect', () => sendTo(socket, { t: 'hello', nonce: mine }));
   onLines(socket, (message) => {
     if (step === 'proof') {
       if (message.t !== 'proof' || !matches(message.mac, proof(secret, 'deck', mine)) || typeof message.nonce !== 'string') return quit();
-      step = 'start';
+      step = 'running';
       const elevated = spawnSync(path.join(SYSTEM32, 'net.exe'), ['session'], { stdio: 'ignore', windowsHide: true }).status === 0;
       sendTo(socket, { t: 'proof', mac: proof(secret, 'helper', message.nonce), elevated });
-    } else if (step === 'start' && message.t === 'start') {
-      step = 'running';
+      return;
+    }
+    const { c } = message;
+    if (typeof c !== 'string' || !/^[0-9a-f]{32}$/.test(c)) return quit();
+    // in, resize and kill can race a PTY's exit, so an unknown channel is ignored rather than fatal.
+    const term = terms.get(c);
+    if (message.t === 'start' && !terms.has(c)) {
+      let child;
       try {
-        term = pty.spawn(message.file, message.args, { name: 'xterm-256color', cols: message.cols, rows: message.rows, cwd: message.cwd, env: message.env });
+        child = pty.spawn(message.file, message.args, { name: 'xterm-256color', cols: message.cols, rows: message.rows, cwd: message.cwd, env: message.env });
       } catch {
-        sendTo(socket, { t: 'exit', code: 1 });
-        return socket.end();
+        return sendTo(socket, { t: 'exit', c, code: 1 });
       }
-      term.onData((data) => sendTo(socket, { t: 'out', d: data }));
-      term.onExit(({ exitCode }) => {
-        sendTo(socket, { t: 'exit', code: exitCode });
-        socket.end();
+      terms.set(c, child);
+      child.onData((data) => sendTo(socket, { t: 'out', c, d: data }));
+      child.onExit(({ exitCode }) => {
+        terms.delete(c);
+        sendTo(socket, { t: 'exit', c, code: exitCode });
       });
-    } else if (step === 'running' && message.t === 'in' && typeof message.d === 'string') {
-      term.write(message.d);
-    } else if (step === 'running' && message.t === 'resize' && Number.isInteger(message.cols) && Number.isInteger(message.rows)) {
-      term.resize(message.cols, message.rows);
+    } else if (message.t === 'in' && typeof message.d === 'string') {
+      term?.write(message.d);
+    } else if (message.t === 'resize' && Number.isInteger(message.cols) && Number.isInteger(message.rows)) {
+      term?.resize(message.cols, message.rows);
+    } else if (message.t === 'kill') {
+      try {
+        term?.kill();
+      } catch {}
     } else {
       quit();
     }
@@ -174,4 +212,4 @@ function runHelper(argv) {
   socket.on('error', quit);
 }
 
-module.exports = { HELPER_FLAG, spawnElevated, runHelper, proof };
+module.exports = { HELPER_FLAG, createElevatedHost, runHelper, proof };

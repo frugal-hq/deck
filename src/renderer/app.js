@@ -936,8 +936,9 @@ function askConfirm(title, message, ok) {
 const askBypass = () => askConfirm('Bypass permissions?', 'Claude will run every tool, including shell commands and file edits, without asking for permission.', 'Bypass permissions');
 const askAdmin = () => askConfirm('Run as administrator?', "Claude will have Windows administrator permissions and can change system configuration, services, programs, and any user's files. Those changes can leave the machine unstable or insecure. Windows asks for permission for each administrator chat.", 'Run as administrator');
 const askBoth = () => askConfirm('Administrator with bypass permissions?', 'Claude can make system-wide changes with no confirmation. A single error can damage Windows or your data irreversibly. This is asked every time such a chat starts.', 'Start anyway');
-// Bypass and administrator together are confirmed on every start; declined, the chat starts without administrator rights.
-const confirmAdmin = async (bypass, admin) => admin && (!bypass || await askBoth());
+// Bypass and administrator together are confirmed once per Deck run; declined, the chat starts without administrator rights.
+let bothAccepted = false;
+const confirmAdmin = async (bypass, admin) => admin && (!bypass || bothAccepted || (bothAccepted = await askBoth()));
 
 // Replaces xterm's confirm() for OSC 8 links; only web links leave the Deck.
 const linkHandler = {

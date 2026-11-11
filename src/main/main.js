@@ -136,6 +136,8 @@ ipcMain.on('sessions:organize', (_, id, organization) => indexer?.postMessage({ 
 // Dev runs Electron with the app folder; a packaged build is the app itself.
 const helperCommand = () => ({ exe: process.execPath, args: app.isPackaged ? [] : [app.getAppPath()] });
 
+let elevatedHost;
+
 async function launchChat({ id, folder, cols, rows, resume, group, account, file, prompt, bypass, admin }) {
   const claude = findClaude();
   if (!claude) return { error: NO_CLAUDE };
@@ -158,7 +160,8 @@ async function launchChat({ id, folder, cols, rows, resume, group, account, file
       const launch = { cancelled: false };
       launching.set(id, launch);
       try {
-        child = await elevated.spawnElevated(claude, args, { cols, rows, cwd: folder, env }, helperCommand());
+        elevatedHost ??= elevated.createElevatedHost(helperCommand());
+        child = await elevatedHost.spawn(claude, args, { cols, rows, cwd: folder, env });
       } finally {
         launching.delete(id);
       }
