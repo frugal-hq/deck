@@ -1605,11 +1605,19 @@ function configureGroupDrag(summary, group, key) {
   });
 }
 
-function sessionTip(session) {
-  const started = session.startedAt && session.startedAt !== session.lastAt ? `Started ${resetExact.format(new Date(session.startedAt))}` : null;
-  const prompts = session.turns ? `${session.turns} prompt${session.turns === 1 ? '' : 's'}` : null;
-  return [session.title, session.cwd, `Last active ${resetExact.format(new Date(session.lastAt))}`, started, prompts, 'Right-click to organize'].filter(Boolean).join('\n');
+// sessions: how many a chat holds, shown only past one.
+function sessionTip(session, sessions) {
+  const rows = [
+    ['Folder', session.cwd],
+    ['Last active', resetExact.format(new Date(session.lastAt))],
+    session.startedAt && session.startedAt !== session.lastAt && ['Started', resetExact.format(new Date(session.startedAt))],
+    session.turns && ['Prompts', String(session.turns)],
+    sessions > 1 && ['Sessions', String(sessions)],
+  ].filter(Boolean);
+  return { title: session.title, rows, hint: 'Right-click to organize' };
 }
+
+const tipText = ({ title, rows, hint }) => [title, ...rows.map(([label, value]) => `${label}: ${value}`), hint].join('\n');
 
 function sessionButton(session) {
   const button = document.createElement('button');
@@ -1617,8 +1625,10 @@ function sessionButton(session) {
   button.className = 'session';
   button.dataset.session = session.id;
   // The list redraws once a day per session, so the tip is read again from the index on each hover.
+  const sessions = session.earlier ? session.earlier.length + 1 : 0;
   const refreshTip = () => {
-    button.dataset.tip = sessionTip(currentIndex?.sessions?.find((s) => s.id === session.id) ?? session);
+    button.tipRich = sessionTip(currentIndex?.sessions?.find((s) => s.id === session.id) ?? session, sessions);
+    button.dataset.tip = tipText(button.tipRich);
   };
   refreshTip();
   button.addEventListener('pointerover', refreshTip);
@@ -1651,9 +1661,9 @@ function addFolderLabel(row, session) {
   return row;
 }
 
-function chatElement(chat, decorate) {
-  const row = sessionButton(chat);
-  const first = decorate ? decorate(row, chat) : row;
+// The folder lives in the row's tip, so the title keeps the room up to the sessions button.
+function chatElement(chat) {
+  const first = sessionButton(chat);
   if (!chat.earlier.length) return first;
   const container = document.createElement('div');
   container.className = 'chat';
@@ -1800,7 +1810,7 @@ function groupElement(key, chats, byTopic) {
     summary.append(newChatButton(chats, byTopic ? key : undefined, label));
     addMenu(summary, label, () => groupMenu(key, label, byTopic));
   }
-  group.append(summary, ...chats.map((chat) => chatElement(chat, byTopic ? addFolderLabel : null)));
+  group.append(summary, ...chats.map((chat) => chatElement(chat)));
   configureGroupDrag(summary, group, key);
   return group;
 }
@@ -1827,7 +1837,7 @@ function workspaceElement(workspace, byTopic) {
   group.append(
     summary,
     ...workspace.groups.map(([groupKey, list]) => groupElement(groupKey, list, byTopic)),
-    ...workspace.chats.map((chat) => chatElement(chat, byTopic ? addFolderLabel : null)),
+    ...workspace.chats.map((chat) => chatElement(chat)),
   );
   configureGroupDrag(summary, group, key);
   return group;
@@ -1845,7 +1855,7 @@ function pinnedElement(sessions) {
   const heading = document.createElement('h2');
   heading.className = 'pinned__title';
   heading.textContent = 'Pinned';
-  section.append(heading, ...sessions.map((chat) => chatElement(chat, null)));
+  section.append(heading, ...sessions.map((chat) => chatElement(chat)));
   return section;
 }
 
@@ -2465,7 +2475,10 @@ let tooltipTimer;
 
 function openTooltip() {
   if (!tooltipTarget.isConnected) return;
-  tooltip.textContent = tooltipTarget.dataset.tip;
+  const rich = tooltipTarget.tipRich;
+  tooltip.classList.toggle('tooltip--rich', Boolean(rich));
+  if (rich) tooltip.replaceChildren(richTip(rich));
+  else tooltip.textContent = tooltipTarget.dataset.tip;
   tooltipTarget.setAttribute('aria-describedby', 'tooltip');
   tooltip.showPopover();
   const anchor = tooltipTarget.getBoundingClientRect();
@@ -2479,6 +2492,15 @@ function openTooltip() {
   const preferAbove = tooltipPlacement() === 'above';
   tooltip.style.top = `${(preferAbove ? fitsAbove || !fitsBelow : !fitsBelow && fitsAbove) ? above : below}px`;
   tooltip.style.left = `${Math.min(Math.max(TOOLTIP_EDGE, anchor.left + (anchor.width - width) / 2), innerWidth - width - TOOLTIP_EDGE)}px`;
+}
+
+// A labelled tip: the title, then each label muted beside its value.
+function richTip({ title, rows, hint }) {
+  const content = document.createDocumentFragment();
+  const list = node('dl', 'tooltip__rows');
+  for (const [label, value] of rows) list.append(node('dt', null, label), node('dd', null, value));
+  content.append(node('strong', 'tooltip__title', title), list, node('p', 'tooltip__hint', hint));
+  return content;
 }
 
 function closeTooltip() {

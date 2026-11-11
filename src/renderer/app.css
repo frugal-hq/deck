@@ -428,7 +428,6 @@ meter::-webkit-meter-even-less-good-value { background: var(--color-bad); border
 .btn--bar.btn--icon { width: 28px; padding: 0; }
 .btn.is-linked { background: none; box-shadow: none; color: var(--color-muted); }
 .btn.is-linked:hover { background: var(--color-paper-2); color: var(--color-ink); filter: none; }
-.group .session__folder { max-width: 9ch; }
 .empty__actions { display: flex; align-items: center; gap: var(--space-xs); }
 
 /* Selects stay native; base-select opens their button and list to CSS. */
@@ -485,6 +484,12 @@ body { transition: opacity var(--dur-short) var(--ease-out); }
 
 .tooltip { position: fixed; inset: auto; max-width: 40ch; margin: 0; padding: var(--space-2xs) var(--space-xs); border: 0; border-radius: var(--radius-pill); background: var(--color-control-2); box-shadow: var(--shadow-float); color: var(--color-ink); font-size: var(--text-xs); line-height: 1.4; white-space: pre-line; overflow-wrap: anywhere; pointer-events: none; opacity: 0; translate: 0 -2px; transition: opacity var(--dur-micro) var(--ease-out), translate var(--dur-micro) var(--ease-out), display var(--dur-micro) allow-discrete, overlay var(--dur-micro) allow-discrete; }
 .tooltip:popover-open { opacity: 1; translate: 0 0; }
+.tooltip--rich { max-width: 52ch; padding: var(--space-xs) var(--space-sm); border-radius: var(--radius-card); white-space: normal; }
+.tooltip__title { display: block; margin-block-end: var(--space-2xs); font-size: var(--text-sm); font-weight: 600; }
+.tooltip__rows { display: grid; grid-template-columns: auto 1fr; gap: 2px var(--space-sm); margin: 0; }
+.tooltip__rows dt { color: var(--color-muted); }
+.tooltip__rows dd { margin: 0; font-variant-numeric: tabular-nums; }
+.tooltip__hint { margin: var(--space-2xs) 0 0; padding-block-start: var(--space-2xs); border-block-start: 1px solid var(--color-highlight); color: var(--color-muted); }
 @starting-style { .tooltip:popover-open { opacity: 0; translate: 0 -2px; } }
 
 @media (prefers-reduced-motion: reduce) {
@@ -506,12 +511,21 @@ body { transition: opacity var(--dur-short) var(--ease-out); }
   min-height: 24px;
   padding-inline: var(--space-xs);
   border-radius: var(--radius-pill);
-  color: var(--color-muted);
+  display: grid;
+  place-items: center;
+  min-width: 2.25rem;
+  background: var(--color-control);
+  box-shadow: inset 0 0 0 1px var(--color-highlight);
+  color: var(--color-ink);
   font-size: var(--text-xs);
+  font-variant-numeric: tabular-nums;
   cursor: pointer;
   transition: background-color var(--dur-micro) var(--ease-out), color var(--dur-micro) var(--ease-out);
 }
-.chat__history > summary.chat__more:hover { background: var(--color-paper); color: var(--color-ink); }
+.chat__history > summary.chat__more:hover { background: var(--color-control-2); }
+.chat__history[open] > summary.chat__more { background: var(--color-accent-soft); box-shadow: inset 0 0 0 1px var(--color-accent); }
+/* The row and its sessions button read as one: pointing at the button keeps the row lit. */
+.chat:has(> .chat__history > .chat__more:hover) > .session:not([aria-current]) { background: var(--color-paper); color: var(--color-ink); }
 .chat__history > summary.chat__more:focus-visible { outline-offset: -2px; }
 .chat__history > summary.chat__more::-webkit-details-marker { display: none; }
 .chat__history .session { padding-inline-start: var(--space-2xl); }
