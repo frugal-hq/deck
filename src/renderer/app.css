@@ -394,6 +394,8 @@ meter::-webkit-meter-even-less-good-value { background: var(--color-bad); border
 .organize__check input:checked { background: var(--color-accent); }
 .organize__check input:checked::before { scale: 1; opacity: 1; }
 .organize__check:has(input) { cursor: pointer; }
+.organize__check input.settings__range, .organize__check input.settings__range:hover { appearance: auto; display: block; width: 140px; height: auto; background: none; accent-color: var(--color-accent); }
+.organize__check input.settings__range::before { content: none; }
 .settings__select { min-height: 28px; padding-inline: var(--space-xs); border: 0; border-radius: var(--radius-pill); background: var(--color-paper-3); color: var(--color-ink); font: inherit; }
 .organize__pair { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-xs); }
 .organize__choice { margin: 0; padding: 0; border: 0; }

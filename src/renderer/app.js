@@ -1137,15 +1137,19 @@ const INTERRUPT_MS = 1000;
 const seen = (chat) => chat.id === activeId && document.hasFocus();
 
 let audioContext;
+const notifyVolume = () => Number(localStorage.getItem('notifyVolume') ?? 50);
 
-function chime() {
+function chime(volume = notifyVolume()) {
+  if (!volume) return;
+  // Squared so the slider sounds even; 0.8 leaves headroom where the two notes overlap.
+  const peak = 0.8 * (volume / 100) ** 2;
   audioContext ??= new AudioContext();
   if (audioContext.state === 'suspended') audioContext.resume();
   const start = audioContext.currentTime;
   for (const [frequency, offset] of [[659.25, 0], [830.61, 0.12]]) {
     const gain = audioContext.createGain();
     gain.gain.setValueAtTime(0.0001, start + offset);
-    gain.gain.exponentialRampToValueAtTime(0.04, start + offset + 0.02);
+    gain.gain.exponentialRampToValueAtTime(peak, start + offset + 0.02);
     gain.gain.exponentialRampToValueAtTime(0.0001, start + offset + 0.22);
     const oscillator = audioContext.createOscillator();
     oscillator.type = 'sine';
@@ -2144,6 +2148,9 @@ $('settings-open').onclick = async () => {
   $('settings-roles').checked = await deck.getRoles();
   $('settings-frugal').checked = startsWithFrugal();
   $('settings-tooltips').value = tooltipPlacement();
+  $('settings-reopen').checked = reopensChats();
+  $('settings-volume').value = notifyVolume();
+  $('settings-volume-value').value = `${notifyVolume()}%`;
   $('settings-dialog').showModal();
 };
 $('settings-confirm-close').onchange = (event) => setConfirmsClose(event.target.checked);
@@ -2172,18 +2179,22 @@ const VOICE_NOTICES = {
 };
 $('settings-voice').onchange = async (event) => {
   const choice = event.target.value;
-  if (VOICE_NOTICES[choice]) {
-    event.target.value = voiceMode(); // Stays as it was until the notice is accepted.
-    if (!await askConfirm(...VOICE_NOTICES[choice])) return;
-    event.target.value = choice;
-  }
-  localStorage.setItem('voiceMode', event.target.value);
-  showVoiceOptions();
-  for (const chat of chats.values()) drawBadge(chat);
+  event.target.value = voiceMode(); // Stays as it was until the notice is accepted.
+  if (await setVoiceMode(choice)) event.target.value = choice;
 };
-$('settings-voice-model').onchange = (event) => localStorage.setItem('voiceModel', event.target.value);
+$('settings-voice-model').onchange = (event) => {
+  localStorage.setItem('voiceModel', event.target.value);
+  checkVoice();
+};
+$('settings-volume').oninput = (event) => ($('settings-volume-value').value = `${event.target.value}%`);
+$('settings-volume').onchange = (event) => {
+  localStorage.setItem('notifyVolume', event.target.value);
+  chime(Number(event.target.value));
+};
+checkVoice();
 $('settings-voice-language').onchange = (event) => localStorage.setItem('voiceLanguage', event.target.value);
 $('settings-frugal').onchange = (event) => localStorage.setItem('startWithFrugal', event.target.checked);
+$('settings-reopen').onchange = (event) => localStorage.setItem('reopenChats', event.target.checked);
 $('settings-tooltips').onchange = (event) => localStorage.setItem('tooltipPlacement', event.target.value);
 $('settings-always-trust').onchange = (event) => {
   if (!event.target.checked) {
