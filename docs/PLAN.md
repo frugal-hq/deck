@@ -166,7 +166,7 @@ Not verified: multiple voices, other microphones, and `/voice` inside the PTY, w
 - Context meter, 5-hour and weekly limits in the chat.
 - Automatic terminal fitting on any layout change.
 - Visual direction with Hallmark.
-- Pending from Phase 0: manual mouse drag (Test 1), `claude.exe` path in other install methods (Test 5), real user status line and untrusted folder (Test 6).
+- Pending from Phase 0: manual mouse drag (Test 1, confirmed by the user on 2026-11-11 for the window and the sidebar), `claude.exe` path in other install methods (Test 5), real user status line and untrusted folder (Test 6).
 
 ## Phase 2: attachments
 
@@ -233,7 +233,7 @@ Not verified: multiple voices, other microphones, and `/voice` inside the PTY, w
 - Text is pasted at the cursor, editable, and not sent by itself.
 - Pending from Phase 0: `/voice` in the PTY, other voices, and other microphones (Test 8).
 
-**Status (2026-11-10): local dictation built.** whisper.cpp b5454 and the chosen model download to `userData/voice` after a size prompt, each checked against its size and SHA-256. The recording is trimmed by an energy gate on both ends, not Silero VAD. `src/main/voice.js` transcribed the Test 8 sample with `small`; the microphone path in the window is untested. Anthropic is a voice choice whose button types `/voice` for the user to send, since it is untested in the PTY. Dictation defaults to English. Parakeet stays later.
+**Status (2026-11-10): local dictation built.** whisper.cpp b5454 and the chosen model download to `userData/voice` after a size prompt, each checked against its size and SHA-256. The recording is trimmed by an energy gate on both ends, not Silero VAD. `src/main/voice.js` transcribed the Test 8 sample with `small`; the microphone path in the window is untested. Anthropic voice works in the app (2026-11-11): chats launch with `voice: { enabled: true, mode: "hold" }` in `--settings`, because Claude Code reads `voice.enabled` before `voiceEnabled` and `/voice off` writes it to user settings, and the mic button holds Space by sending it every 30 ms. Claude Code dictation defaults to English; its language comes from `/config`. Parakeet stays later.
 
 ## Phase 6: Git, chains, and archive
 
