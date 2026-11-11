@@ -146,6 +146,7 @@ function fadeOut(element) {
 }
 
 function render() {
+  saveOpenChats();
   // Tabs persist between renders: rebuilding them would replay the fade-in on every state change.
   for (const chat of chats.values()) {
     drawBadge(chat);
@@ -1235,7 +1236,31 @@ new ResizeObserver(() => {
 const shortDate = new Intl.DateTimeFormat('en-US', { day: 'numeric', month: 'short' });
 const openGroups = new Set();
 let chatsById = new Map();
-let groupsDrawn = false;
+let restored = false;
+
+// Tabs that come back on the next start: sessions only, since a sign-in or a chat with no message yet has nothing to resume.
+function saveOpenChats() {
+  if (!restored) return; // The first renders run before the saved tabs are back.
+  try {
+    localStorage.setItem('openChats', JSON.stringify({ ids: [...chats.values()].filter((chat) => !chat.login).map((chat) => chat.id), active: activeId }));
+  } catch {}
+}
+
+const reopensChats = () => localStorage.getItem('reopenChats') !== 'false';
+
+function restoreChats(index) {
+  restored = true;
+  let saved = {};
+  try {
+    if (reopensChats()) saved = JSON.parse(localStorage.getItem('openChats')) ?? {};
+  } catch {}
+  for (const id of Array.isArray(saved.ids) ? saved.ids : []) {
+    const session = index.sessions.find((s) => s.id === id);
+    if (session) resumeSession(session);
+  }
+  if (chats.has(saved.active)) activate(saved.active);
+  saveOpenChats();
+}
 let drawnSignature = '';
 let currentIndex;
 const NO_TOPIC = 'No topic';
@@ -1601,6 +1626,7 @@ let groupNames = [];
 
 function renderSessions(index) {
   currentIndex = index;
+  if (!restored && !index.indexing) restoreChats(index);
   const status = indexStatus(index);
   $('index-status').hidden = !status;
   $('index-status').textContent = status;
@@ -1624,10 +1650,6 @@ function renderSessions(index) {
   const pinned = visible.filter((c) => c.pinned);
   const tree = buildTree(visible.filter((c) => !c.pinned), keyOf, index.workspaces ?? {});
   orderGroups(tree);
-  if (!groupsDrawn && (tree.workspaces.length || tree.groups.length) && !index.indexing) {
-    groupsDrawn = true;
-    openGroups.add(tree.workspaces.length ? `workspace:${tree.workspaces[0].name}` : tree.groups[0][0]);
-  }
   const focused = document.activeElement?.dataset?.session;
   const list = $('groups');
   list.replaceChildren(
@@ -1944,7 +1966,6 @@ let sorting = false;
 function setSessionView(view) {
   sessionView = view;
   localStorage.setItem('sessionView', view);
-  groupsDrawn = false;
   for (const radio of viewRadios) radio.checked = radio.value === view;
   renderSessions(currentIndex);
 }
