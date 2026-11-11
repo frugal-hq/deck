@@ -713,7 +713,7 @@ function makeBadge(chat) {
 
 async function toggleBypass(chat) {
   if (!chat.bypassOn && !await askBypass()) return;
-  if (!chat.bypassOn && chat.adminOn && !await askBoth()) return;
+  if (!chat.bypassOn && chat.adminOn && !await acceptBoth()) return;
   const previous = chat.bypassOn;
   chat.bypassOn = !previous;
   drawBadge(chat);
@@ -726,7 +726,7 @@ async function toggleBypass(chat) {
 }
 
 async function toggleAdmin(chat) {
-  if (!await askAdmin() || (chat.bypassOn && !await askBoth())) return;
+  if (!await askAdmin() || (chat.bypassOn && !await acceptBoth())) return;
   chat.adminOn = true;
   drawBadge(chat);
   const result = await deck.switchAccount({ id: chat.id, accountId: chat.account, cols: chat.cols, rows: chat.rows, bypass: chat.bypassOn, admin: true });
@@ -1063,10 +1063,17 @@ function askConfirm(title, message, ok) {
 
 const askBypass = () => askConfirm('Bypass permissions?', 'Claude will run every tool, including shell commands and file edits, without asking for permission.', 'Bypass permissions');
 const askAdmin = () => askConfirm('Run as administrator?', "Claude will have Windows administrator permissions and can change system configuration, services, programs, and any user's files. Those changes can leave the machine unstable or insecure. Windows asks for permission for each administrator chat.", 'Run as administrator');
-const askBoth = () => askConfirm('Administrator with bypass permissions?', 'Claude can make system-wide changes with no confirmation. A single error can damage Windows or your data irreversibly. This is asked every time such a chat starts.', 'Start anyway');
-// Bypass and administrator together are confirmed once per Deck run; declined, the chat starts without administrator rights.
-let bothAccepted = false;
-const confirmAdmin = async (bypass, admin) => admin && (!bypass || bothAccepted || (bothAccepted = await askBoth()));
+const askBoth = () => askConfirm('Administrator with bypass permissions?', 'Claude can make system-wide changes with no confirmation. A single error can damage Windows or your data irreversibly. You are asked again only after you turn bypass or administrator off in Settings.', 'Start anyway');
+// Bypass and administrator together are confirmed once, across restarts, until either setting is turned off.
+// Declined, the chat starts without administrator rights.
+const BOTH_ACCEPTED = 'adminBypassAccepted';
+async function acceptBoth() {
+  if (localStorage.getItem(BOTH_ACCEPTED) === 'true') return true;
+  const accepted = await askBoth();
+  if (accepted) localStorage.setItem(BOTH_ACCEPTED, 'true');
+  return accepted;
+}
+const confirmAdmin = async (bypass, admin) => admin && (!bypass || await acceptBoth());
 
 // Replaces xterm's confirm() for OSC 8 links; only web links leave the Deck.
 const linkHandler = {
@@ -2161,6 +2168,7 @@ $('settings-bypass').onchange = async (event) => {
     event.target.checked = true;
   }
   setBypass(event.target.checked);
+  if (!event.target.checked) localStorage.removeItem(BOTH_ACCEPTED);
   for (const chat of chats.values()) drawBadge(chat);
 };
 $('settings-admin').onchange = async (event) => {
@@ -2170,6 +2178,7 @@ $('settings-admin').onchange = async (event) => {
     event.target.checked = true;
   }
   localStorage.setItem('runAsAdmin', event.target.checked);
+  if (!event.target.checked) localStorage.removeItem(BOTH_ACCEPTED);
   for (const chat of chats.values()) drawBadge(chat);
 };
 $('settings-roles').onchange = (event) => deck.setRoles(event.target.checked);

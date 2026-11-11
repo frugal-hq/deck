@@ -212,7 +212,7 @@ Not verified: multiple voices, other microphones, and `/voice` inside the PTY, w
 - Administrator: elevated helper process, with UAC on each elevated session.
 - Pending from Phase 0: elevated `claude` TUI and its resize in xterm.js (Test 4).
 
-**Status (2026-11-10): built, not yet run with UAC.** `src/main/elevated.js` relaunches the Deck with `--elevated-helper`, and each end proves it holds the secret (HMAC over the other's nonce) before a PTY starts. `test/elevated.check.js` covers the handshake and an impostor pipe server; the relay itself only runs in an elevated shell. Bypass and administrator together are confirmed on every start. Still untested: the elevated `claude` TUI, its resize, and Ctrl+G from an elevated chat.
+**Status (2026-11-10): built, not yet run with UAC.** `src/main/elevated.js` relaunches the Deck with `--elevated-helper`, and each end proves it holds the secret (HMAC over the other's nonce) before a PTY starts. `test/elevated.check.js` covers the handshake and an impostor pipe server; the relay itself only runs in an elevated shell. Bypass and administrator together are confirmed once and stay accepted across restarts until either setting is turned off (the user's choice on 2026-11-11, replacing a confirmation per run); UAC still asks once per Deck run. Still untested: the elevated `claude` TUI, its resize, and Ctrl+G from an elevated chat.
 
 **Warning texts (draft)**
 
