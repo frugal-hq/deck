@@ -797,7 +797,7 @@ async function openChat({ id, cwd, name, resume, group, login, accountId, handof
   term.loadAddon(fit);
   term.open(el);
 
-  const chat = { id, cwd, name, el, term, fit, login, state: 'starting', trustUntil: Date.now() + TRUST_PROMPT_MS, status: null, busy: false, inputAt: 0 };
+  const chat = { id, cwd, name, el, term, fit, login, state: 'starting', trustUntil: null, status: null, busy: false, inputAt: 0 };
   chats.set(id, chat);
   activate(id);
   chat.cols = term.cols;
@@ -899,18 +899,26 @@ $('handoff-continue').onclick = () => {
   if (chat?.handoff?.prompt.trim()) continueHandoff(chat);
 };
 
-// The prompt comes before anything else, so a slower start just shows it and a resumed transcript is never read as one.
+// The prompt comes before anything else, so a resumed transcript later on is never read as one.
 const TRUST_PROMPT_MS = 15000;
 const alwaysTrusts = () => localStorage.getItem('alwaysTrust') === 'true';
 
+const TRUST_RETRY_MS = 1000;
+
 function answerTrustPrompt(chat) {
-  if (!chats.has(chat.id) || !alwaysTrusts() || Date.now() > chat.trustUntil) return;
+  if (!chats.has(chat.id) || !alwaysTrusts()) return;
+  // Counted from the first output, so a slow start (UAC, a busy machine) still gets its answer.
+  chat.trustUntil ??= Date.now() + TRUST_PROMPT_MS;
+  if (Date.now() > chat.trustUntil) return;
   const buffer = chat.term.buffer.active;
   const lines = Array.from({ length: chat.term.rows }, (_, row) => buffer.getLine(buffer.viewportY + row)?.translateToString(true).trim() ?? '');
   const key = trustPromptKey(lines);
-  if (!key || chat.trustSent === key) return;
+  // A key sent before the TUI reads input is lost, so the same answer goes again while the screen still asks.
+  if (!key || (chat.trustSent === key && Date.now() - chat.trustSentAt < TRUST_RETRY_MS)) return;
   chat.trustSent = key;
+  chat.trustSentAt = Date.now();
   deck.input(chat.id, key);
+  setTimeout(() => answerTrustPrompt(chat), TRUST_RETRY_MS);
 }
 
 const confirmsClose = () => localStorage.getItem('confirmClose') !== 'false';
@@ -1187,7 +1195,7 @@ deck.onRestarting((id) => {
   chat.term.reset();
   resetStatus(chat);
   chat.state = 'starting';
-  chat.trustUntil = Date.now() + TRUST_PROMPT_MS;
+  chat.trustUntil = null;
   chat.trustSent = null;
   render();
 });
