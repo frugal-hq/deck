@@ -298,6 +298,10 @@ async function checkVoice() {
 function setVoice(chat, label) {
   chat.voice = label;
   drawBadge(chat);
+  const mic = chat.editPanel?.querySelector('.prompt-edit__mic');
+  if (!mic) return;
+  mic.setAttribute('aria-pressed', String(label === 'Listening' && recording?.area?.form === chat.editPanel));
+  mic.disabled = Boolean(label) && label !== 'Listening';
 }
 
 deck.onVoiceProgress((received, total) => {
@@ -353,10 +357,19 @@ async function holdToTalk(chat) {
   setVoice(chat, 'Listening');
 }
 
-async function toggleDictation(chat) {
+// Claude Code reads the prompt file back and redraws before it takes the held Space.
+const EDIT_SETTLE_MS = 500;
+
+// area: the Ctrl+G panel's text, which takes local dictation in place of the terminal.
+async function toggleDictation(chat, area) {
   if (recording) return stopDictation();
   if (chat.voice) return;
-  if (voiceMode() === 'anthropic') return holdToTalk(chat);
+  if (voiceMode() === 'anthropic') {
+    if (!area) return holdToTalk(chat);
+    // Claude Code waits on this editor, so the text goes back to its prompt and the dictation follows it there.
+    area.form.requestSubmit();
+    return setTimeout(() => holdToTalk(chat), EDIT_SETTLE_MS);
+  }
   const model = voiceModel();
   const status = await deck.voiceStatus(model);
   if (status.error) return voiceError(status.error);
@@ -379,7 +392,7 @@ async function toggleDictation(chat) {
     processor.onaudioprocess = (event) => chunks.push(new Float32Array(event.inputBuffer.getChannelData(0)));
     source.connect(processor);
     processor.connect(context.destination);
-    recording = { chat, stream, context, chunks };
+    recording = { chat, stream, context, chunks, area };
     setVoice(chat, 'Listening');
   } catch (error) {
     voiceError(`The microphone is not available: ${error.message}`);
@@ -387,7 +400,7 @@ async function toggleDictation(chat) {
 }
 
 async function stopDictation() {
-  const { chat, stream, context, chunks, hold } = recording;
+  const { chat, stream, context, chunks, hold, area } = recording;
   recording = null;
   clearInterval(hold);
   for (const track of stream?.getTracks() ?? []) track.stop();
@@ -406,7 +419,11 @@ async function stopDictation() {
   const result = await deck.voiceTranscribe({ audio: encodeWav(samples, VOICE_RATE), model: voiceModel(), language: voiceLanguage() });
   setVoice(chat, null);
   if (result.error) return voiceError(result.error);
-  if (result.text && chats.has(chat.id)) {
+  if (!result.text || !chats.has(chat.id)) return;
+  if (area?.isConnected) {
+    area.focus();
+    insertText(area, result.text);
+  } else {
     chat.term.paste(result.text);
     chat.term.focus();
   }
@@ -840,7 +857,81 @@ function promptPanel(chat, text) {
   const area = node('textarea', 'prompt-edit__text');
   area.spellcheck = false;
   area.value = text;
+  const files = node('ul', 'prompt-edit__files');
+  files.setAttribute('aria-label', 'Attached files');
+  const thumbs = new Map();
+  const fileItem = (file) => {
+    const item = node('li', 'prompt-edit__file');
+    item.dataset.tip = file;
+    const thumb = node('img', 'prompt-edit__thumb');
+    thumb.alt = '';
+    if (!thumbs.has(file)) thumbs.set(file, deck.thumbnail(file));
+    thumbs.get(file).then((url) => (url ? (thumb.src = url) : thumb.remove()));
+    const name = folderName(file);
+    const remove = node('button', 'prompt-edit__remove');
+    remove.type = 'button';
+    remove.append(icon('x'));
+    remove.setAttribute('aria-label', `Remove ${name}`);
+    remove.onclick = () => {
+      const mention = mentionOf(file);
+      const start = area.value.indexOf(mention);
+      if (start < 0) return;
+      area.focus();
+      area.setSelectionRange(start, start + mention.length + (area.value[start + mention.length] === ' ' ? 1 : 0));
+      document.execCommand('delete');
+    };
+    item.append(thumb, node('span', 'prompt-edit__name', name), remove);
+    return item;
+  };
+  const drawFiles = () => {
+    const paths = [...new Set([...area.value.matchAll(MENTION)].map((match) => match[1]))];
+    files.hidden = !paths.length;
+    files.replaceChildren(...paths.map(fileItem));
+  };
+  const insertFiles = (paths) => {
+    if (!paths.length) return;
+    area.focus();
+    insertText(area, `${paths.map(mentionOf).join(' ')} `);
+  };
+  area.addEventListener('input', drawFiles);
+  area.addEventListener('paste', async (event) => {
+    const list = [...event.clipboardData.files];
+    if (!list.length || event.clipboardData.getData('text/plain')) return;
+    event.preventDefault();
+    // A screenshot has no path, so the Deck saves it to a file Claude Code can read.
+    const paths = await Promise.all(list.map(async (file) => deck.pathForFile(file) || deck.savePasted(new Uint8Array(await file.arrayBuffer()), file.type)));
+    insertFiles(paths.filter(Boolean));
+  });
+  // The panel sits inside the stage, whose own drop would paste the files into the terminal.
+  form.addEventListener('dragover', (event) => {
+    if (!event.dataTransfer.types.includes('Files')) return;
+    event.preventDefault();
+    event.stopPropagation();
+    event.dataTransfer.dropEffect = 'copy';
+    form.classList.add('is-drop');
+  });
+  form.addEventListener('dragleave', (event) => {
+    if (!form.contains(event.relatedTarget)) form.classList.remove('is-drop');
+  });
+  form.addEventListener('drop', (event) => {
+    form.classList.remove('is-drop');
+    if (!event.dataTransfer.files.length) return;
+    event.preventDefault();
+    event.stopPropagation();
+    insertFiles([...event.dataTransfer.files].map((file) => deck.pathForFile(file)).filter(Boolean));
+  });
   const actions = node('div', 'prompt-edit__actions');
+  const mic = node('button', 'btn btn--icon prompt-edit__mic');
+  mic.type = 'button';
+  mic.append(icon('mic'));
+  mic.setAttribute('aria-pressed', 'false');
+  const micTip = voiceMode() === 'anthropic' ? 'Save this text to the prompt and dictate there with Anthropic voice' : 'Dictate into this text. Click again to stop';
+  mic.dataset.tip = micTip;
+  mic.setAttribute('aria-label', micTip);
+  // Anthropic voice needs a chat launched with it, and that restart would drop this edit.
+  mic.hidden = voiceMode() === 'off' || (voiceMode() === 'anthropic' && !chat.voiceOn);
+  mic.onclick = () => toggleDictation(chat, area);
+  actions.append(mic);
   const cancel = node('button', 'btn', 'Cancel');
   cancel.type = 'button';
   cancel.dataset.tip = 'Discard the edit and leave the prompt as it was';
@@ -869,10 +960,22 @@ function promptPanel(chat, text) {
       cancel.click();
     }
   });
-  form.append(area, actions);
+  form.append(files, area, actions);
+  drawFiles();
   chat.editPanel = form;
   chat.el.append(form);
   area.focus();
+}
+
+// Files go into the prompt file as @"path": the [Image #n] swap happens only on a paste into the TUI (test 2).
+const MENTION = /@"([^"]+)"/g;
+const mentionOf = (file) => `@"${file}"`;
+
+// execCommand keeps the insert on the textarea's own undo stack, so Ctrl+Z takes it back.
+function insertText(area, text) {
+  if (document.execCommand('insertText', false, text)) return;
+  area.setRangeText(text, area.selectionStart, area.selectionEnd, 'end');
+  area.dispatchEvent(new Event('input'));
 }
 
 deck.onEdit((id, text) => {

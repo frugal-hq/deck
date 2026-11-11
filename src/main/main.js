@@ -108,6 +108,29 @@ const accountEnv = (account) => ({ ...cleanEnv(), FRUGAL_ROLES: accounts.roles()
 
 const isSize = (n) => Number.isInteger(n) && n > 0 && n <= 1000;
 
+// The Ctrl+G panel's previews: the Windows shell thumbnail, or the file's icon when it has none.
+ipcMain.handle('files:thumbnail', async (_, file) => {
+  if (typeof file !== 'string' || !path.isAbsolute(file)) return null;
+  try {
+    return (await nativeImage.createThumbnailFromPath(file, { width: 96, height: 96 })).toDataURL();
+  } catch {
+    return app.getFileIcon(file, { size: 'large' }).then((image) => image.toDataURL(), () => null);
+  }
+});
+
+const PASTED_TYPES = { 'image/png': 'png', 'image/jpeg': 'jpg', 'image/gif': 'gif', 'image/webp': 'webp' };
+// A pasted screenshot has no file, so it gets one Claude Code can read through @"path".
+// frugal: these stay in the temp folder; clean them up at start once they pile up.
+ipcMain.handle('files:save-pasted', (_, bytes, type) => {
+  const extension = PASTED_TYPES[type];
+  if (!extension || !(bytes instanceof Uint8Array) || !bytes.length) return null;
+  const dir = path.join(os.tmpdir(), 'frugal-deck');
+  fs.mkdirSync(dir, { recursive: true });
+  const file = path.join(dir, `pasted-${crypto.randomUUID()}.${extension}`);
+  fs.writeFileSync(file, bytes);
+  return file;
+});
+
 ipcMain.handle('files:pick', async () => {
   const { canceled, filePaths } = await dialog.showOpenDialog(win, { properties: ['openFile', 'multiSelections'] });
   return canceled ? [] : filePaths;

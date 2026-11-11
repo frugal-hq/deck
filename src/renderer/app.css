@@ -561,14 +561,24 @@ body { transition: opacity var(--dur-short) var(--ease-out); }
   z-index: calc(var(--z-raised) + 1);
   display: grid;
   gap: var(--space-xs);
-  width: min(60%, 40rem);
+  width: min(calc(100% - 2 * var(--space-md)), 72rem);
   padding: var(--space-sm) var(--space-md);
   border-radius: var(--radius-card);
   background: var(--color-control-2);
   box-shadow: var(--shadow-float);
 }
-.prompt-edit__text { min-height: 8lh; max-height: 50vh; padding: var(--space-xs) var(--space-sm); border: 0; border-radius: var(--radius-card); background: var(--color-paper-3); color: var(--color-ink); font: var(--text-sm) / 1.4 var(--font-term); resize: vertical; }
-.prompt-edit__actions { display: flex; justify-content: flex-end; gap: var(--space-xs); }
+.prompt-edit.is-drop { outline: 2px dashed var(--color-accent); outline-offset: -2px; }
+.prompt-edit__files { display: flex; flex-wrap: wrap; gap: var(--space-xs); margin: 0; padding: 0; list-style: none; }
+.prompt-edit__file { display: flex; align-items: center; gap: var(--space-xs); max-width: 18rem; padding: var(--space-2xs); padding-inline-end: 0; border-radius: var(--radius-card); background: var(--color-paper-3); color: var(--color-ink); font-size: var(--text-xs); }
+.prompt-edit__thumb { flex: none; width: 40px; height: 40px; border-radius: calc(var(--radius-card) / 2); object-fit: cover; }
+.prompt-edit__name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.prompt-edit__remove { display: grid; flex: none; place-items: center; width: 28px; height: 28px; border: 0; border-radius: var(--radius-pill); background: transparent; color: var(--color-muted); cursor: pointer; }
+.prompt-edit__remove:hover { background: var(--color-highlight); color: var(--color-ink); }
+.prompt-edit__remove .icon { width: 14px; height: 14px; }
+.prompt-edit__mic { margin-inline-end: auto; }
+.prompt-edit__mic[aria-pressed="true"] { background: var(--color-accent-soft); color: var(--color-accent); }
+.prompt-edit__text { min-height: 4lh; max-height: 35vh; padding: var(--space-xs) var(--space-sm); border: 0; border-radius: var(--radius-card); background: var(--color-paper-3); color: var(--color-ink); font: var(--text-sm) / 1.4 var(--font-term); resize: vertical; }
+.prompt-edit__actions { display: flex; align-items: center; justify-content: flex-end; gap: var(--space-xs); }
 .prompt-edit__text:focus-visible { outline: 2px solid var(--color-focus); outline-offset: -1px; }
 
 /* The chat info badge: model, effort, context and cost in the terminal pane's corner. */

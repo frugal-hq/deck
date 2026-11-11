@@ -4,6 +4,8 @@ contextBridge.exposeInMainWorld('deck', {
   pickFolder: () => ipcRenderer.invoke('folder:pick'),
   pickFiles: () => ipcRenderer.invoke('files:pick'),
   pathForFile: (file) => webUtils.getPathForFile(file),
+  thumbnail: (file) => ipcRenderer.invoke('files:thumbnail', file),
+  savePasted: (bytes, type) => ipcRenderer.invoke('files:save-pasted', bytes, type),
   defaultFolder: () => ipcRenderer.invoke('folder:default'),
   estimateTopics: (options) => ipcRenderer.invoke('topics:estimate', options),
   runTopics: (options) => ipcRenderer.invoke('topics:run', options),
