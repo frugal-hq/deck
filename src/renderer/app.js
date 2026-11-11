@@ -978,6 +978,7 @@ async function closeChat(id) {
   chat.el.remove();
   fadeOut(chat.tab);
   chats.delete(id);
+  sendAttention();
   if (activeId === id) activate([...chats.keys()].pop() ?? null);
   else render();
 }
@@ -1035,7 +1036,10 @@ function setAttention(chat, on) {
   if (chat.attention === on) return;
   chat.attention = on;
   drawAttention(chat);
+  sendAttention();
 }
+
+const sendAttention = () => deck.setAttention([...chats.values()].filter((chat) => chat.attention).length);
 
 function setStatus(chat, status) {
   if (chat.status === status) return;

@@ -3,7 +3,7 @@ const elevated = require('./elevated');
 // An administrator chat starts a UAC-elevated copy of the Deck with this flag, and that copy only hosts the PTY.
 if (process.argv.includes(elevated.HELPER_FLAG)) return elevated.runHelper(process.argv);
 
-const { app, BrowserWindow, Menu, dialog, ipcMain, shell } = require('electron');
+const { app, BrowserWindow, Menu, dialog, ipcMain, nativeImage, shell } = require('electron');
 const { execFile, execFileSync } = require('child_process');
 const fs = require('fs');
 const os = require('os');
@@ -461,6 +461,27 @@ const windowActions = new Map([
 ]);
 ipcMain.on('window:action', (_, action) => windowActions.get(action)?.());
 
+// An amber dot for the taskbar button, drawn as BGRA pixels so no image file ships for it.
+function makeAttentionDot() {
+  const size = 16;
+  const pixels = Buffer.alloc(size * size * 4);
+  for (let y = 0; y < size; y++) {
+    for (let x = 0; x < size; x++) if ((x - 7.5) ** 2 + (y - 7.5) ** 2 <= 36) pixels.set([0x3c, 0xb4, 0xf0, 0xff], (y * size + x) * 4);
+  }
+  return nativeImage.createFromBitmap(pixels, { width: size, height: size });
+}
+let attentionDot;
+
+// Chats that finished or ask something in a tab you are not looking at: the taskbar button flashes until the window
+// is focused and keeps a dot (Windows) or a count (Linux launchers) while any is unseen.
+ipcMain.on('window:attention', (_, count) => {
+  if (!win || !Number.isInteger(count) || count < 0) return;
+  if (!count) win.flashFrame(false);
+  else if (!win.isFocused()) win.flashFrame(true);
+  app.setBadgeCount(count);
+  if (process.platform === 'win32') win.setOverlayIcon(count ? (attentionDot ??= makeAttentionDot()) : null, count ? `${count} ${count === 1 ? 'chat needs' : 'chats need'} attention` : '');
+});
+
 function createWindow() {
   // The default menu would take Ctrl+R and Ctrl+W away from the TUI.
   Menu.setApplicationMenu(null);
@@ -482,6 +503,7 @@ function createWindow() {
   win.webContents.on('render-process-gone', dropEdits);
   win.on('maximize', () => send('window:maximized', true));
   win.on('unmaximize', () => send('window:maximized', false));
+  win.on('focus', () => win.flashFrame(false));
   win.loadFile(path.join(__dirname, '../renderer/index.html'));
 }
 

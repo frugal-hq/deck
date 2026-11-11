@@ -27,6 +27,7 @@ contextBridge.exposeInMainWorld('deck', {
   voicePrepare: (model) => ipcRenderer.invoke('voice:prepare', model),
   voiceTranscribe: (options) => ipcRenderer.invoke('voice:transcribe', options),
   onVoiceProgress: (callback) => ipcRenderer.on('voice:progress', (_, received, total) => callback(received, total)),
+  setAttention: (count) => ipcRenderer.send('window:attention', count),
   login: (options) => ipcRenderer.invoke('accounts:login', options),
   logout: (id) => ipcRenderer.invoke('accounts:logout', { id }),
   removeAccount: (id) => ipcRenderer.invoke('accounts:remove', { id }),
