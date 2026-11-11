@@ -58,12 +58,19 @@ function drawStatus(chat) {
 }
 
 // Moving a tab re-inserts it, which would replay its entrance; is-sorting turns that off for the move.
+// The other tabs then slide from where they were, so a drag shows where the tab lands.
 function moveTab(move) {
   const tabs = $('tabs');
+  const was = new Map([...tabs.children].map((tab) => [tab, tab.getBoundingClientRect().left]));
   tabs.classList.add('is-sorting');
   move();
   tabs.getBoundingClientRect();
   tabs.classList.remove('is-sorting');
+  if (matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  for (const [tab, left] of was) {
+    const dx = left - tab.getBoundingClientRect().left;
+    if (dx) tab.animate([{ translate: `${dx}px 0` }, { translate: '0 0' }], { duration: 160, easing: 'cubic-bezier(0.2, 0, 0, 1)' });
+  }
 }
 
 function togglePin(chat) {
@@ -131,6 +138,8 @@ function tabElement(chat) {
   tab.addEventListener('dragover', (event) => {
     if (!draggedTab || draggedTab === tab || draggedTab.classList.contains('is-pinned') !== tab.classList.contains('is-pinned')) return;
     event.preventDefault();
+    // A sliding tab's box is mid-flight, and measuring it would swap the pair back.
+    if (tab.getAnimations().length) return;
     const { left, width } = tab.getBoundingClientRect();
     const before = event.clientX < left + width / 2;
     if ((before ? tab.previousElementSibling : tab.nextElementSibling) !== draggedTab) moveTab(() => tab[before ? 'before' : 'after'](draggedTab));
