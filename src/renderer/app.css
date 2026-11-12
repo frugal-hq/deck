@@ -81,7 +81,8 @@ body {
 
 .tab {
   display: flex;
-  flex: none;
+  flex: 0 1 auto;
+  min-width: 7rem;
   align-items: stretch;
   height: 32px;
   border-radius: var(--radius-pill);
@@ -90,6 +91,7 @@ body {
 }
 
 .tab.is-pinned .tab__label, .tab.is-pinned .tab__close { display: none; }
+.tab.is-pinned { flex: none; min-width: 0; }
 .tab.is-pinned .tab__open { padding-inline: var(--space-xs); }
 .tab.is-pinned + .tab:not(.is-pinned) { margin-inline-start: var(--space-xs); }
 /* The dragged tab stays in the row as the spot it will land on; the others slide around it. */
@@ -108,13 +110,14 @@ body {
   display: flex;
   align-items: center;
   gap: var(--space-xs);
+  min-width: 0;
   max-width: 28ch;
   padding-inline: var(--space-sm) var(--space-2xs);
 }
 
 .tab__label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
-.tab__close { display: grid; place-items: center; width: 28px; }
+.tab__close { display: grid; flex: none; place-items: center; width: 28px; }
 .tab__close .icon { width: 14px; height: 14px; }
 
 .tab__open:hover, .tab__close:hover { background: var(--color-highlight); color: var(--color-ink); }
@@ -335,7 +338,7 @@ body {
 .usage .meter { display: flex; align-items: center; gap: var(--space-xs); white-space: nowrap; }
 .usage .meter meter { flex: 1; width: auto; }
 .usage .meter .measured { margin-inline-start: auto; }
-#accounts-open { anchor-name: --accounts; }
+#app-menu { anchor-name: --accounts; }
 .usage.usage--top { position-anchor: --accounts; top: anchor(bottom); bottom: auto; margin: var(--space-2xs) 0 0; }
 #usage-open.is-warn, #usage-open.is-warn:hover { color: var(--color-accent); }
 .usage:not(.usage--top) #account-add, .usage:not(.usage--top) .usage__others { display: none; }

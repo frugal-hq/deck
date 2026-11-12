@@ -801,7 +801,7 @@ async function micMenu(chat) {
     items.push({ label: 'Default microphone', checked: !voiceDevice(), run: () => localStorage.removeItem('voiceDevice') });
     inputs.forEach((device, index) => items.push({ label: device.label || `Microphone ${index + 1}`, checked: voiceDevice() === device.deviceId, run: () => localStorage.setItem('voiceDevice', device.deviceId) }));
   }
-  items.push({ label: 'Voice settings…', run: () => $('settings-open').click() });
+  items.push({ label: 'Voice settings…', run: openSettings });
   const box = chat.mic.getBoundingClientRect();
   openMenu(box.right, box.top, items, chat.mic.querySelector('.term-mic__more'));
   menu.style.left = `${Math.max(8, box.right - menu.offsetWidth)}px`;
@@ -2236,18 +2236,19 @@ $('ask-cancel').onclick = () => askDialog.close();
 askDialog.addEventListener('close', () => {
   if (askReturn && !$('usage').matches(':popover-open')) $('usage').showPopover();
 });
-// The panel opens under the bar button or over the footer one, whichever was clicked.
-$('accounts-open').addEventListener('click', () => {
+// The panel opens under the menu button or over the footer one, whichever was used.
+function openAccounts() {
   $('usage').classList.add('usage--top');
   drawAccounts();
-});
+  $('usage').showPopover({ source: $('app-menu') });
+}
 $('usage-open').addEventListener('click', () => {
   $('usage').classList.remove('usage--top');
   drawAccounts();
 });
 $('usage-all').addEventListener('click', () => {
   $('usage').hidePopover();
-  $('accounts-open').click();
+  openAccounts();
 });
 
 // The native datalist popup cannot be styled, so these fields share the app's list.
@@ -2503,7 +2504,7 @@ for (const radio of viewRadios) {
   radio.checked = radio.value === sessionView;
   radio.onchange = () => setSessionView(radio.value);
 }
-$('settings-open').onclick = async () => {
+async function openSettings() {
   $('settings-confirm-close').checked = confirmsClose();
   $('settings-always-trust').checked = alwaysTrusts();
   $('settings-bypass').checked = bypassOn();
@@ -2518,7 +2519,9 @@ $('settings-open').onclick = async () => {
   $('settings-reopen').checked = reopensChats();
   $('settings-volume').value = notifyVolume();
   $('settings-volume-value').value = `${notifyVolume()}%`;
+  $('settings-group-limit').value = groupLimit();
   $('settings-dialog').showModal();
+}
 $('settings-group-limit').onchange = (event) => {
   const value = Number(event.target.value);
   if (!Number.isInteger(value) || value < 1 || value > 500) {
@@ -2710,7 +2713,15 @@ const startInPicked = async () => startChat(await deck.pickFolder());
 $('new').onclick = startInSessions;
 $('start').onclick = startInSessions;
 $('pick').onclick = startInPicked;
-$('new-in-folder').onclick = startInPicked;
+// Deck-wide actions; the ones for the open chat sit in the readout.
+$('app-menu').onclick = () => {
+  const { right, bottom } = $('app-menu').getBoundingClientRect();
+  openMenu(right, bottom + 4, [
+    { label: 'New chat in a folder…', run: startInPicked },
+    { label: 'Accounts', run: openAccounts },
+    { label: 'Settings', run: openSettings },
+  ], $('app-menu'));
+};
 render();
 for (const button of document.querySelectorAll('[data-window-action]')) {
   button.onclick = () => deck.windowAction(button.dataset.windowAction);
