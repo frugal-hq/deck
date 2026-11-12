@@ -1777,6 +1777,17 @@ function groupMenu(key, label, byTopic) {
         deck.renameGroup(sessionsOfGroup(key), key, to);
       },
     }) },
+    { label: 'Merge into another group', run: () => ask({
+      title: `Merge ${label} into`,
+      text: 'Its chats move into the group you choose, and this group goes away.',
+      names: groupNames.filter((other) => other !== key),
+      action: 'Merge',
+      run: (to) => {
+        if (to === key) return;
+        renameOpenKey(key, to);
+        deck.renameGroup(sessionsOfGroup(key), key, to);
+      },
+    }) },
     move,
     { label: 'Delete', danger: true, run: () => ask({
       title: `Delete ${label}?`,
