@@ -78,6 +78,20 @@ const hasFrugal = (account) => Boolean(readJson(path.join(account.configDir, 'pl
 const roles = () => load().roles !== false;
 const setRoles = (on) => save({ ...load(), roles: on });
 
+const mcpKey = (folder) => {
+  const resolved = path.resolve(folder);
+  return process.platform === 'win32' ? resolved.toLowerCase() : resolved;
+};
+const mcpOff = (folder) => load().mcpOff?.[mcpKey(folder)] ?? [];
+const setMcpOff = (folder, names) => {
+  const settings = load();
+  const key = mcpKey(folder);
+  const mcpOffMap = { ...(settings.mcpOff ?? {}) };
+  if (!names.length) delete mcpOffMap[key];
+  else mcpOffMap[key] = names;
+  save({ ...settings, mcpOff: mcpOffMap });
+};
+
 // The login Claude Code reports: the main account's lives beside ~/.claude, the others' inside their folder.
 const emails = new Map();
 
@@ -438,7 +452,7 @@ async function refreshReadings(claude, env, openAccounts, only) {
 
 const clearEmails = () => emails.clear();
 
-module.exports = { MAIN, claudeAccounts, primary, setPrimary, hasFrugal, roles, setRoles, snapshot, renameAccount, saveReading, setAccountCap, applyCodexCaps, capExhaustedUntil, prepareAccount, ensureOnboarded, finishAccount, removeAccount, clearEmails, shareTranscript, parseUsage, refreshReadings, codexLimits };
+module.exports = { MAIN, claudeAccounts, primary, setPrimary, hasFrugal, roles, setRoles, mcpOff, setMcpOff, snapshot, renameAccount, saveReading, setAccountCap, applyCodexCaps, capExhaustedUntil, prepareAccount, ensureOnboarded, finishAccount, removeAccount, clearEmails, shareTranscript, parseUsage, refreshReadings, codexLimits };
 
 if (require.main === module) {
   const assert = require('assert');

@@ -9,6 +9,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const { promisify } = require('util');
+const runExec = promisify(execFile);
 const { createInterface } = require('readline');
 const { Worker } = require('worker_threads');
 const pty = require('node-pty');
@@ -16,6 +17,7 @@ const { createStatusBridge, readUserStatusLine } = require('./statusline');
 const { validOptions, estimate, organize, estimateJoins, resolveJoins, estimateWorkspaces, resolveWorkspaces } = require('./organizer');
 const accounts = require('./accounts');
 const { createVoice } = require('./voice');
+const { parseMcpList } = require('./mcp');
 
 const UUID = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 const DROPPED_ENV = /^(CLAUDE.*|ELECTRON_RUN_AS_NODE|NO_COLOR|npm_.*|INIT_CWD)$/i;
@@ -253,7 +255,8 @@ async function launchChat({ id, folder, cols, rows, resume, group, account, file
     if (resume) accounts.shareTranscript(file, account.configDir);
     // The Deck's own warning took the consent, so Claude Code's disclaimer is skipped (it reads this key from flag settings too).
     // Claude Code reads voice.enabled before voiceEnabled, and /voice off writes it to user settings. The mic button holds Space, so the mode is hold.
-    const settings = { statusLine: status.statusLine, ...(bypass === true && { skipDangerousModePermissionPrompt: true }), ...(anthropicVoice && { voice: { enabled: true, mode: 'hold' } }) };
+    const denied = accounts.mcpOff(folder).map((serverName) => ({ serverName }));
+    const settings = { statusLine: status.statusLine, ...(bypass === true && { skipDangerousModePermissionPrompt: true }), ...(anthropicVoice && { voice: { enabled: true, mode: 'hold' } }), ...(denied.length && { deniedMcpServers: denied }) };
     const args = [resume ? '--resume' : '--session-id', id, '--settings', JSON.stringify(settings)];
     if (prompt) args.push(prompt);
     if (bypass === true) args.push('--dangerously-skip-permissions');
@@ -380,6 +383,36 @@ ipcMain.handle('accounts:set-primary', (_, { id }) => {
   return { ok: true };
 });
 ipcMain.handle('accounts:get', () => accounts.snapshot());
+
+ipcMain.handle('mcp:list', async (_, folder, accountId) => {
+  if (typeof folder !== 'string' || !path.isAbsolute(folder)) return { error: 'Invalid folder.' };
+  let stat;
+  try { stat = fs.statSync(folder); } catch { return { error: 'Invalid folder.' }; }
+  if (!stat.isDirectory()) return { error: 'Invalid folder.' };
+  const account = accounts.claudeAccounts().find((candidate) => candidate.id === accountId) ?? accounts.primary();
+  const claude = findClaude();
+  if (!claude) return { error: NO_CLAUDE };
+  const off = accounts.mcpOff(folder);
+  // Listed as the chat sees them: turning off a server can reveal another of the same name it was hiding, e.g. "pylon" hides "claude.ai Pylon".
+  const settings = ['--settings', JSON.stringify({ deniedMcpServers: off.map((serverName) => ({ serverName })) })];
+  try {
+    const { stdout, stderr } = await runExec(claude, [...settings, 'mcp', 'list'], { cwd: folder, env: accountEnv(account), timeout: 60000, windowsHide: true });
+    return { servers: parseMcpList(`${stdout ?? ''}\n${stderr ?? ''}`), off };
+  } catch (error) {
+    const output = `${error.stdout ?? ''}\n${error.stderr ?? ''}`.trim();
+    return { error: output || error.message };
+  }
+});
+
+ipcMain.handle('mcp:set', (_, folder, names) => {
+  if (typeof folder !== 'string' || !path.isAbsolute(folder)) return { error: 'Invalid folder.' };
+  let stat;
+  try { stat = fs.statSync(folder); } catch { return { error: 'Invalid folder.' }; }
+  if (!stat.isDirectory()) return { error: 'Invalid folder.' };
+  if (!Array.isArray(names) || names.length > 200 || names.some((name) => typeof name !== 'string' || name.length > 200)) return { error: 'Invalid list.' };
+  accounts.setMcpOff(folder, names);
+  return { ok: true };
+});
 ipcMain.handle('settings:roles', () => accounts.roles());
 ipcMain.on('settings:set-roles', (_, on) => {
   if (typeof on === 'boolean') accounts.setRoles(on);

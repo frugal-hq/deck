@@ -180,6 +180,7 @@ function render() {
   const activeSession = currentIndex?.sessions?.find((s) => s.id === activeId);
   $('link-chat').hidden = !activeSession;
   $('attach').hidden = chat?.state !== 'running';
+  $('mcp-servers').disabled = !chat;
   const activeChat = activeSession && chatsById.get(activeSession.chatId);
   const chatCount = activeChat ? activeChat.earlier.length + 1 : 0;
   const historyButton = $('chat-history');
@@ -2665,6 +2666,72 @@ $('settings-bypass').onchange = async (event) => {
   if (!event.target.checked) localStorage.removeItem(BOTH_ACCEPTED);
   for (const chat of chats.values()) drawBadge(chat);
 };
+let mcpNames = [];
+async function openMcpDialog() {
+  const chat = chats.get(activeId);
+  if (!chat) return;
+  mcpNames = [];
+  $('mcp-folder').textContent = chat.cwd;
+  const list = $('mcp-list');
+  list.textContent = 'Loading…';
+  list.style.color = '';
+  $('mcp-error').hidden = true;
+  $('mcp-dialog').showModal();
+  const result = await deck.mcpList(chat.cwd, chat.account);
+  if (result?.error) {
+    list.textContent = '';
+    const err = $('mcp-error');
+    err.textContent = result.error;
+    err.hidden = false;
+    return;
+  }
+  const off = new Set(result.off ?? []);
+  const seen = new Set();
+  const rows = [];
+  for (const server of result.servers ?? []) {
+    seen.add(server.name);
+    rows.push({ name: server.name, status: server.status, off: off.has(server.name) });
+  }
+  for (const name of result.off ?? []) {
+    if (seen.has(name)) continue;
+    seen.add(name);
+    rows.push({ name, status: '', off: true });
+  }
+  mcpNames = rows.map((row) => row.name);
+  list.innerHTML = '';
+  if (!rows.length) { list.textContent = 'No servers found.'; list.style.color = 'var(--color-muted)'; return; }
+  for (const row of rows) {
+    const label = document.createElement('label');
+    label.className = 'organize__check';
+    const input = document.createElement('input');
+    input.type = 'checkbox';
+    input.checked = !row.off;
+    input.dataset.name = row.name;
+    label.append(input, document.createTextNode(' ' + row.name));
+    if (row.status) {
+      const status = document.createElement('span');
+      status.textContent = ' ' + row.status;
+      status.style.color = 'var(--color-muted)';
+      status.style.fontSize = 'var(--text-xs)';
+      label.append(status);
+    }
+    list.append(label);
+  }
+}
+$('mcp-save').onclick = async () => {
+  const chat = chats.get(activeId);
+  if (!chat) { $('mcp-dialog').close(); return; }
+  const off = [];
+  for (const input of $('mcp-list').querySelectorAll('input[type="checkbox"]')) {
+    if (!input.checked) off.push(input.dataset.name);
+  }
+  await deck.mcpSet(chat.cwd, off);
+  $('mcp-dialog').close();
+};
+$('mcp-cancel').onclick = () => $('mcp-dialog').close();
+
+$('mcp-servers').onclick = () => openMcpDialog();
+
 $('settings-admin').onchange = async (event) => {
   if (event.target.checked) {
     event.target.checked = false; // Stays off until the warning is accepted.
