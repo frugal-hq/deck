@@ -254,8 +254,9 @@
   <p id="mcp-folder" style="color: var(--color-muted); font-size: var(--text-xs); word-break: break-all;"></p>
   <div id="mcp-list"></div>
   <p id="mcp-error" style="color: var(--color-muted);" hidden></p>
-  <p style="color: var(--color-muted); font-size: var(--text-xs);">Applies to chats started or restarted in this folder.</p>
+  <p id="mcp-note" style="color: var(--color-muted); font-size: var(--text-xs);"></p>
   <div style="display: flex; gap: 8px; justify-content: flex-end;">
+    <select id="mcp-add" aria-label="Add a server that is not connected" style="margin-inline-end: auto;" hidden></select>
     <button id="mcp-cancel" class="btn" type="button">Cancel</button>
     <button id="mcp-save" class="btn" type="button">Save</button>
   </div>

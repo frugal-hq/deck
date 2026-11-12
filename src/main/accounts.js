@@ -78,14 +78,24 @@ const hasFrugal = (account) => Boolean(readJson(path.join(account.configDir, 'pl
 const roles = () => load().roles !== false;
 const setRoles = (on) => save({ ...load(), roles: on });
 
-const mcpKey = (folder) => {
+// Servers turned off for a folder ({ folder }), a group ({ group }) or a workspace ({ workspace }) of the sidebar.
+const mcpKey = ({ folder, group, workspace }) => {
+  if (workspace) return `workspace:${workspace.toLowerCase()}`;
+  if (group) return `group:${group.toLowerCase()}`;
   const resolved = path.resolve(folder);
   return process.platform === 'win32' ? resolved.toLowerCase() : resolved;
 };
-const mcpOff = (folder) => load().mcpOff?.[mcpKey(folder)] ?? [];
-const setMcpOff = (folder, names) => {
+const mcpOff = (scope) => load().mcpOff?.[mcpKey(scope)] ?? [];
+// A renamed or merged group or workspace keeps its servers off; kind is 'group' or 'workspace'.
+const renameMcpScope = (kind, from, to) => {
+  const names = mcpOff({ [kind]: from });
+  if (!names.length || from.toLowerCase() === to.toLowerCase()) return;
+  setMcpOff({ [kind]: to }, [...new Set([...mcpOff({ [kind]: to }), ...names])]);
+  setMcpOff({ [kind]: from }, []);
+};
+const setMcpOff = (scope, names) => {
   const settings = load();
-  const key = mcpKey(folder);
+  const key = mcpKey(scope);
   const mcpOffMap = { ...(settings.mcpOff ?? {}) };
   if (!names.length) delete mcpOffMap[key];
   else mcpOffMap[key] = names;
@@ -452,7 +462,7 @@ async function refreshReadings(claude, env, openAccounts, only) {
 
 const clearEmails = () => emails.clear();
 
-module.exports = { MAIN, claudeAccounts, primary, setPrimary, hasFrugal, roles, setRoles, mcpOff, setMcpOff, snapshot, renameAccount, saveReading, setAccountCap, applyCodexCaps, capExhaustedUntil, prepareAccount, ensureOnboarded, finishAccount, removeAccount, clearEmails, shareTranscript, parseUsage, refreshReadings, codexLimits };
+module.exports = { MAIN, claudeAccounts, primary, setPrimary, hasFrugal, roles, setRoles, mcpOff, setMcpOff, renameMcpScope, snapshot, renameAccount, saveReading, setAccountCap, applyCodexCaps, capExhaustedUntil, prepareAccount, ensureOnboarded, finishAccount, removeAccount, clearEmails, shareTranscript, parseUsage, refreshReadings, codexLimits };
 
 if (require.main === module) {
   const assert = require('assert');

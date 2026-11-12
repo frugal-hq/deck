@@ -1960,7 +1960,10 @@ function addMenu(summary, label, items) {
 }
 
 function renameOpenKey(from, to) {
+  // Listed from the folder of one of its chats, nested workspaces included.
+  const folder = currentIndex.sessions.find((s) => withinSpace(s.space ?? currentIndex.workspaces?.[chatsById.get(s.chatId)?.topic] ?? currentIndex.workspaces?.[s.cwd], name, currentIndex))?.cwd;
   if (openGroups.delete(from)) openGroups.add(to);
+    ...(folder ? [{ label: 'MCP servers', run: () => openMcpDialog({ workspace: name, folder }) }] : []),
 }
 
 function workspaceMenu(name) {
@@ -1992,7 +1995,10 @@ const sessionsOfGroup = (key) => currentIndex.sessions.filter((s) => chatsById.g
 
 function groupMenu(key, label, byTopic) {
   const move = { label: 'Move to workspace', run: () => openWorkspace(key, label) };
-  if (!byTopic) return [move];
+  // A group's servers are listed from the folder of one of its chats.
+  const folder = byTopic ? currentIndex.sessions.find((s) => chatsById.get(s.chatId)?.topic === key)?.cwd : key;
+  const mcp = { label: 'MCP servers', run: () => openMcpDialog(byTopic ? { group: key, folder } : { folder }) };
+  if (!byTopic) return [move, mcp];
   const workspace = currentIndex.workspaces?.[key];
   return [
     { label: 'Rename', run: () => ask({
@@ -2015,6 +2021,7 @@ function groupMenu(key, label, byTopic) {
       run: (to) => {
         if (to === key) return;
         renameOpenKey(key, to);
+    ...(folder ? [mcp] : []),
         deck.renameGroup(sessionsOfGroup(key), key, to);
       },
     }) },
@@ -2672,18 +2679,41 @@ $('settings-bypass').onchange = async (event) => {
   if (!event.target.checked) localStorage.removeItem(BOTH_ACCEPTED);
   for (const chat of chats.values()) drawBadge(chat);
 };
-let mcpNames = [];
-async function openMcpDialog() {
-  const chat = chats.get(activeId);
-  if (!chat) return;
-  mcpNames = [];
-  $('mcp-folder').textContent = chat.cwd;
+// A folder ({ folder }), or a sidebar group or workspace ({ group | workspace, folder }) whose servers go off on top of each chat's folder.
+// Only connected servers and the ones turned off are listed; the rest wait in the Add menu.
+let mcpScope = null;
+let mcpHidden = new Map();
+
+function mcpRow(row) {
+  const label = node('label', 'organize__check');
+  const input = document.createElement('input');
+  input.type = 'checkbox';
+  input.checked = !row.off;
+  input.dataset.name = row.name;
+  label.append(input, document.createTextNode(' ' + row.name));
+  if (row.status) {
+    const status = node('span', '', ' ' + row.status);
+    status.style.color = 'var(--color-muted)';
+    status.style.fontSize = 'var(--text-xs)';
+    label.append(status);
+  }
+  return label;
+}
+
+async function openMcpDialog(scope) {
+  mcpScope = scope;
+  const add = $('mcp-add');
+  add.hidden = true;
+  const kind = scope.workspace ? 'workspace' : scope.group ? 'group' : 'folder';
+  $('mcp-folder').textContent = scope.workspace ?? scope.group ?? scope.folder;
+  $('mcp-note').textContent = `Applies to chats started or restarted in this ${kind}${kind === 'workspace' ? ' and the ones inside it' : ''}${kind === 'folder' ? '' : ', on top of their folder'}.`;
   const list = $('mcp-list');
   list.textContent = 'Loading…';
   list.style.color = '';
   $('mcp-error').hidden = true;
   $('mcp-dialog').showModal();
-  const result = await deck.mcpList(chat.cwd, chat.account);
+  const result = await deck.mcpList(scope, scope.account);
+  if (mcpScope !== scope) return;
   if (result?.error) {
     list.textContent = '';
     const err = $('mcp-error');
@@ -2692,51 +2722,41 @@ async function openMcpDialog() {
     return;
   }
   const off = new Set(result.off ?? []);
-  const seen = new Set();
-  const rows = [];
-  for (const server of result.servers ?? []) {
-    seen.add(server.name);
-    rows.push({ name: server.name, status: server.status, off: off.has(server.name) });
-  }
-  for (const name of result.off ?? []) {
-    if (seen.has(name)) continue;
-    seen.add(name);
-    rows.push({ name, status: '', off: true });
-  }
-  mcpNames = rows.map((row) => row.name);
-  list.innerHTML = '';
-  if (!rows.length) { list.textContent = 'No servers found.'; list.style.color = 'var(--color-muted)'; return; }
-  for (const row of rows) {
-    const label = document.createElement('label');
-    label.className = 'organize__check';
-    const input = document.createElement('input');
-    input.type = 'checkbox';
-    input.checked = !row.off;
-    input.dataset.name = row.name;
-    label.append(input, document.createTextNode(' ' + row.name));
-    if (row.status) {
-      const status = document.createElement('span');
-      status.textContent = ' ' + row.status;
-      status.style.color = 'var(--color-muted)';
-      status.style.fontSize = 'var(--text-xs)';
-      label.append(status);
-    }
-    list.append(label);
-  }
+  const rows = (result.servers ?? []).map(({ name, status }) => ({ name, status, off: off.has(name) }));
+  for (const name of off) if (!rows.some((row) => row.name === name)) rows.push({ name, status: '', off: true });
+  const shown = rows.filter((row) => row.off || row.status.startsWith('✓'));
+  mcpHidden = new Map(rows.filter((row) => !shown.includes(row)).map((row) => [row.name, row]));
+  list.replaceChildren(...shown.map(mcpRow));
+  if (!shown.length) { list.textContent = 'No connected servers.'; list.style.color = 'var(--color-muted)'; }
+  add.replaceChildren(new Option('Add server…', ''), ...[...mcpHidden.values()].map((row) => new Option(`${row.name} (${row.status})`, row.name)));
+  add.hidden = !mcpHidden.size;
 }
+$('mcp-add').onchange = (event) => {
+  const row = mcpHidden.get(event.target.value);
+  if (!row) return;
+  mcpHidden.delete(row.name);
+  const list = $('mcp-list');
+  if (!list.querySelector('label')) { list.textContent = ''; list.style.color = ''; }
+  list.append(mcpRow(row));
+  event.target.selectedOptions[0].remove();
+  event.target.value = '';
+  event.target.hidden = !mcpHidden.size;
+};
 $('mcp-save').onclick = async () => {
-  const chat = chats.get(activeId);
-  if (!chat) { $('mcp-dialog').close(); return; }
+  if (!mcpScope) { $('mcp-dialog').close(); return; }
   const off = [];
   for (const input of $('mcp-list').querySelectorAll('input[type="checkbox"]')) {
     if (!input.checked) off.push(input.dataset.name);
   }
-  await deck.mcpSet(chat.cwd, off);
+  await deck.mcpSet({ folder: mcpScope.folder, group: mcpScope.group, workspace: mcpScope.workspace }, off);
   $('mcp-dialog').close();
 };
 $('mcp-cancel').onclick = () => $('mcp-dialog').close();
 
-$('mcp-servers').onclick = () => openMcpDialog();
+$('mcp-servers').onclick = () => {
+  const chat = chats.get(activeId);
+  if (chat) openMcpDialog({ folder: chat.cwd, account: chat.account });
+};
 
 $('settings-admin').onchange = async (event) => {
   if (event.target.checked) {

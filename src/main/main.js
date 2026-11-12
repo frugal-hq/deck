@@ -241,6 +241,16 @@ const helperCommand = () => ({ exe: process.execPath, args: app.isPackaged ? [] 
 
 let elevatedHost;
 
+// The chat's workspace, then each workspace it is nested in, as the sidebar places it.
+function workspacesOf(space, topic, folder) {
+  const lower = (map) => new Map(Object.entries(map ?? {}).map(([key, value]) => [key.toLowerCase(), value]));
+  const workspaces = lower(index.workspaces);
+  const parents = lower(index.workspaceParents);
+  const chain = [];
+  for (let at = space ?? workspaces.get(topic?.toLowerCase()) ?? workspaces.get(folder.toLowerCase()); at && chain.length < 50; at = parents.get(at.toLowerCase())) chain.push(at);
+  return chain;
+}
+
 async function launchChat({ id, folder, cols, rows, resume, group, account, file, prompt, bypass, admin }) {
   const claude = findClaude();
   if (!claude) return { error: NO_CLAUDE };
@@ -255,7 +265,11 @@ async function launchChat({ id, folder, cols, rows, resume, group, account, file
     if (resume) accounts.shareTranscript(file, account.configDir);
     // The Deck's own warning took the consent, so Claude Code's disclaimer is skipped (it reads this key from flag settings too).
     // Claude Code reads voice.enabled before voiceEnabled, and /voice off writes it to user settings. The mic button holds Space, so the mode is hold.
-    const denied = accounts.mcpOff(folder).map((serverName) => ({ serverName }));
+    // Off for the folder, the chat's group, or any workspace it sits in.
+    const session = index.sessions.find((s) => s.id === id);
+    const topic = group || session?.topic;
+    const scopes = [{ folder }, ...(topic ? [{ group: topic }] : []), ...workspacesOf(session?.space, topic, folder).map((workspace) => ({ workspace }))];
+    const denied = [...new Set(scopes.flatMap(accounts.mcpOff))].map((serverName) => ({ serverName }));
     const settings = { statusLine: status.statusLine, ...(bypass === true && { skipDangerousModePermissionPrompt: true }), ...(anthropicVoice && { voice: { enabled: true, mode: 'hold' } }), ...(denied.length && { deniedMcpServers: denied }) };
     const args = [resume ? '--resume' : '--session-id', id, '--settings', JSON.stringify(settings)];
     if (prompt) args.push(prompt);
@@ -384,15 +398,24 @@ ipcMain.handle('accounts:set-primary', (_, { id }) => {
 });
 ipcMain.handle('accounts:get', () => accounts.snapshot());
 
-ipcMain.handle('mcp:list', async (_, folder, accountId) => {
-  if (typeof folder !== 'string' || !path.isAbsolute(folder)) return { error: 'Invalid folder.' };
-  let stat;
-  try { stat = fs.statSync(folder); } catch { return { error: 'Invalid folder.' }; }
-  if (!stat.isDirectory()) return { error: 'Invalid folder.' };
+// A folder, or a group or workspace with the folder its servers are listed from.
+function mcpScope(scope) {
+  const { folder, group, workspace } = scope ?? {};
+  if (typeof folder !== 'string' || !path.isAbsolute(folder)) return null;
+  try { if (!fs.statSync(folder).isDirectory()) return null; } catch { return null; }
+  const name = (value) => value === undefined || (typeof value === 'string' && value && value.length <= 200);
+  if (!name(group) || !name(workspace)) return null;
+  return workspace ? { folder, workspace } : group ? { folder, group } : { folder };
+}
+
+ipcMain.handle('mcp:list', async (_, input, accountId) => {
+  const scope = mcpScope(input);
+  if (!scope) return { error: 'Invalid folder.' };
+  const { folder } = scope;
   const account = accounts.claudeAccounts().find((candidate) => candidate.id === accountId) ?? accounts.primary();
   const claude = findClaude();
   if (!claude) return { error: NO_CLAUDE };
-  const off = accounts.mcpOff(folder);
+  const off = accounts.mcpOff(scope);
   // Listed as the chat sees them: turning off a server can reveal another of the same name it was hiding, e.g. "pylon" hides "claude.ai Pylon".
   const settings = ['--settings', JSON.stringify({ deniedMcpServers: off.map((serverName) => ({ serverName })) })];
   try {
@@ -404,13 +427,11 @@ ipcMain.handle('mcp:list', async (_, folder, accountId) => {
   }
 });
 
-ipcMain.handle('mcp:set', (_, folder, names) => {
-  if (typeof folder !== 'string' || !path.isAbsolute(folder)) return { error: 'Invalid folder.' };
-  let stat;
-  try { stat = fs.statSync(folder); } catch { return { error: 'Invalid folder.' }; }
-  if (!stat.isDirectory()) return { error: 'Invalid folder.' };
+ipcMain.handle('mcp:set', (_, input, names) => {
+  const scope = mcpScope(input);
+  if (!scope) return { error: 'Invalid folder.' };
   if (!Array.isArray(names) || names.length > 200 || names.some((name) => typeof name !== 'string' || name.length > 200)) return { error: 'Invalid list.' };
-  accounts.setMcpOff(folder, names);
+  accounts.setMcpOff(scope, names);
   return { ok: true };
 });
 ipcMain.handle('settings:roles', () => accounts.roles());
@@ -607,9 +628,15 @@ ipcMain.handle('topics:run', (_, options) => exclusiveRun(options, (claude, run)
 ipcMain.on('sessions:set-group', (_, id, name) => indexer?.postMessage({ setGroup: { id, name } }));
 ipcMain.on('sessions:set-workspace', (_, group, workspace) => indexer?.postMessage({ setWorkspace: { group, workspace } }));
 ipcMain.on('workspaces:set-parent', (_, name, parent) => indexer?.postMessage({ setWorkspaceParent: { name, parent } }));
-ipcMain.on('workspaces:rename', (_, from, to) => indexer?.postMessage({ renameWorkspace: { from, to } }));
+ipcMain.on('workspaces:rename', (_, from, to) => {
+  indexer?.postMessage({ renameWorkspace: { from, to } });
+  if (typeof from === 'string' && typeof to === 'string' && from && to) accounts.renameMcpScope('workspace', from, to);
+});
 ipcMain.on('workspaces:delete', (_, name) => indexer?.postMessage({ deleteWorkspace: { name } }));
-ipcMain.on('groups:rename', (_, ids, from, to) => indexer?.postMessage({ renameGroup: { ids, from, to } }));
+ipcMain.on('groups:rename', (_, ids, from, to) => {
+  indexer?.postMessage({ renameGroup: { ids, from, to } });
+  if (typeof from === 'string' && typeof to === 'string' && from && to) accounts.renameMcpScope('group', from, to);
+});
 ipcMain.on('groups:delete', (_, ids, group) => indexer?.postMessage({ deleteGroup: { ids, group } }));
 ipcMain.on('workspaces:clear', () => indexer?.postMessage({ clearWorkspaces: true }));
 ipcMain.handle('workspaces:estimate', () => estimateWorkspaces(index.sessions));
