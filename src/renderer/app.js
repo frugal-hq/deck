@@ -1759,9 +1759,36 @@ function chatElement(chat) {
     else openGroups.delete(key);
     syncSummary();
   };
-  history.append(summary, ...chat.earlier.map((session) => sessionButton(session)));
+  history.append(summary, foldLine(history), ...chat.earlier.map((session) => sessionButton(session)));
   container.append(first, history);
   return container;
+}
+
+// The line beside an open group or chat folds it. The summary does the same from the keyboard.
+function foldLine(details) {
+  const line = node('div', 'tree-rail');
+  line.ariaHidden = 'true';
+  line.dataset.tip = 'Collapse';
+  line.onclick = () => (details.open = false);
+  return line;
+}
+
+const groupLimit = () => Math.max(1, Number(localStorage.getItem('groupLimit')) || 10);
+
+// A group longer than the limit shows its first chats and a row that shows the rest.
+function limitedChats(key, chats) {
+  const limit = groupLimit();
+  if (chats.length <= limit) return chats.map((chat) => chatElement(chat));
+  const all = openGroups.has(`more:${key}`);
+  const more = node('button', 'session group__more', all ? 'Show less' : `Show ${chats.length - limit} more`);
+  more.type = 'button';
+  more.onclick = () => {
+    if (all) openGroups.delete(`more:${key}`);
+    else openGroups.add(`more:${key}`);
+    drawnSignature = '';
+    renderSessions(currentIndex);
+  };
+  return [...(all ? chats : chats.slice(0, limit)).map((chat) => chatElement(chat)), more];
 }
 
 function newChatButton(chats, group, label) {
@@ -1895,7 +1922,7 @@ function groupElement(key, chats, byTopic) {
     summary.append(newChatButton(chats, byTopic ? key : undefined, label));
     addMenu(summary, label, () => groupMenu(key, label, byTopic));
   }
-  group.append(summary, ...chats.map((chat) => chatElement(chat)));
+  group.append(summary, foldLine(group), ...limitedChats(key, chats));
   configureGroupDrag(summary, group, key);
   return group;
 }
@@ -1922,8 +1949,9 @@ function workspaceElement(workspace, byTopic) {
   addMenu(summary, workspace.name, () => workspaceMenu(workspace.name));
   group.append(
     summary,
-    ...workspace.groups.map(([groupKey, list]) => groupElement(groupKey, list, byTopic)),
-    ...workspace.chats.map((chat) => chatElement(chat)),
+    foldLine(group),
+    ...branchElements(workspace.spaces, workspace.groups, byTopic),
+    ...limitedChats(key, workspace.chats),
   );
   configureGroupDrag(summary, group, key);
   return group;
@@ -2491,6 +2519,15 @@ $('settings-open').onclick = async () => {
   $('settings-volume').value = notifyVolume();
   $('settings-volume-value').value = `${notifyVolume()}%`;
   $('settings-dialog').showModal();
+$('settings-group-limit').onchange = (event) => {
+  const value = Number(event.target.value);
+  if (!Number.isInteger(value) || value < 1 || value > 500) {
+    event.target.value = groupLimit();
+    return;
+  }
+  localStorage.setItem('groupLimit', value);
+  drawnSignature = '';
+  if (currentIndex) renderSessions(currentIndex);
 };
 $('settings-confirm-close').onchange = (event) => setConfirmsClose(event.target.checked);
 $('settings-bypass').onchange = async (event) => {

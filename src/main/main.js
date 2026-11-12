@@ -49,8 +49,15 @@ const dropEdits = () => {
 };
 // frugal: the sidebar shows the newest sessions plus every organized one and every open chat, and never cuts a chat in half; the palette and resume use all of them.
 const SIDEBAR_LIMIT = 500;
+// Past the newest 500, each topic and folder still keeps its newest few, so a busy project never hides a quieter one.
+const PER_GROUP = 20;
 const sidebarIndex = () => {
-  const kept = index.sessions.filter((s, i) => i < SIDEBAR_LIMIT || s.pinned || s.space || s.tags.length || chats.has(s.id));
+  const seen = new Map();
+  const early = (key) => {
+    seen.set(key, (seen.get(key) ?? 0) + 1);
+    return seen.get(key) <= PER_GROUP;
+  };
+  const kept = index.sessions.filter((s, i) => [early(`t:${s.topic ?? ''}`), early(`f:${s.cwd}`)].some(Boolean) || i < SIDEBAR_LIMIT || s.pinned || s.space || s.tags.length || chats.has(s.id));
   const chatIds = new Set(kept.map((s) => s.chatId));
   return { ...index, sessions: index.sessions.filter((s) => chatIds.has(s.chatId)) };
 };
