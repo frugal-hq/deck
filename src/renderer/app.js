@@ -1110,6 +1110,11 @@ function addAccount() {
 
 $('account-add').onclick = addAccount;
 
+// xterm reports a selection only on mouseup, so output during a drag would see it as stale and clear it.
+let mouseHeld = false;
+addEventListener('mousedown', () => (mouseHeld = true), true);
+addEventListener('mouseup', () => (mouseHeld = false), true);
+
 async function openChat({ id, cwd, name, resume, group, login, accountId, handoff }) {
   const el = document.createElement('div');
   el.className = 'term';
@@ -1143,7 +1148,7 @@ async function openChat({ id, cwd, name, resume, group, login, accountId, handof
   // xterm keeps a selection over cells that Claude Code redraws; it goes once the text under it changes.
   term.onSelectionChange(() => (chat.selected = term.getSelection()));
   term.onWriteParsed(() => {
-    if (term.hasSelection() && term.getSelection() !== chat.selected) term.clearSelection();
+    if (!mouseHeld && term.hasSelection() && term.getSelection() !== chat.selected) term.clearSelection();
   });
   term.onTitleChange((title) => onTitle(chat, title));
   term.attachCustomKeyEventHandler((event) => handleTerminalKey(chat, event));
