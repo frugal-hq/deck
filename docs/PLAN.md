@@ -212,7 +212,7 @@ Not verified: multiple voices, other microphones, and `/voice` inside the PTY, w
 - Administrator: elevated helper process, with UAC on each elevated session.
 - Pending from Phase 0: elevated `claude` TUI and its resize in xterm.js (Test 4).
 
-**Status (2026-11-10): built, not yet run with UAC.** `src/main/elevated.js` relaunches the Deck with `--elevated-helper`, and each end proves it holds the secret (HMAC over the other's nonce) before a PTY starts. `test/elevated.check.js` covers the handshake and an impostor pipe server; the relay itself only runs in an elevated shell. Bypass and administrator together are confirmed once and stay accepted across restarts until either setting is turned off (the user's choice on 2026-11-11, replacing a confirmation per run); UAC still asks once per Deck run. Still untested: the elevated `claude` TUI, its resize, and Ctrl+G from an elevated chat.
+**Status (2026-11-10): built, not yet run with UAC.** `src/main/elevated.js` relaunches the Deck with `--elevated-helper`, and each end proves it holds the secret (HMAC over the other's nonce) before a PTY starts. `test/elevated.check.js` covers the handshake and an impostor pipe server; the relay itself only runs in an elevated shell. Bypass and administrator together are confirmed once and stay accepted across restarts until either setting is turned off (the user's choice on 2026-11-11, replacing a confirmation per run). UAC asks only the first time: the elevated helper registers the scheduled task `\Frugal Deck\Administrator helper` (highest privileges, pipe and secret as `$(Arg0)` `$(Arg1)`), and later runs start it without a prompt; a missing or outdated task falls back to UAC (the user's choice on 2026-11-11, accepting that any process of the user can start it while the Deck sits in a user-writable folder). Argument passing and the task settings were checked on a non-elevated task; the elevated path is unverified. Still untested: the elevated `claude` TUI, its resize, and Ctrl+G from an elevated chat.
 
 **Warning texts (draft)**
 
@@ -251,7 +251,7 @@ Not verified: multiple voices, other microphones, and `/voice` inside the PTY, w
 - README with screenshots and terms notice: individual use, no credential brokering.
 - Public repository on GitHub, `frugal-hq/deck`, MIT license.
 - No code signing, SmartScreen will show a warning.
-- The installer must put the Deck, and so its elevated helper, where non-admins cannot write (Test 4). Until then an administrator chat runs code from a user-writable folder.
+- The installer must put the Deck, and so its elevated helper, where non-admins cannot write (Test 4). Until then an administrator chat runs code from a user-writable folder. The installer re-registers the administrator task at the installed path, and the uninstaller removes it.
 
 **The Phase 6 archive copy is mandatory before release**, because Claude Code deletes CLI transcripts after 30 days by default.
 
