@@ -1,8 +1,10 @@
-// Administrator chats: one UAC-elevated copy of the Deck hosts their PTYs and relays them over a named pipe, so Windows
-// asks once per Deck run. The unelevated Deck owns the pipe, and each end proves it holds the secret before a PTY starts
+// Administrator chats: one elevated copy of the Deck hosts their PTYs and relays them over a named pipe, so Windows
+// asks UAC once, the first time (see launchElevated). The unelevated Deck owns the pipe, and each end proves it holds the secret before a PTY starts
 // (spikes/04-elevated). Every message after the handshake names its chat's channel in `c`.
 // frugal: the secret rides in the helper's arguments; a release build must install the helper where non-admins cannot write.
 const crypto = require('crypto');
+const fs = require('fs');
+const os = require('os');
 const net = require('net');
 const path = require('path');
 const { execFile, spawnSync } = require('child_process');
@@ -68,14 +70,43 @@ function remotePty(socket, c, onEnd) {
   };
 }
 
-// Start-Process fails when the UAC prompt is declined.
+// The first elevated helper registers a scheduled task that runs it with highest privileges, so later Deck runs start it
+// without UAC; Task Scheduler puts the pipe and secret into $(Arg0) and $(Arg1).
+// frugal: any process of this user can run the task, and the Deck folder is user-writable until the installer (Phase 7).
+const TASK_FOLDER = '\\Frugal Deck';
+const TASK_NAME = 'Administrator helper';
+const quote = (text) => `'${text.replace(/'/g, "''")}'`;
+const taskArguments = (prefix) => [...prefix.map((arg) => `"${arg}"`), HELPER_FLAG, '$(Arg0)', '$(Arg1)'].join(' ');
+// Exits 0 when the task exists and still starts this exe with these arguments.
+const findTask = (exe, prefix) => `try { $service = New-Object -ComObject Schedule.Service; $service.Connect(); $task = $service.GetFolder(${quote(TASK_FOLDER)}).GetTask(${quote(TASK_NAME)}); $action = $task.Definition.Actions.Item(1); $current = $action.Path -eq ${quote(exe)} -and $action.Arguments -eq ${quote(taskArguments(prefix))} } catch { $current = $false; $why = "$_" }`;
+
+const powershell = (script, callback) => execFile(POWERSHELL, ['-NoProfile', '-NonInteractive', '-EncodedCommand', Buffer.from(script, 'utf16le').toString('base64')], { windowsHide: true }, callback);
+
+// Why a run fell back to UAC goes to this log.
+const LOG = path.join(os.homedir(), '.frugal-deck', 'elevated.log');
+
+// Start-Process fails when the UAC prompt is declined. args ends with the flag, pipe and secret.
 function launchElevated(exe, args, onFail) {
-  const quote = (text) => `'${text.replace(/'/g, "''")}'`;
+  const [pipe, secret] = args.slice(-2);
   const argumentList = args.map((arg) => `"${arg}"`).join(' ');
-  const script = `Start-Process -FilePath ${quote(exe)} -ArgumentList ${quote(argumentList)} -Verb RunAs -WindowStyle Hidden`;
-  execFile(POWERSHELL, ['-NoProfile', '-NonInteractive', '-EncodedCommand', Buffer.from(script, 'utf16le').toString('base64')], { windowsHide: true }, (error) => {
+  const script = `${findTask(exe, args.slice(0, -3))}
+if ($current) { try { $task.Run([string[]]@(${quote(pipe)}, ${quote(secret)})) | Out-Null; exit 0 } catch { "task run failed: $_" } } elseif ($why) { "task lookup failed: $why" } else { "task missing or changed: $($action.Path) $($action.Arguments)" }
+Start-Process -FilePath ${quote(exe)} -ArgumentList ${quote(argumentList)} -Verb RunAs -WindowStyle Hidden`;
+  powershell(script, (error, stdout) => {
+    if (stdout.trim()) fs.appendFile(LOG, `${new Date().toISOString()} ${stdout.trim()}\n`, () => {});
     if (error) onFail();
   });
+}
+
+// Runs in the elevated helper, which may create the task. A failure only means the next Deck run asks UAC again.
+function registerTask(exe, prefix) {
+  const script = `${findTask(exe, prefix)}
+if ($current) { exit 0 }
+$action = New-ScheduledTaskAction -Execute ${quote(exe)} -Argument ${quote(taskArguments(prefix))}
+$principal = New-ScheduledTaskPrincipal -UserId ([Security.Principal.WindowsIdentity]::GetCurrent().Name) -LogonType Interactive -RunLevel Highest
+$settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -ExecutionTimeLimit ([TimeSpan]::Zero) -MultipleInstances Parallel -Priority 4
+Register-ScheduledTask -TaskPath ${quote(`${TASK_FOLDER}\\`)} -TaskName ${quote(TASK_NAME)} -Action $action -Principal $principal -Settings $settings -Force | Out-Null`;
+  powershell(script, () => {});
 }
 
 // helper: { exe, args } that start this app; Windows shows the UAC prompt for it. launch is swapped only by the check.
@@ -177,6 +208,7 @@ function runHelper(argv) {
       step = 'running';
       const elevated = spawnSync(path.join(SYSTEM32, 'net.exe'), ['session'], { stdio: 'ignore', windowsHide: true }).status === 0;
       sendTo(socket, { t: 'proof', mac: proof(secret, 'helper', message.nonce), elevated });
+      if (elevated) registerTask(process.execPath, argv.slice(1, at));
       return;
     }
     const { c } = message;
