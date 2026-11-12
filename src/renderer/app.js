@@ -158,8 +158,8 @@ function render() {
   saveOpenChats();
   // Tabs persist between renders: rebuilding them would replay the fade-in on every state change.
   for (const chat of chats.values()) {
-    drawBadge(chat);
     chat.name = currentIndex?.sessions?.find((s) => s.id === chat.id)?.title ?? chat.name;
+    drawBadge(chat);
     chat.tab ??= $('tabs').appendChild(tabElement(chat));
     const [open, close] = chat.tab.children;
     open.querySelector('.tab__label').textContent = chat.name;
@@ -173,6 +173,7 @@ function render() {
   const chat = chats.get(activeId);
   $('empty').hidden = Boolean(chat);
   $('readout').hidden = !chat;
+  syncInfoPanel();
   $('notice').hidden = !chat?.error;
   $('notice').textContent = chat?.error ?? '';
   drawHandoff();
@@ -689,6 +690,107 @@ function setInfoCollapsed(value) {
   for (const chat of chats.values()) drawBadge(chat);
 }
 
+let infoPanelOpen = false;
+try {
+  infoPanelOpen = localStorage.getItem('infoPanel') === 'open';
+} catch {}
+let infoElapsedClock = 0;
+let infoAgentsClock = 0;
+let infoChatId = null;
+let infoGeneration = 0;
+
+function elapsed(chat) {
+  if (!chat.startedAt) return '';
+  const seconds = Math.max(0, Math.floor((Date.now() - chat.startedAt) / 1000));
+  const minutes = Math.floor(seconds / 60);
+  return minutes < 60 ? `${minutes}:${String(seconds % 60).padStart(2, '0')}` : `${Math.floor(minutes / 60)}:${String(minutes % 60).padStart(2, '0')}:${String(seconds % 60).padStart(2, '0')}`;
+}
+
+function drawInfo(chat) {
+  if (!infoPanelOpen || !chat || chat.id !== activeId) return;
+  const account = [...accountState.accounts, ...accountState.others].find((entry) => entry.id === chat.account);
+  const context = [chat.context != null ? `${Math.round(chat.context)}%` : '', chat.contextTokens != null && chat.contextSize != null ? `${compact.format(chat.contextTokens)} / ${compact.format(chat.contextSize)}` : ''].filter(Boolean).join(' \u00b7 ');
+  const tokens = chat.inputTokens != null || chat.outputTokens != null ? `${compact.format(chat.inputTokens ?? 0)} in / ${compact.format(chat.outputTokens ?? 0)} out` : '';
+  const rows = [
+    ['Task', [chat.name, chat.title !== chat.name && chat.title].filter(Boolean).join('\n')],
+    ['State', chat.state],
+    ['Account', account?.name ?? chat.account],
+    ['Model', chat.model],
+    ['Effort', chat.effort],
+    ['Elapsed', elapsed(chat)],
+    ['Context', context],
+    ['Tokens', tokens],
+    ['Cost', chat.cost != null ? '$' + chat.cost.toFixed(2) : ''],
+  ];
+  $('info-details').replaceChildren(...rows.filter(([, value]) => value != null && value !== '').map(([label, value]) => {
+    const row = node('div', 'info-panel__row');
+    const detail = node('dd', '', value);
+    if (label === 'Elapsed') detail.id = 'info-elapsed';
+    row.append(node('dt', '', label), detail);
+    return row;
+  }));
+}
+
+function drawSubagents(agents) {
+  $('info-subagents').hidden = !agents.length;
+  $('info-subagents-list').replaceChildren(...agents.sort((a, b) => Number(b.running) - Number(a.running) || b.updatedAt - a.updatedAt).slice(0, 10).map((agent) => {
+    const row = node('div', 'info-panel__agent');
+    const head = node('div', 'info-panel__agent-head');
+    head.append(node('span', '', agent.name), node('span', 'info-panel__muted', agent.running ? 'Running' : 'Done'));
+    row.append(head);
+    if (agent.description) row.append(node('p', 'info-panel__muted', agent.description));
+    if (agent.model) row.append(node('p', 'info-panel__muted', agent.model));
+    return row;
+  }));
+}
+
+function syncInfoPanel() {
+  const chat = chats.get(activeId);
+  const open = infoPanelOpen && Boolean(chat);
+  $('info-panel').hidden = !open;
+  const label = open ? 'Hide details' : 'Show details';
+  $('info-toggle').dataset.tip = label;
+  $('info-toggle').setAttribute('aria-label', label);
+  $('info-toggle').setAttribute('aria-expanded', String(open));
+  if (open) drawInfo(chat);
+  const id = open ? chat.id : null;
+  if (infoChatId === id) return;
+  infoChatId = id;
+  const generation = ++infoGeneration;
+  clearInterval(infoElapsedClock);
+  clearInterval(infoAgentsClock);
+  drawSubagents([]);
+  if (!open) return;
+  infoElapsedClock = setInterval(() => {
+    const detail = $('info-elapsed');
+    if (detail) detail.textContent = elapsed(chat);
+  }, 1000);
+  let polling = false;
+  const refresh = async () => {
+    if (polling) return;
+    polling = true;
+    try {
+      const agents = await deck.subagents(chat.id, chat.cwd);
+      if (generation === infoGeneration) drawSubagents(agents);
+    } catch {
+      if (generation === infoGeneration) drawSubagents([]);
+    } finally {
+      polling = false;
+    }
+  };
+  refresh();
+  infoAgentsClock = setInterval(refresh, 3000);
+}
+
+$('info-toggle').onclick = () => {
+  infoPanelOpen = !infoPanelOpen;
+  try {
+    localStorage.setItem('infoPanel', infoPanelOpen ? 'open' : 'closed');
+  } catch {}
+  syncInfoPanel();
+};
+syncInfoPanel();
+
 // Sits over the top-right corner of the terminal pane and only reads what the status line already sent.
 function makeBadge(chat) {
   const badge = node('div', 'term-badge');
@@ -764,6 +866,7 @@ async function toggleAdmin(chat) {
 }
 
 function drawBadge(chat) {
+  drawInfo(chat);
   if (!chat.badge) return;
   const running = chat.state === 'running' || chat.state === 'starting';
   const parts = [chat.model, chat.effort && `${chat.effort} effort`, chat.context != null && `${Math.round(chat.context)}% ctx`, chat.cost != null && `$${chat.cost.toFixed(2)}`].filter(Boolean);
@@ -1252,6 +1355,7 @@ deck.onData((id, data) => {
   else chat.term.write(data, () => answerTrustPrompt(chat));
   if (chat.state === 'starting') {
     chat.state = 'running';
+    chat.startedAt ??= Date.now();
     chat.voiceOn = voiceMode() === 'anthropic';
     render();
   }
@@ -1320,6 +1424,8 @@ function setStatus(chat, status) {
 }
 
 function onTitle(chat, title) {
+  chat.title = title;
+  drawInfo(chat);
   const busy = isBusyTitle(title);
   if (busy === chat.busy) return;
   chat.busy = busy;
@@ -1462,6 +1568,7 @@ deck.onRestarting((id) => {
 function setAccounts(state) {
   accountState = state;
   drawMeters();
+  drawInfo(chats.get(activeId));
 }
 
 deck.getAccounts().then(setAccounts);

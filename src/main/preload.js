@@ -12,6 +12,7 @@ contextBridge.exposeInMainWorld('deck', {
   restoreTitles: () => ipcRenderer.send('topics:restore-titles'),
   onTopicsProgress: (callback) => ipcRenderer.on('topics:progress', (_, done, total) => callback(done, total)),
   start: (options) => ipcRenderer.invoke('chat:start', options),
+  subagents: (id, cwd) => ipcRenderer.invoke('chat:subagents', id, cwd),
   input: (id, data) => ipcRenderer.send('chat:input', id, data),
   resize: (id, cols, rows) => ipcRenderer.send('chat:resize', id, cols, rows),
   kill: (id) => ipcRenderer.send('chat:kill', id),

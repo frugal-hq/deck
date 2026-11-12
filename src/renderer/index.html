@@ -75,6 +75,14 @@
     </div>
   </section>
 </main>
+<aside id="info-panel" class="info-panel" aria-labelledby="info-heading" hidden>
+  <h2 id="info-heading">Chat details</h2>
+  <dl id="info-details"></dl>
+  <section id="info-subagents" aria-labelledby="info-subagents-heading" hidden>
+    <h2 id="info-subagents-heading">Subagents</h2>
+    <div id="info-subagents-list"></div>
+  </section>
+</aside>
 <footer id="readout" class="readout" hidden>
   <svg class="icon" aria-hidden="true"><use href="#i-folder"/></svg>
   <span id="path" class="measured readout__path"></span>
@@ -84,6 +92,7 @@
   <button id="link-chat" class="btn btn--bar" type="button" hidden><svg class="icon" aria-hidden="true"><use href="#i-link"/></svg><span></span></button>
   <button id="usage-open" class="btn" type="button" popovertarget="usage" hidden>Usage</button>
   <span id="state" class="readout__state" role="status"></span>
+  <button id="info-toggle" class="btn btn--bar btn--icon" type="button" aria-label="Show details" aria-controls="info-panel" aria-expanded="false" data-tip="Show details"><svg class="icon" aria-hidden="true"><use href="#i-more"/></svg></button>
 </footer>
 <div id="usage" class="usage" popover="auto" aria-label="Usage">
   <div id="meter-context" class="meter" hidden>Context <meter aria-label="Context used" min="0" max="100" low="60" high="80" optimum="0"></meter><span class="measured"></span></div>

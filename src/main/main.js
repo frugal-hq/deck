@@ -9,6 +9,7 @@ const fs = require('fs');
 const os = require('os');
 const path = require('path');
 const { promisify } = require('util');
+const { createInterface } = require('readline');
 const { Worker } = require('worker_threads');
 const pty = require('node-pty');
 const { createStatusBridge, readUserStatusLine } = require('./statusline');
@@ -157,6 +158,76 @@ ipcMain.handle('folder:default', () => {
   fs.mkdirSync(SESSIONS_FOLDER, { recursive: true });
   pickedFolders.add(SESSIONS_FOLDER);
   return SESSIONS_FOLDER;
+});
+
+// A transcript is parsed again only after it changes.
+const subagentCache = new Map();
+ipcMain.handle('chat:subagents', async (_, id, cwd) => {
+  if (typeof id !== 'string' || !UUID.test(id) || typeof cwd !== 'string' || !path.isAbsolute(cwd)) return [];
+  const session = index.sessions.find((entry) => entry.id === id && entry.cwd === cwd);
+  const folders = new Set(session ? [path.dirname(session.file)] : []);
+  // Polled every few seconds: the folder sweep only runs for a chat the index does not know yet.
+  if (!session) for (const account of accounts.claudeAccounts()) {
+    const root = path.join(account.configDir, 'projects');
+    try {
+      for (const project of await fs.promises.readdir(root, { withFileTypes: true })) {
+        if (project.isDirectory() || project.isSymbolicLink()) folders.add(path.join(root, project.name));
+      }
+    } catch {}
+  }
+  const agents = new Map();
+  for (const folder of folders) {
+    const dir = path.join(folder, id, 'subagents');
+    let entries;
+    try {
+      entries = await fs.promises.readdir(dir, { withFileTypes: true });
+    } catch {
+      continue;
+    }
+    for (const entry of entries) {
+      if (!entry.isFile() || !/^agent-.+\.jsonl$/.test(entry.name)) continue;
+      const file = path.join(dir, entry.name);
+      try {
+        const { mtimeMs: updatedAt } = await fs.promises.stat(file);
+        const key = entry.name;
+        if (agents.has(key) && agents.get(key).updatedAt >= updatedAt) continue;
+        const cached = subagentCache.get(file);
+        if (cached?.updatedAt === updatedAt) {
+          agents.set(key, { ...cached, running: Date.now() - updatedAt < 30000 });
+          continue;
+        }
+        let name = entry.name.slice(6, -6);
+        let description = '';
+        let prompt = '';
+        let model = null;
+        const input = fs.createReadStream(file, { encoding: 'utf8' });
+        const lines = createInterface({ input, crlfDelay: Infinity });
+        try {
+          for await (const line of lines) {
+            let record;
+            try { record = JSON.parse(line); } catch { continue; }
+            if (!record || typeof record !== 'object') continue;
+            if (typeof record.agentName === 'string' && record.agentName) name = record.agentName;
+            if (!description && typeof record.description === 'string') description = record.description;
+            if (typeof record.message?.model === 'string') model = record.message.model;
+            if (!prompt && record.type === 'user') {
+              const content = record.message?.content;
+              const text = typeof content === 'string' ? content : Array.isArray(content) ? content.filter((part) => part?.type === 'text').map((part) => part.text).join('\n') : '';
+              prompt = text.trim().split(/\r?\n/)[0];
+            }
+          }
+        } finally {
+          lines.close();
+          input.destroy();
+        }
+        // frugal: running is guessed from mtime; frugal delegate jobs need the accounts server to write a jobs file.
+        const info = { name, description: (description || prompt).slice(0, 80), model, updatedAt };
+        subagentCache.set(file, info);
+        agents.set(key, { ...info, running: Date.now() - updatedAt < 30000 });
+      } catch {}
+    }
+  }
+  return [...agents.values()];
 });
 
 ipcMain.handle('sessions:get', sidebarIndex);
