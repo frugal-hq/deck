@@ -1140,6 +1140,11 @@ async function openChat({ id, cwd, name, resume, group, login, accountId, handof
   chat.rows = term.rows;
   term.onData((data) => {
     chat.inputAt = Date.now();
+  // xterm keeps a selection over cells that Claude Code redraws; it goes once the text under it changes.
+  term.onSelectionChange(() => (chat.selected = term.getSelection()));
+  term.onWriteParsed(() => {
+    if (term.hasSelection() && term.getSelection() !== chat.selected) term.clearSelection();
+  });
     if (data === '\x07') holdOutput(chat); // Ctrl+G: Claude Code clears the screen before it opens $VISUAL.
     deck.input(id, data);
   });
