@@ -415,9 +415,21 @@ ipcMain.on('chat:kill', (_, id) => {
 });
 // A save writes the text back before the response ends; a cancel (text === null) ends it without writing.
 ipcMain.on('chat:save-edit', (_, id, text) => endEdit(id, text));
-// The renderer is not trusted with the protocol: only web links reach the OS.
-ipcMain.on('link:open', (_, url) => {
-  if (typeof url === 'string' && /^https?:\/\//i.test(url)) shell.openExternal(url);
+// Opened by Windows, these run code: a click only shows them in Explorer.
+const RUNS = /^\.(exe|com|bat|cmd|ps1|psm1|vbs|vbe|js|jse|wsf|wsh|msi|msp|scr|hta|lnk|url|reg|cpl|jar|appref-ms)$/i;
+// The renderer is not trusted with the protocol: only web links and existing files reach the OS.
+ipcMain.on('link:open', (_, url, cwd) => {
+  if (typeof url !== 'string') return;
+  if (/^https?:\/\//i.test(url)) return shell.openExternal(url);
+  let file;
+  try {
+    file = /^file:/i.test(url) ? require('url').fileURLToPath(url) : path.resolve(typeof cwd === 'string' ? cwd : os.homedir(), url.replace(/(:\d+)+$/, ''));
+  } catch {
+    return;
+  }
+  if (!fs.existsSync(file)) return;
+  if (RUNS.test(path.extname(file))) shell.showItemInFolder(file);
+  else shell.openPath(file);
 });
 
 let topicRun = null;

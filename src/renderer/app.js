@@ -1041,6 +1041,7 @@ async function openChat({ id, cwd, name, resume, group, login, accountId, handof
   });
   term.onTitleChange((title) => onTitle(chat, title));
   term.attachCustomKeyEventHandler((event) => handleTerminalKey(chat, event));
+  term.registerLinkProvider(linkProvider(chat));
   makeBadge(chat);
 
   const size = { id, cols: term.cols, rows: term.rows };
@@ -1187,13 +1188,27 @@ async function acceptBoth() {
 }
 const confirmAdmin = async (bypass, admin) => admin && (!bypass || await acceptBoth());
 
-// Replaces xterm's confirm() for OSC 8 links; only web links leave the Deck.
-const linkHandler = {
-  allowNonHttpProtocols: false,
-  activate: async (_, uri) => {
-    if (await askConfirm('Open this link?', uri, 'Open link')) deck.openLink(uri);
+// Web links ask first; files open in their default app (main only opens ones that exist and do not run code).
+async function openLink(uri, cwd) {
+  if (/^https?:/i.test(uri) && !await askConfirm('Open this link?', uri, 'Open link')) return;
+  deck.openLink(uri, cwd);
+}
+// Replaces xterm's confirm() for OSC 8 links, which Claude Code also writes for file:// paths.
+const linkHandler = { allowNonHttpProtocols: true, activate: (_, uri) => openLink(uri) };
+// Plain-text web links and file paths (absolute, or relative to the chat's folder, with an optional :line:col).
+const LINK_PATTERN = /https?:\/\/[^\s"'<>()]*[^\s"'<>().,;:!?]|(?:[A-Za-z]:[\\/]|\.{0,2}[\\/]|[\w.-]+[\\/])[\w.\\/-]*\.\w+(?::\d+)*/g;
+// frugal: columns follow string indices, so a line with wide characters before a link is off; links that wrap are not joined.
+const linkProvider = (chat) => ({
+  provideLinks(y, callback) {
+    const line = chat.term.buffer.active.getLine(y - 1)?.translateToString(true) ?? '';
+    const links = [...line.matchAll(LINK_PATTERN)].map((match) => ({
+      text: match[0],
+      range: { start: { x: match.index + 1, y }, end: { x: match.index + match[0].length, y } },
+      activate: (_, text) => openLink(text, chat.cwd),
+    }));
+    callback(links.length ? links : undefined);
   },
-};
+});
 // One flag per chat: what it was launched with, or what its badge toggle asked for.
 const chatBypass = (chat, handoff) => bypassOn() || (handoff ? Boolean(chats.get(handoff.from)?.bypassOn) : Boolean(chat?.bypassOn));
 const chatAdmin = (chat, handoff) => adminOn() || (handoff ? Boolean(chats.get(handoff.from)?.adminOn) : Boolean(chat?.adminOn));
