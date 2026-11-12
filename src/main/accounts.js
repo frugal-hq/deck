@@ -420,10 +420,11 @@ function parseUsage(text, now = new Date()) {
 }
 
 // The main account's -p /usage omits these lines (Test 7), so it only gets status line readings.
-async function refreshReadings(claude, env, openAccounts) {
+// only: one account read even with chats open on it, as when a chat just switched to it and has no status line yet.
+async function refreshReadings(claude, env, openAccounts, only) {
   emails.clear();
   const { readings = {} } = load();
-  const stale = claudeAccounts().filter((account) => account.id !== MAIN && !openAccounts.has(account.id) && Date.now() - (readings[account.id]?.at ?? 0) >= FRESH_MS);
+  const stale = claudeAccounts().filter((account) => account.id !== MAIN && (only ? account.id === only : !openAccounts.has(account.id)) && Date.now() - (readings[account.id]?.at ?? 0) >= FRESH_MS);
   await Promise.all(stale.map(async (account) => {
     try {
       const { stdout } = await run(claude, ['-p', '/usage', '--no-session-persistence', '--output-format', 'json'], { env: { ...env, CLAUDE_CONFIG_DIR: account.configDir }, cwd: home, timeout: 60000, windowsHide: true });

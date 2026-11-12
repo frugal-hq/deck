@@ -257,6 +257,12 @@ function offerHandoffs(handoffs) {
   }
 }
 
+// The account a chat moves to shows its limits now instead of after its first turn; the main account has no -p reading (Test 7).
+function readNow(id) {
+  const claude = findClaude();
+  if (claude) accounts.refreshReadings(claude, cleanEnv(), new Set(), id).then((changed) => changed && publishAccounts(), () => {});
+}
+
 ipcMain.handle('chat:switch-account', async (_, { id, accountId, cols, rows, bypass, admin }) => {
   const child = chats.get(id);
   const info = chatInfo.get(id);
@@ -273,6 +279,7 @@ ipcMain.handle('chat:switch-account', async (_, { id, accountId, cols, rows, byp
   if (info.account !== account.id || !flagsChanged) {
     accounts.setPrimary(account.id);
     publishAccounts();
+    readNow(account.id);
   }
   if (info.account === account.id && !flagsChanged) return { ok: true, account: account.id };
   if (!session) return { error: 'Send a first message before switching this chat. New chats will use this account.' };
@@ -291,6 +298,7 @@ ipcMain.handle('accounts:set-primary', (_, { id }) => {
   if (!accounts.claudeAccounts().some((account) => account.id === id)) return { error: 'Invalid request.' };
   accounts.setPrimary(id);
   publishAccounts();
+  readNow(id);
   return { ok: true };
 });
 ipcMain.handle('accounts:get', () => accounts.snapshot());

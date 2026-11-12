@@ -528,8 +528,8 @@ function accountBlock(account, primary, chat, caps) {
   const head = node('div', 'account__head');
   const age = account.limits?.at ? `Read ${spanText(Date.now() - account.limits.at)} ago` : '';
   head.append(accountName(account, [account.configDir, primary ? '' : age]));
-  if (primary) head.append(node('span', 'tag tag--primary', 'Primary'));
-  else if (account.signedIn) {
+  if (account.id === accountState.primary) head.append(node('span', 'tag tag--primary', 'Primary'));
+  if (!primary && account.signedIn) {
     const running = chat?.account && chat.state === 'running';
     const button = node('button', 'btn', 'Use');
     button.type = 'button';
@@ -567,9 +567,9 @@ function drawAccounts() {
   const top = $('usage').classList.contains('usage--top');
   const currentId = chat?.account ?? accountState.primary;
   const current = accountState.accounts.find((account) => account.id === currentId);
+  // The usage panel shows the account of the chat on screen, the one its meters read; switching in another chat leaves it alone.
   if (!top) {
-    const main = accountState.accounts.find((account) => account.id === accountState.primary) ?? current;
-    $('accounts').replaceChildren(...(main ? [accountBlock(main, true, chat)] : []));
+    $('accounts').replaceChildren(...(current ? [accountBlock(current, true, chat)] : []));
     return;
   }
   const rest = accountState.accounts.filter((account) => account !== current);
