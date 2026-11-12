@@ -504,24 +504,20 @@ function capControl(account, field, label) {
   return row;
 }
 
-const CAPS_NOTE = {
-  'not-delegate': 'Frugal does not delegate to this account, so no limit applies.',
-  'no-reading': 'This account reports no usage, so no limit can apply.',
-};
 // Kept across redraws: the panel redraws on every status line.
 const openCaps = new Set();
 
-// The delegate limits fold into one line, so they do not crowd the panel.
+// The delegate limits fold into one line, so they do not crowd the panel; an account they cannot apply to has none.
 function capsBlock(account) {
+  if (account.capsApply !== 'ok') return [];
   const box = node('details', 'caps');
   box.open = openCaps.has(account.id);
   box.ontoggle = () => (box.open ? openCaps.add(account.id) : openCaps.delete(account.id));
-  const applies = account.capsApply === 'ok';
-  const value = applies ? `5h ${account.caps.fiveHour}% · weekly ${account.caps.sevenDay}%` : 'Not available';
+  const value = `5h ${account.caps.fiveHour}% · weekly ${account.caps.sevenDay}%`;
   const summary = node('summary', 'caps__summary');
   summary.append(node('span', '', 'Delegate limits'), node('span', 'caps__value', value));
-  box.append(summary, ...(applies ? [capControl(account, 'fiveHour', 'Max 5h %'), capControl(account, 'sevenDay', 'Max weekly %')] : [node('span', 'account__detail', CAPS_NOTE[account.capsApply])]));
-  return box;
+  box.append(summary, capControl(account, 'fiveHour', 'Max 5h %'), capControl(account, 'sevenDay', 'Max weekly %'));
+  return [box];
 }
 
 // frugal: blocks are redrawn on every status line, so keyboard focus on Use is lost when a reading arrives.
@@ -543,7 +539,7 @@ function accountBlock(account, primary, chat, caps) {
   block.append(head, ...loginLines(account));
   const limits = accountLimits(account).filter(([, limit]) => limit);
   block.append(...(limits.length ? limits.map(([label, limit]) => limitRow(label, limit)) : [node('span', 'account__detail', 'No reading yet')]));
-  if (caps) block.append(capsBlock(account));
+  if (caps) block.append(...capsBlock(account));
   return block;
 }
 
@@ -558,8 +554,8 @@ function drawOthers() {
     return [
       accountName(other, [[other.kind, other.model].filter(Boolean).join(': ')]),
       node('span', '', other.usedToday ? `${state} · ${other.usedToday} today` : state),
-      ...(limits.length ? limits : [node('span', 'others__none', 'No usage reading')]),
-      capsBlock(other),
+      ...limits,
+      ...capsBlock(other),
     ];
   }));
 }
@@ -708,11 +704,11 @@ function elapsed(chat) {
 }
 
 function drawInfo(chat) {
-  const title = chat.title?.replace(/^[^\p{L}\p{N}\s] /u, ''); // Without the spinner mark (isBusyTitle).
   if (!infoPanelOpen || !chat || chat.id !== activeId) return;
   const account = [...accountState.accounts, ...accountState.others].find((entry) => entry.id === chat.account);
   const context = [chat.context != null ? `${Math.round(chat.context)}%` : '', chat.contextTokens != null && chat.contextSize != null ? `${compact.format(chat.contextTokens)} / ${compact.format(chat.contextSize)}` : ''].filter(Boolean).join(' \u00b7 ');
   const tokens = chat.inputTokens != null || chat.outputTokens != null ? `${compact.format(chat.inputTokens ?? 0)} in / ${compact.format(chat.outputTokens ?? 0)} out` : '';
+  const title = chat.title?.replace(/^[^\p{L}\p{N}\s] /u, ''); // Without the spinner mark (isBusyTitle).
   const rows = [
     ['Task', [chat.name, title !== chat.name && title].filter(Boolean).join('\n')],
     ['State', chat.state],
@@ -1141,13 +1137,13 @@ async function openChat({ id, cwd, name, resume, group, login, accountId, handof
   chat.rows = term.rows;
   term.onData((data) => {
     chat.inputAt = Date.now();
+    if (data === '\x07') holdOutput(chat); // Ctrl+G: Claude Code clears the screen before it opens $VISUAL.
+    deck.input(id, data);
+  });
   // xterm keeps a selection over cells that Claude Code redraws; it goes once the text under it changes.
   term.onSelectionChange(() => (chat.selected = term.getSelection()));
   term.onWriteParsed(() => {
     if (term.hasSelection() && term.getSelection() !== chat.selected) term.clearSelection();
-  });
-    if (data === '\x07') holdOutput(chat); // Ctrl+G: Claude Code clears the screen before it opens $VISUAL.
-    deck.input(id, data);
   });
   term.onTitleChange((title) => onTitle(chat, title));
   term.attachCustomKeyEventHandler((event) => handleTerminalKey(chat, event));
@@ -1960,14 +1956,14 @@ function addMenu(summary, label, items) {
 }
 
 function renameOpenKey(from, to) {
-  // Listed from the folder of one of its chats, nested workspaces included.
-  const folder = currentIndex.sessions.find((s) => withinSpace(s.space ?? currentIndex.workspaces?.[chatsById.get(s.chatId)?.topic] ?? currentIndex.workspaces?.[s.cwd], name, currentIndex))?.cwd;
   if (openGroups.delete(from)) openGroups.add(to);
-    ...(folder ? [{ label: 'MCP servers', run: () => openMcpDialog({ workspace: name, folder }) }] : []),
 }
 
 function workspaceMenu(name) {
+  // Listed from the folder of one of its chats, nested workspaces included.
+  const folder = currentIndex.sessions.find((s) => withinSpace(s.space ?? currentIndex.workspaces?.[chatsById.get(s.chatId)?.topic] ?? currentIndex.workspaces?.[s.cwd], name, currentIndex))?.cwd;
   return [
+    ...(folder ? [{ label: 'MCP servers', run: () => openMcpDialog({ workspace: name, folder }) }] : []),
     { label: 'Rename', run: () => ask({
       title: `Rename ${name}`,
       text: 'Use the name of another workspace to merge them.',
@@ -2021,11 +2017,11 @@ function groupMenu(key, label, byTopic) {
       run: (to) => {
         if (to === key) return;
         renameOpenKey(key, to);
-    ...(folder ? [mcp] : []),
         deck.renameGroup(sessionsOfGroup(key), key, to);
       },
     }) },
     move,
+    ...(folder ? [mcp] : []),
     { label: 'Delete', danger: true, run: () => ask({
       title: `Delete ${label}?`,
       text: workspace ? `Its chats stay in ${workspace}, without a group.` : 'Its chats stay, outside any group.',
@@ -2702,12 +2698,12 @@ function mcpRow(row) {
 
 async function openMcpDialog(scope) {
   mcpScope = scope;
-  const add = $('mcp-add');
-  add.hidden = true;
   const kind = scope.workspace ? 'workspace' : scope.group ? 'group' : 'folder';
   $('mcp-folder').textContent = scope.workspace ?? scope.group ?? scope.folder;
   $('mcp-note').textContent = `Applies to chats started or restarted in this ${kind}${kind === 'workspace' ? ' and the ones inside it' : ''}${kind === 'folder' ? '' : ', on top of their folder'}.`;
   const list = $('mcp-list');
+  const add = $('mcp-add');
+  add.hidden = true;
   list.textContent = 'Loading…';
   list.style.color = '';
   $('mcp-error').hidden = true;
