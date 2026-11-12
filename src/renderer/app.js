@@ -708,12 +708,13 @@ function elapsed(chat) {
 }
 
 function drawInfo(chat) {
+  const title = chat.title?.replace(/^[^\p{L}\p{N}\s] /u, ''); // Without the spinner mark (isBusyTitle).
   if (!infoPanelOpen || !chat || chat.id !== activeId) return;
   const account = [...accountState.accounts, ...accountState.others].find((entry) => entry.id === chat.account);
   const context = [chat.context != null ? `${Math.round(chat.context)}%` : '', chat.contextTokens != null && chat.contextSize != null ? `${compact.format(chat.contextTokens)} / ${compact.format(chat.contextSize)}` : ''].filter(Boolean).join(' \u00b7 ');
   const tokens = chat.inputTokens != null || chat.outputTokens != null ? `${compact.format(chat.inputTokens ?? 0)} in / ${compact.format(chat.outputTokens ?? 0)} out` : '';
   const rows = [
-    ['Task', [chat.name, chat.title !== chat.name && chat.title].filter(Boolean).join('\n')],
+    ['Task', [chat.name, title !== chat.name && title].filter(Boolean).join('\n')],
     ['State', chat.state],
     ['Account', account?.name ?? chat.account],
     ['Model', chat.model],
