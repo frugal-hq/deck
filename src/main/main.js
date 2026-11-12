@@ -453,17 +453,33 @@ async function exclusiveRun(options, work) {
   }
 }
 
-ipcMain.handle('topics:run', (_, options) => exclusiveRun(options, (claude, run) => organize({
-  claude,
-  env: cleanEnv(),
-  sessions: index.sessions,
-  options,
-  run,
-  onBatch: (rows, done, total) => {
-    indexer?.postMessage({ automatic: rows });
-    send('topics:progress', done, total);
-  },
-})));
+// Chosen groups that all sit in one workspace keep the topics they split into there.
+function workspaceOf(groups) {
+  const lower = new Map(Object.entries(index.workspaces ?? {}).map(([group, workspace]) => [group.toLowerCase(), workspace]));
+  const spaces = new Set(groups?.map((group) => lower.get(group.toLowerCase())));
+  return spaces.size === 1 ? [...spaces][0] : undefined;
+}
+
+ipcMain.handle('topics:run', (_, options) => exclusiveRun(options, (claude, run) => {
+  const workspace = workspaceOf(options.groups);
+  const placed = new Set(Object.keys(index.workspaces ?? {}).map((group) => group.toLowerCase()));
+  return organize({
+    claude,
+    env: cleanEnv(),
+    sessions: index.sessions,
+    options,
+    run,
+    onBatch: (rows, done, total) => {
+      indexer?.postMessage({ automatic: rows });
+      for (const { topic } of rows) {
+        if (!workspace || placed.has(topic.toLowerCase())) continue;
+        placed.add(topic.toLowerCase());
+        indexer?.postMessage({ setWorkspace: { group: topic, workspace } });
+      }
+      send('topics:progress', done, total);
+    },
+  });
+}));
 
 ipcMain.on('sessions:set-group', (_, id, name) => indexer?.postMessage({ setGroup: { id, name } }));
 ipcMain.on('sessions:set-workspace', (_, group, workspace) => indexer?.postMessage({ setWorkspace: { group, workspace } }));

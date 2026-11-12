@@ -1896,6 +1896,7 @@ function renderSessions(index) {
 
   drawSpaces(allChats, index);
   drawGroupNames(index);
+  if (sortDialog.open && !$('sort-groups').hidden) drawSortGroups();
   const byTopic = sessionView === 'topics';
   const keyOf = (chat) => (byTopic ? chat.topic ?? NO_TOPIC : chat.cwd);
   const space = $('space-filter').value;
@@ -2224,14 +2225,104 @@ function setSessionView(view) {
   renderSessions(currentIndex);
 }
 
+// '' stands for the sessions with no topic. Checks survive redraws while the dialog is open.
+const sortGroups = new Set();
+
 function sortOptions() {
+  const scope = $('sort-scope').value;
   return {
     model: $('sort-model').value,
     effort: $('sort-effort').value,
     rename: $('sort-rename').checked,
     notes: $('sort-notes').value,
-    resort: $('sort-resort').checked,
+    resort: scope === 'all',
+    ...(scope === 'groups' && { groups: [...sortGroups].filter((name) => name === '' || groupNames.includes(name)) }),
   };
+}
+
+function chip(label, checked, onchange) {
+  const input = Object.assign(node('input'), { type: 'checkbox', checked });
+  input.onchange = onchange;
+  const row = node('label', 'sort__chip');
+  row.append(input, label);
+  return { row, input };
+}
+
+// Groups as chips under their workspace; All checks or clears the section.
+function drawSortGroups() {
+  const spaceOf = new Map(Object.entries(currentIndex?.workspaces ?? {}).map(([group, space]) => [group.toLowerCase(), space]));
+  const bySpace = new Map();
+  for (const name of [...groupNames, '']) {
+    const space = (name && spaceOf.get(name.toLowerCase())) || '';
+    bySpace.set(space, [...(bySpace.get(space) ?? []), name]);
+  }
+  const spaces = [...bySpace].sort(([a], [b]) => (a === '') - (b === '') || a.localeCompare(b, 'en-US'));
+  $('sort-group-list').replaceChildren(...spaces.map(([space, names]) => {
+    const all = chip('All', names.every((name) => sortGroups.has(name)), () => {
+      for (const [name, { input }] of chips) {
+        input.checked = all.input.checked;
+        if (all.input.checked) sortGroups.add(name);
+        else sortGroups.delete(name);
+      }
+      drawSortEstimate();
+    });
+    const chips = names.map((name) => [name, chip(name || NO_TOPIC, sortGroups.has(name), (event) => {
+      if (event.target.checked) sortGroups.add(name);
+      else sortGroups.delete(name);
+      all.input.checked = names.every((other) => sortGroups.has(other));
+      drawSortEstimate();
+    })]);
+    const head = node('div', 'sort__space-head');
+    head.append(node('span', '', space || (spaces.length > 1 ? 'Other groups' : 'Groups')), all.row);
+    const list = node('div', space ? 'sort__chips sort__chips--tree' : 'sort__chips');
+    list.append(...chips.map(([, { row }]) => {
+      if (!space) return row;
+      const branch = node('div', 'branch');
+      branch.append(row);
+      return branch;
+    }));
+    const section = node('section', 'sort__space');
+    section.append(head, list);
+    return section;
+  }));
+}
+
+// Each model and effort shows what the run would cost with it.
+function labelCosts(select, costs) {
+  for (const option of select.options) {
+    option.dataset.name ??= option.textContent;
+    option.textContent = costs ? `${option.dataset.name} · ${compact.format(costs[option.value])} tokens` : option.dataset.name;
+  }
+}
+
+// Time per session, learned from the last finished run with each model and effort. Measured on 2026-11-11 with 348 sessions,
+// renaming on, through claude-sm: batches of 300 and 48 took 59.9 s and 9.9 s, so a call's start-up (~0.4 s) barely counts.
+// frugal: only Sonnet at medium is measured; the others show no time until they have run once.
+const SORT_PACE_MEASURED = { 'sonnet/medium': 200 };
+const sortPaces = () => ({ ...SORT_PACE_MEASURED, ...JSON.parse(localStorage.getItem('sortPace') ?? '{}') });
+const paceKey = (options) => `${options.model}/${options.effort}`;
+const duration = (ms) => (ms < 60000 ? 'under a minute' : `about ${Math.round(ms / 60000)} min`);
+let sortRun = null;
+let sortTicker = null;
+
+// The bar follows finished batches and, once a pace is known, the clock; it never reaches the end before the run does.
+function drawSortProgress() {
+  const bar = $('sort-progress');
+  bar.hidden = !sortRun;
+  if (!sortRun) return;
+  const { started, expected, done, total, label } = sortRun;
+  const left = expected - (Date.now() - started);
+  const share = Math.max(total ? done / total : 0, expected ? Math.min(1 - left / expected, 0.99) : 0);
+  if (share) bar.value = share;
+  else bar.removeAttribute('value');
+  sortStatus(label ?? ([total && `Sorted ${done} of ${total}`, expected && (left > 0 ? `${duration(left)} left` : 'Almost done')].filter(Boolean).join(' · ') || 'Sending the first batch'));
+}
+
+function trackSort(run) {
+  sortRun = run && { started: Date.now(), expected: 0, done: 0, total: 0, ...run };
+  clearInterval(sortTicker);
+  sortTicker = sortRun && setInterval(drawSortProgress, 1000);
+  drawSortProgress();
 }
 
 function sortStatus(text, failed = false) {
@@ -2242,22 +2333,29 @@ function sortStatus(text, failed = false) {
 
 async function drawSortEstimate() {
   if (sorting) return;
-  const { sessions, tokens } = await deck.estimateTopics(sortOptions());
-  $('sort-run').disabled = !sessions;
-  $('sort-warning').textContent = sessions
-    ? `This uses your Claude account: about ${tokens.toLocaleString('en-US')} tokens for ${sessions.toLocaleString('en-US')} session${sessions === 1 ? '' : 's'}. Only titles, folder names and your notes are sent.`
-    : 'Every session already has what you asked for. Nothing to send.';
+  const options = sortOptions();
+  const [topics, workspaces] = await Promise.all([deck.estimateTopics(options), deck.estimateWorkspaces()]);
+  const nest = $('sort-nest').checked && workspaces.groups > 0;
+  const extra = nest ? workspaces.tokens : 0;
+  const plus = (costs) => costs && Object.fromEntries(Object.entries(costs).map(([key, value]) => [key, value + extra]));
+  labelCosts($('sort-model'), plus(topics.byModel));
+  labelCosts($('sort-effort'), plus(topics.byEffort));
+  const tokens = topics.tokens + extra;
+  const pace = sortPaces()[paceKey(options)];
+  const time = pace && topics.sessions ? ` Takes ${duration(pace * topics.sessions)}.` : '';
+  const parts = [topics.sessions && `sorts ${topics.sessions.toLocaleString('en-US')} session${topics.sessions === 1 ? '' : 's'}`, nest && `moves ${workspaces.groups} groups into workspaces`].filter(Boolean);
+  $('sort-run').disabled = !parts.length;
+  $('sort-warning').textContent = options.groups?.length === 0 && !nest
+    ? 'Choose at least one group.'
+    : parts.length
+      ? `About ${tokens.toLocaleString('en-US')} tokens of your Claude account: ${parts.join(' and ')}. Only titles, folder names and your notes are sent.${time}`
+      : 'Every session already has what you asked for. Nothing to send.';
   const join = await deck.estimateJoins();
   $('join-row').hidden = join.sessions === 0;
   if (join.sessions !== 0) {
     $('join-text').textContent = `${join.sessions} continued session${join.sessions === 1 ? ' has' : 's have'} more than one possible origin. Claude can pick one: about ${join.tokens.toLocaleString('en-US')} tokens, titles and folder names only.`;
   }
   $('join-undo').hidden = !(currentIndex?.modelJoins > 0);
-  const workspaces = await deck.estimateWorkspaces();
-  $('workspace-row').hidden = workspaces.groups === 0;
-  if (workspaces.groups !== 0) {
-    $('workspace-text').textContent = `Claude can nest your ${workspaces.groups} groups into workspaces: about ${workspaces.tokens.toLocaleString('en-US')} tokens, group names, folder names, sample titles and your notes only.`;
-  }
   $('workspace-undo').hidden = !(currentIndex?.modelWorkspaces > 0);
 }
 
@@ -2373,13 +2471,25 @@ async function linkTo(target) {
   showUndo(`Linked to ${target.title}.`);
 }
 $('sort').onclick = () => {
+  if (!$('sort-groups').hidden) drawSortGroups();
   sortDialog.showModal();
   drawSortEstimate();
 };
 $('sort-notes').value = localStorage.getItem('sortNotes') ?? '';
 $('sort-notes').oninput = (event) => localStorage.setItem('sortNotes', event.target.value);
 $('sort-rename').onchange = drawSortEstimate;
-$('sort-resort').onchange = drawSortEstimate;
+$('sort-model').onchange = drawSortEstimate;
+$('sort-effort').onchange = drawSortEstimate;
+$('sort-nest').checked = localStorage.getItem('sortNest') === 'true';
+$('sort-nest').onchange = (event) => {
+  localStorage.setItem('sortNest', event.target.checked);
+  drawSortEstimate();
+};
+$('sort-scope').onchange = () => {
+  $('sort-groups').hidden = $('sort-scope').value !== 'groups';
+  if (!$('sort-groups').hidden) drawSortGroups();
+  drawSortEstimate();
+};
 $('sort-close').onclick = () => sortDialog.close();
 $('undo-run').onclick = () => {
   deck.undoLink();
@@ -2401,9 +2511,18 @@ function lockSortDialog(locked) {
 
 $('sort-run').onclick = async () => {
   lockSortDialog(true);
-  sortStatus('Sending the first batch');
+  const options = sortOptions();
+  const { sessions } = await deck.estimateTopics(options);
+  const paces = sortPaces();
+  trackSort({ expected: (paces[paceKey(options)] ?? 0) * sessions });
   setSessionView('topics');
-  const result = await deck.runTopics(sortOptions()).catch((error) => ({ error: error.message }));
+  let result = await deck.runTopics(options).catch((error) => ({ error: error.message }));
+  if (result.ok && sessions) localStorage.setItem('sortPace', JSON.stringify({ ...paces, [paceKey(options)]: (Date.now() - sortRun.started) / sessions }));
+  if (result.ok && $('sort-nest').checked) {
+    trackSort({ label: 'Moving groups into workspaces' });
+    result = await deck.runWorkspaces(options).catch((error) => ({ error: error.message }));
+  }
+  trackSort(null);
   lockSortDialog(false);
   if (result.error) {
     sortStatus(result.error, true);
@@ -2413,7 +2532,11 @@ $('sort-run').onclick = async () => {
   sortStatus('');
   sortDialog.close();
 };
-deck.onTopicsProgress((done, total) => sortStatus(`Sorted ${done} of ${total}`));
+deck.onTopicsProgress((done, total) => {
+  if (!sortRun) return;
+  Object.assign(sortRun, { done, total });
+  drawSortProgress();
+});
 
 $('join-run').onclick = async () => {
   lockSortDialog(true);
@@ -2427,15 +2550,6 @@ $('join-run').onclick = async () => {
 $('join-undo').onclick = () => {
   deck.clearJoins();
   sortStatus("Claude's joins removed.");
-};
-$('workspace-run').onclick = async () => {
-  lockSortDialog(true);
-  sortStatus('Asking Claude');
-  const result = await deck.runWorkspaces(sortOptions()).catch((error) => ({ error: error.message }));
-  lockSortDialog(false);
-  if (result.error) sortStatus(result.error, true);
-  else sortStatus('');
-  drawSortEstimate();
 };
 $('workspace-undo').onclick = () => {
   deck.clearWorkspaces();

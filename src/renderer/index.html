@@ -140,29 +140,41 @@
 </dialog>
 <dialog id="sort-dialog" class="organize" closedby="any" aria-labelledby="sort-title">
   <form method="dialog">
-    <h2 id="sort-title" class="organize__title">Organize sessions</h2>
-    <fieldset class="organize__choice">
-      <legend>Group by</legend>
-      <div class="segmented">
+    <div class="sort__head">
+      <h2 id="sort-title" class="organize__title">Organize sessions</h2>
+      <div class="segmented" role="radiogroup" aria-label="Group by">
         <label data-tip="Group sessions by project folder"><input type="radio" name="session-view" value="folders">Folders</label>
         <label data-tip="Group sessions by subject"><input type="radio" name="session-view" value="topics">Topics</label>
       </div>
-    </fieldset>
-    <div class="organize__pair">
-      <label class="organize__field">Model<select id="sort-model"><option value="opus">Opus</option><option value="sonnet" selected>Sonnet</option><option value="haiku">Haiku</option></select></label>
-      <label class="organize__field">Effort<select id="sort-effort"><option value="low">Low</option><option value="medium" selected>Medium</option><option value="high">High</option></select></label>
     </div>
-    <label class="organize__check"><input id="sort-rename" type="checkbox"> Rewrite titles to be more exact</label>
-    <label class="organize__field">What you work on<input id="sort-notes" maxlength="2000" placeholder="DevStand: weekly goals, outreach. ServiceMinder: Pylon tickets, support." autocomplete="off" spellcheck="false"></label>
-    <label class="organize__check"><input id="sort-resort" type="checkbox"> Sort every session again (groups you set by hand stay)</label>
-    <p id="sort-warning" class="sort__warning" role="note"></p>
-    <div id="join-row" class="sort__joins" hidden><p id="join-text" class="organize__text"></p><button id="join-run" class="btn" type="button" data-tip="Let Claude choose the origin of these sessions">Resolve with Claude</button></div>
-    <div id="workspace-row" class="sort__joins" hidden><p id="workspace-text" class="organize__text"></p><button id="workspace-run" class="btn" type="button" data-tip="Let Claude nest your groups into workspaces">Build workspaces</button></div>
+    <label class="organize__field">Sort with Claude<select id="sort-scope">
+      <option value="new" selected>Sessions without a topic</option>
+      <option value="groups">Groups I choose</option>
+      <option value="all">Every session</option>
+    </select></label>
+    <fieldset id="sort-groups" class="sort__groups" hidden><legend class="sort__legend">Sorted again. Groups you set by hand stay</legend><div id="sort-group-list" class="sort__group-list"></div></fieldset>
+    <label class="organize__field">What you work on<textarea id="sort-notes" rows="2" maxlength="2000" placeholder="Your projects and how to split them, such as one group per product or client" spellcheck="false"></textarea></label>
+    <div class="sort__options">
+      <label class="organize__check"><input id="sort-rename" type="checkbox"> Rewrite titles</label>
+      <label class="organize__check" data-tip="After sorting, Claude moves your groups into workspaces. Workspaces you set by hand stay"><input id="sort-nest" type="checkbox"> Move groups into workspaces</label>
+    </div>
+    <div class="sort__options">
+      <label class="organize__field sort__pick" data-tip="Token counts are rough, from one measured run. Opus uses your plan limits faster per token than Sonnet, and Haiku slower">Model<select id="sort-model"><option value="opus">Opus</option><option value="sonnet" selected>Sonnet</option><option value="haiku">Haiku</option></select></label>
+      <label class="organize__field sort__pick">Effort<select id="sort-effort"><option value="low">Low</option><option value="medium" selected>Medium</option><option value="high">High</option></select></label>
+    </div>
+    <p id="sort-warning" class="organize__text" role="note"></p>
     <p id="sort-status" class="sort__status" role="status" hidden></p>
+    <progress id="sort-progress" class="sort__progress" aria-label="Sorting progress" hidden></progress>
+    <details id="sort-more" class="sort__more">
+      <summary>More tools</summary>
+      <div id="join-row" class="sort__joins" hidden><p id="join-text" class="organize__text"></p><button id="join-run" class="btn" type="button" data-tip="Let Claude choose the origin of these sessions">Resolve with Claude</button></div>
+      <div class="sort__undo">
+        <button id="sort-restore" class="btn" type="button" data-tip="Put back the original session titles">Restore titles</button>
+        <button id="join-undo" class="btn" type="button" data-tip="Remove the joins Claude chose" hidden>Undo Claude's joins</button>
+        <button id="workspace-undo" class="btn" type="button" data-tip="Remove the workspaces Claude chose" hidden>Undo Claude's workspaces</button>
+      </div>
+    </details>
     <div class="organize__actions">
-      <button id="sort-restore" class="btn sort__restore" type="button" data-tip="Put back the original session titles">Restore titles</button>
-      <button id="join-undo" class="btn sort__restore" type="button" data-tip="Remove the joins Claude chose" hidden>Undo Claude's joins</button>
-      <button id="workspace-undo" class="btn sort__restore" type="button" data-tip="Remove the workspaces Claude chose" hidden>Undo Claude's workspaces</button>
       <button id="sort-close" class="btn" type="button" data-tip="Close this menu">Close</button>
       <button id="sort-run" class="btn btn--primary" type="button" data-tip="Let Claude sort your sessions into topics">Find topics</button>
     </div>

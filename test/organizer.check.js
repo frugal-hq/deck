@@ -44,7 +44,9 @@ const none = estimate([session('a', { topic: 'Deck' })], { rename: false });
 assert.deepEqual(none, { sessions: 0, tokens: 0 });
 const two = estimate([session('a'), session('b')], { rename: false });
 assert.equal(two.sessions, 2);
-assert.ok(two.tokens > 1400 && two.tokens < 1600);
+assert.ok(two.tokens > 2800 && two.tokens < 3000);
+assert.ok(two.byModel.haiku > two.byModel.sonnet && two.byEffort.high > two.byEffort.low);
+assert.equal(estimate([session('a')], { rename: false, model: 'opus', effort: 'high' }).tokens, estimate([session('a')], { rename: false, effort: 'high' }).byModel.opus);
 assert.ok(estimate([session('a')], { rename: true }).tokens > estimate([session('a')], { rename: false }).tokens);
 
 // A model reply is untrusted: unknown indexes, wrong types and empty topics are dropped.
@@ -65,6 +67,14 @@ for (const notes of [null, 1, 'x'.repeat(2001)]) assert.equal(validOptions({ ...
 assert.equal(needsWork(session('a', { topic: 'Deck' }), false, true), true);
 assert.equal(needsWork(session('a', { topic: 'Deck', userGroup: 'Deck' }), false, true), false);
 assert.equal(needsWork(session('a', { topic: 'Deck', userGroup: 'Deck' }), true, true), true);
+// Chosen groups: only their sessions are sent, sorted again unless set by hand; '' picks the ones with no topic.
+assert.equal(needsWork(session('a', { topic: 'PAL' }), false, false, ['PAL']), true);
+assert.equal(needsWork(session('a', { topic: 'Deck' }), false, false, ['PAL']), false);
+assert.equal(needsWork(session('a'), false, false, ['PAL']), false);
+assert.equal(needsWork(session('a'), false, false, ['']), true);
+assert.equal(needsWork(session('a', { topic: 'PAL', userGroup: 'PAL' }), false, false, ['PAL']), false);
+assert.equal(validOptions({ model: 'sonnet', effort: 'low', rename: false, groups: ['PAL', ''] }), true);
+assert.equal(validOptions({ model: 'sonnet', effort: 'low', rename: false, groups: [1] }), false);
 assert.equal(estimate([session('a', { topic: 'Deck' })], { rename: false, resort: true }).sessions, 1);
 
 const groupedSessions = [

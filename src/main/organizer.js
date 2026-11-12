@@ -15,11 +15,17 @@ const singleLine = (value) => String(value).replace(/\s+/g, ' ').trim();
 function validOptions(options) {
   return MODELS.includes(options?.model) && EFFORTS.includes(options?.effort) && typeof options?.rename === 'boolean'
     && (options.resort === undefined || typeof options.resort === 'boolean')
-    && (options.notes === undefined || (typeof options.notes === 'string' && options.notes.length <= 2000));
+    && (options.notes === undefined || (typeof options.notes === 'string' && options.notes.length <= 2000))
+    && (options.groups === undefined || (Array.isArray(options.groups) && options.groups.length <= 500 && options.groups.every((group) => typeof group === 'string' && group.length <= 500)));
 }
 
-function needsWork(session, rename, resort = false) {
-  return (!session.noGroup && (!session.topic || (resort && !session.userGroup))) || (rename && !session.autoTitle && !session.customTitle);
+// groups: only sessions in these topics ('' is the sessions with none) are sent, and their topics are chosen again.
+// Groups set by hand stay either way.
+const inGroups = (session, groups) => !groups || groups.includes(session.topic ?? '');
+
+function needsWork(session, rename, resort = false, groups) {
+  if (!inGroups(session, groups)) return false;
+  return (!session.noGroup && (!session.topic || ((resort || Boolean(groups)) && !session.userGroup))) || (rename && !session.autoTitle && !session.customTitle);
 }
 
 function inputLine(session, index, rename) {
@@ -30,11 +36,25 @@ function inputLine(session, index, rename) {
   return fields.map(singleLine).join('\t');
 }
 
-function estimate(sessions, { rename, resort }) {
-  const pending = sessions.filter((session) => needsWork(session, rename, resort));
-  const input = pending.reduce((sum, session, index) => sum + inputLine(session, index % BATCH, rename).length, 0) / 4;
-  const output = pending.length * (rename ? 35 : 20);
-  return { sessions: pending.length, tokens: Math.round(input + output + Math.ceil(pending.length / BATCH) * REQUEST_TOKENS) };
+// Measured on 2026-11-11 with 40 real sessions, one run each: a topics call takes ~2,800 tokens besides its lines, and each
+// session's output at medium effort depends on the model; effort scales it as measured on Sonnet. Renaming adds a title.
+const TOPIC_REQUEST_TOKENS = 2800;
+const OUTPUT_PER_SESSION = { opus: 30, sonnet: 34, haiku: 102 };
+const EFFORT_SCALE = { low: 0.87, medium: 1, high: 1.12 };
+const TITLE_TOKENS = 15;
+
+// tokens is for the chosen model and effort; byModel keeps the effort, byEffort the model.
+function estimate(sessions, { rename, resort, groups, model = 'sonnet', effort = 'medium' }) {
+  const pending = sessions.filter((session) => needsWork(session, rename, resort, groups));
+  if (!pending.length) return { sessions: 0, tokens: 0 };
+  const input = pending.reduce((sum, session, index) => sum + inputLine(session, index % BATCH, rename).length, 0) / 4 + Math.ceil(pending.length / BATCH) * TOPIC_REQUEST_TOKENS;
+  const tokens = (m, e) => Math.round(input + pending.length * (OUTPUT_PER_SESSION[m] + (rename ? TITLE_TOKENS : 0)) * EFFORT_SCALE[e]);
+  return {
+    sessions: pending.length,
+    tokens: tokens(model, effort),
+    byModel: Object.fromEntries(MODELS.map((m) => [m, tokens(m, effort)])),
+    byEffort: Object.fromEntries(EFFORTS.map((e) => [e, tokens(model, e)])),
+  };
 }
 
 function schema(rename) {
@@ -105,8 +125,10 @@ function askClaude({ claude, env, options, schema, system, input, run, timeoutMs
 
 // Saves after every batch, so stopping or failing midway keeps what is done and a later run picks up the rest.
 async function organize({ claude, env, sessions, options, run, onBatch, timeoutMs = BATCH_TIMEOUT_MS }) {
-  const pending = sessions.filter((session) => needsWork(session, options.rename, options.resort));
-  const known = new Map(sessions.filter((session) => session.topic && (!options.resort || session.userGroup)).map((session) => [session.topic.toLowerCase(), session.topic]));
+  const pending = sessions.filter((session) => needsWork(session, options.rename, options.resort, options.groups));
+  // Topics being chosen again are not offered back, so a chosen group can split into narrower ones.
+  const resorted = (session) => options.resort || (options.groups && inGroups(session, options.groups));
+  const known = new Map(sessions.filter((session) => session.topic && (session.userGroup || !resorted(session))).map((session) => [session.topic.toLowerCase(), session.topic]));
   for (let start = 0; start < pending.length && !run.stopped; start += BATCH) {
     const batch = pending.slice(start, start + BATCH);
     const lines = batch.map((session, index) => inputLine(session, index, options.rename)).join('\n');
