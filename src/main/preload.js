@@ -47,6 +47,7 @@ contextBridge.exposeInMainWorld('deck', {
   organize: (id, organization) => ipcRenderer.send('sessions:organize', id, organization),
   setGroup: (id, name) => ipcRenderer.send('sessions:set-group', id, name),
   setWorkspace: (group, workspace) => ipcRenderer.send('sessions:set-workspace', group, workspace),
+  setWorkspaceParent: (name, parent) => ipcRenderer.send('workspaces:set-parent', name, parent),
   renameWorkspace: (from, to) => ipcRenderer.send('workspaces:rename', from, to),
   deleteWorkspace: (name) => ipcRenderer.send('workspaces:delete', name),
   renameGroup: (ids, from, to) => ipcRenderer.send('groups:rename', ids, from, to),

@@ -42,13 +42,19 @@ const treeChats = [
 ];
 const tree = buildTree(treeChats, (chat) => (chat.id === 'd' ? 'b' : chat.id), { b: 'Work' });
 assert.deepEqual(tree.workspaces, [
-  { name: 'Client A', groups: [], chats: [treeChats[0]] },
-  { name: 'Work', groups: [['b', [treeChats[1], treeChats[3]]]], chats: [] },
+  { name: 'Client A', groups: [], chats: [treeChats[0]], spaces: [] },
+  { name: 'Work', groups: [['b', [treeChats[1], treeChats[3]]]], chats: [], spaces: [] },
 ]);
 assert.deepEqual(tree.groups, [['c', [treeChats[2]]]]);
 
 const plain = buildTree(treeChats, (chat) => chat.id);
-assert.deepEqual(plain.workspaces, [{ name: 'Client A', groups: [], chats: [treeChats[0]] }]);
+assert.deepEqual(plain.workspaces, [{ name: 'Client A', groups: [], chats: [treeChats[0]], spaces: [] }]);
+
+// A workspace nests in another, created on the way if it holds nothing else; a loop leaves both on top.
+const nested = buildTree(treeChats, (chat) => (chat.id === 'd' ? 'b' : chat.id), { b: 'Work' }, { work: 'Clients', 'client a': 'clients' });
+assert.deepEqual(nested.workspaces.map((w) => [w.name, w.spaces.map((c) => c.name)]), [['Clients', ['Work', 'Client A']]]);
+const looped = buildTree(treeChats, (chat) => chat.id, {}, { 'Client A': 'X', X: 'Client A' });
+assert.deepEqual(looped.workspaces.map((w) => [w.name, w.spaces.length]), [['Client A', 0]]);
 assert.deepEqual(plain.groups, [['b', [treeChats[1]]], ['c', [treeChats[2]]], ['d', [treeChats[3]]]]);
 
 console.log('chats check ok');

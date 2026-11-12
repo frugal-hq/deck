@@ -1526,12 +1526,20 @@ function saveGroupOrder(order) {
   }
 }
 
+// Workspaces and groups share one order, so either can sit before the other at any level.
+let compareKeys = () => 0;
+const spaceKey = (name) => `workspace:${name}`;
+
 function orderGroups(tree) {
-  const keys = [
-    ...tree.workspaces.map((workspace) => `workspace:${workspace.name}`),
-    ...tree.workspaces.flatMap((workspace) => workspace.groups.map(([key]) => key)),
-    ...tree.groups.map(([key]) => key),
-  ];
+  const keys = [];
+  const collect = (spaces) => {
+    for (const workspace of spaces) {
+      keys.push(spaceKey(workspace.name), ...workspace.groups.map(([key]) => key));
+      collect(workspace.spaces);
+    }
+  };
+  collect(tree.workspaces);
+  keys.push(...tree.groups.map(([key]) => key));
   const saved = readGroupOrder();
   const missing = keys.filter((key, index) => !saved.includes(key) && keys.indexOf(key) === index);
   if (missing.length) {
@@ -1539,17 +1547,40 @@ function orderGroups(tree) {
     saveGroupOrder(saved);
   }
   const rank = new Map(saved.map((key, index) => [key, index]));
-  const compare = (a, b) => (a === NO_TOPIC) - (b === NO_TOPIC) || rank.get(a) - rank.get(b);
-  tree.groups.sort(([a], [b]) => compare(a, b));
-  tree.workspaces.sort((a, b) => compare(`workspace:${a.name}`, `workspace:${b.name}`));
-  for (const workspace of tree.workspaces) workspace.groups.sort(([a], [b]) => compare(a, b));
+  compareKeys = (a, b) => (a === NO_TOPIC) - (b === NO_TOPIC) || rank.get(a) - rank.get(b);
+}
+
+// Child workspaces and groups in their shared order; a workspace's own chats follow them.
+function branchElements(spaces, groups, byTopic) {
+  return [
+    ...spaces.map((workspace) => [spaceKey(workspace.name), () => workspaceElement(workspace, byTopic)]),
+    ...groups.map(([key, list]) => [key, () => groupElement(key, list, byTopic)]),
+  ].sort(([a], [b]) => compareKeys(a, b)).map(([, make]) => make());
+}
+
+const workspaceCount = (workspace) => workspace.chats.length + workspace.groups.reduce((total, [, list]) => total + list.length, 0) + workspace.spaces.reduce((total, child) => total + workspaceCount(child), 0);
+
+// The workspace an element sits in: '' at the top of the list.
+const parentSpace = (element) => (element.parentElement?.classList.contains('group--workspace') ? element.parentElement.dataset.workspace : '');
+
+function placeGroup(key, workspace) {
+  if (key.startsWith('workspace:')) deck.setWorkspaceParent(key.slice('workspace:'.length), workspace);
+  else deck.setWorkspace(key, workspace);
+}
+
+function placeChat(chat, { workspace, group }) {
+  for (const s of currentIndex.sessions) {
+    if (s.chatId !== chat.chatId) continue;
+    if (group !== undefined) deck.setGroup(s.id, group);
+    deck.organize(s.id, { pinned: chat.pinned, space: workspace ?? '', tags: chat.tags });
+  }
 }
 
 let draggedGroup = null;
 let dropTarget = null;
 
 function clearDropTarget() {
-  dropTarget?.classList.remove('is-drop-before', 'is-drop-after');
+  dropTarget?.classList.remove('is-drop-before', 'is-drop-after', 'is-drop-into');
   dropTarget = null;
 }
 
@@ -1562,6 +1593,34 @@ function moveGroup(from, to, before) {
   saveGroupOrder(order);
   drawnSignature = '';
   renderSessions(currentIndex);
+}
+
+let draggedChat = null;
+
+function configureChatDrag(row, chat) {
+  row.draggable = true;
+  row.addEventListener('dragstart', (event) => {
+    draggedChat = chat;
+    event.dataTransfer.effectAllowed = 'move';
+    event.dataTransfer.setData('text/plain', chat.title);
+  });
+  row.addEventListener('dragend', () => {
+    clearDropTarget();
+    draggedChat = null;
+  });
+}
+
+// Over a row's middle a drop goes into it: anything into a workspace, a chat into a group. Over its edges a group or
+// workspace goes before or after it, joining the workspace that row sits in.
+function dropZone(event, summary, group, key) {
+  const intoSpace = key.startsWith('workspace:');
+  const intoGroup = !intoSpace && key !== NO_TOPIC && sessionView === 'topics';
+  if (draggedChat) return intoSpace || intoGroup ? 'into' : null;
+  if (!draggedGroup || draggedGroup.group === group || draggedGroup.group.contains(group)) return null;
+  const { top, height } = summary.getBoundingClientRect();
+  const y = (event.clientY - top) / height;
+  if (intoSpace && y > 0.25 && y < 0.75) return 'into';
+  return y < 0.5 ? 'before' : 'after';
 }
 
 function configureGroupDrag(summary, group, key) {
@@ -1578,30 +1637,43 @@ function configureGroupDrag(summary, group, key) {
     draggedGroup = null;
   });
   summary.addEventListener('dragover', (event) => {
-    if (!draggedGroup || draggedGroup.group === group || draggedGroup.group.parentElement !== group.parentElement) return;
+    const zone = dropZone(event, summary, group, key);
+    if (!zone) return;
     event.preventDefault();
     if (dropTarget !== summary) {
       clearDropTarget();
       dropTarget = summary;
     }
-    const { top, height } = group.getBoundingClientRect();
-    const before = event.clientY < top + height / 2;
-    summary.classList.toggle('is-drop-before', before);
-    summary.classList.toggle('is-drop-after', !before);
-    summary.dataset.dropBefore = String(before);
+    summary.classList.toggle('is-drop-before', zone === 'before');
+    summary.classList.toggle('is-drop-after', zone === 'after');
+    summary.classList.toggle('is-drop-into', zone === 'into');
+    summary.dataset.dropZone = zone;
   });
   summary.addEventListener('dragleave', (event) => {
     if (event.relatedTarget && group.contains(event.relatedTarget)) return;
     if (dropTarget === summary) clearDropTarget();
   });
   summary.addEventListener('drop', (event) => {
-    if (!draggedGroup || dropTarget !== summary) return;
+    if ((!draggedGroup && !draggedChat) || dropTarget !== summary) return;
     event.preventDefault();
-    const before = summary.dataset.dropBefore === 'true';
-    const { key: from } = draggedGroup;
+    const zone = summary.dataset.dropZone;
+    const chat = draggedChat;
+    const from = draggedGroup?.key;
+    const fromParent = draggedGroup && parentSpace(draggedGroup.group);
     clearDropTarget();
     draggedGroup = null;
-    moveGroup(from, key, before);
+    draggedChat = null;
+    if (chat) {
+      placeChat(chat, key.startsWith('workspace:') ? { workspace: key.slice('workspace:'.length) } : { group: key });
+      return;
+    }
+    if (zone === 'into') {
+      placeGroup(from, key.slice('workspace:'.length));
+      return;
+    }
+    const target = parentSpace(group);
+    if (target !== fromParent) placeGroup(from, target);
+    moveGroup(from, key, zone === 'before');
   });
 }
 
@@ -1664,6 +1736,7 @@ function addFolderLabel(row, session) {
 // The folder lives in the row's tip, so the title keeps the room up to the sessions button.
 function chatElement(chat) {
   const first = sessionButton(chat);
+  configureChatDrag(first, chat);
   if (!chat.earlier.length) return first;
   const container = document.createElement('div');
   container.className = 'chat';
@@ -1748,9 +1821,10 @@ function workspaceMenu(name) {
         deck.renameWorkspace(name, to);
       },
     }) },
+    { label: 'Move to workspace', run: () => openWorkspace(spaceKey(name), name) },
     { label: 'Delete', danger: true, run: () => ask({
       title: `Delete ${name}?`,
-      text: 'Its groups and chats stay, outside any workspace.',
+      text: 'Its groups and chats stay, outside any workspace. Workspaces inside it move up one level.',
       action: 'Delete',
       danger: true,
       run: () => deck.deleteWorkspace(name),
@@ -1827,9 +1901,10 @@ function groupElement(key, chats, byTopic) {
 }
 
 function workspaceElement(workspace, byTopic) {
-  const key = `workspace:${workspace.name}`;
+  const key = spaceKey(workspace.name);
   const group = document.createElement('details');
   group.className = 'group group--workspace';
+  group.dataset.workspace = workspace.name;
   group.open = openGroups.has(key);
   group.ontoggle = () => (group.open ? openGroups.add(key) : openGroups.delete(key));
   const summary = document.createElement('summary');
@@ -1840,7 +1915,7 @@ function workspaceElement(workspace, byTopic) {
   name.textContent = workspace.name;
   const count = document.createElement('span');
   count.className = 'group__count measured';
-  count.textContent = workspace.chats.length + workspace.groups.reduce((total, [, list]) => total + list.length, 0);
+  count.textContent = workspaceCount(workspace);
   const chevron = icon('chevron');
   chevron.classList.add('group__chevron');
   summary.append(chevron, icon('topic'), name, count);
@@ -1870,8 +1945,17 @@ function pinnedElement(sessions) {
   return section;
 }
 
+// True when workspace name is space or sits inside it, at any depth.
+function withinSpace(name, space, index) {
+  const parents = new Map(Object.entries(index.workspaceParents ?? {}).map(([child, parent]) => [child.toLowerCase(), parent]));
+  for (let at = name, depth = 0; at && depth < 50; at = parents.get(at.toLowerCase()), depth++) {
+    if (at.toLowerCase() === space.toLowerCase()) return true;
+  }
+  return false;
+}
+
 function drawSpaces(sessions, index) {
-  const names = [...new Set([...sessions.map((s) => s.space), ...Object.values(index.workspaces ?? {})].filter(Boolean))].sort((a, b) => a.localeCompare(b, 'en-US'));
+  const names = [...new Set([...sessions.map((s) => s.space), ...Object.values(index.workspaces ?? {}), ...Object.values(index.workspaceParents ?? {})].filter(Boolean))].sort((a, b) => a.localeCompare(b, 'en-US'));
   const select = $('space-filter');
   const chosen = names.includes(select.value) ? select.value : '';
   select.replaceChildren(new Option('All workspaces', ''), ...names.map((name) => new Option(name, name)));
@@ -1896,7 +1980,7 @@ function renderSessions(index) {
   $('index-status').textContent = status;
 
   // Transcripts change every second during a turn; rebuilding only when the list changes keeps focus and scroll.
-  const signature = `${sessionView}\n${index.indexing}\n${$('space-filter').value}\n${index.modelJoins}\n${index.modelWorkspaces}\n${JSON.stringify(index.workspaces ?? {})}\n${index.ambiguous.length}\n${index.sessions.map((s) => `${s.id}\n${s.chatId}\n${s.title}\n${s.cwd}\n${shortDate.format(new Date(s.lastAt))}\n${s.pinned}\n${s.space}\n${s.tags}\n${s.topic}\n${s.userGroup ?? ''}`).join('\n')}`;
+  const signature = `${sessionView}\n${index.indexing}\n${$('space-filter').value}\n${index.modelJoins}\n${index.modelWorkspaces}\n${JSON.stringify(index.workspaces ?? {})}\n${JSON.stringify(index.workspaceParents ?? {})}\n${index.ambiguous.length}\n${index.sessions.map((s) => `${s.id}\n${s.chatId}\n${s.title}\n${s.cwd}\n${shortDate.format(new Date(s.lastAt))}\n${s.pinned}\n${s.space}\n${s.tags}\n${s.topic}\n${s.userGroup ?? ''}`).join('\n')}`;
   if (signature === drawnSignature) return;
   drawnSignature = signature;
   if (sortDialog.open) drawSortEstimate();
@@ -1911,16 +1995,15 @@ function renderSessions(index) {
   const byTopic = sessionView === 'topics';
   const keyOf = (chat) => (byTopic ? chat.topic ?? NO_TOPIC : chat.cwd);
   const space = $('space-filter').value;
-  const visible = space ? allChats.filter((c) => (c.space ?? index.workspaces?.[keyOf(c)]) === space) : allChats;
+  const visible = space ? allChats.filter((c) => withinSpace(c.space ?? index.workspaces?.[keyOf(c)], space, index)) : allChats;
   const pinned = visible.filter((c) => c.pinned);
-  const tree = buildTree(visible.filter((c) => !c.pinned), keyOf, index.workspaces ?? {});
+  const tree = buildTree(visible.filter((c) => !c.pinned), keyOf, index.workspaces ?? {}, index.workspaceParents ?? {});
   orderGroups(tree);
   const focused = document.activeElement?.dataset?.session;
   const list = $('groups');
   list.replaceChildren(
     ...(pinned.length ? [pinnedElement(pinned)] : []),
-    ...tree.workspaces.map((workspace) => workspaceElement(workspace, byTopic)),
-    ...tree.groups.map(([key, chats]) => groupElement(key, chats, byTopic)),
+    ...branchElements(tree.workspaces, tree.groups, byTopic),
   );
   // Only a change of view fades: the list also rebuilds while transcripts update.
   const view = `${sessionView}\n${space}`;
@@ -2042,7 +2125,7 @@ function openOrganize(session) {
 function openWorkspace(key, label) {
   movingGroup = key;
   $('workspace-title').textContent = label;
-  $('workspace-name').value = currentIndex?.workspaces?.[key] ?? '';
+  $('workspace-name').value = (key.startsWith('workspace:') ? currentIndex?.workspaceParents?.[label] : currentIndex?.workspaces?.[key]) ?? '';
   workspaceDialog.showModal();
 }
 
@@ -2062,7 +2145,7 @@ $('organize-form').onsubmit = () => {
   }
 };
 $('workspace-form').onsubmit = () => {
-  if (movingGroup) deck.setWorkspace(movingGroup, $('workspace-name').value);
+  if (movingGroup) placeGroup(movingGroup, $('workspace-name').value);
 };
 $('workspace-cancel').onclick = () => workspaceDialog.close();
 
@@ -2169,18 +2252,21 @@ function attachCombo(input, names) {
     input.setAttribute('aria-activedescendant', list.children[index].id);
   };
   const open = (query) => {
-    const matches = names().filter((name) => name.toLowerCase().includes(query));
-    list.replaceChildren(...matches.map((name, i) => {
+    // An entry is a name, or { name, branch: 'mid' | 'last', pick } for a row of a tree; a search shows the rows flat.
+    const matches = names().map((entry) => (typeof entry === 'string' ? { name: entry } : entry)).filter(({ name }) => name.toLowerCase().includes(query));
+    list.replaceChildren(...matches.map(({ name, branch, pick }, i) => {
       const item = document.createElement('button');
       item.type = 'button';
       item.id = `${list.id}-${i}`;
       item.className = 'menu__item';
+      if (branch && !query) item.classList.add('branch', ...(branch === 'last' ? ['branch--last'] : []));
       item.role = 'option';
       item.tabIndex = -1;
       item.textContent = name;
       item.onmousedown = (event) => event.preventDefault();
       item.onclick = () => {
-        input.value = name;
+        if (pick) pick();
+        else input.value = name;
         close();
       };
       return item;
@@ -2214,7 +2300,22 @@ function attachCombo(input, names) {
 }
 
 attachCombo($('organize-space'), () => spaceNames);
-attachCombo($('organize-group'), () => groupNames);
+// Each workspace with its groups under it: a workspace places the chat in it outside any group, a group places it in that group.
+function placeTree() {
+  const spaceOf = new Map(Object.entries(currentIndex?.workspaces ?? {}).map(([group, space]) => [group.toLowerCase(), space]));
+  const place = (space, group) => () => {
+    $('organize-space').value = space;
+    $('organize-group').value = group;
+  };
+  return [
+    ...spaceNames.flatMap((space) => {
+      const groups = groupNames.filter((group) => spaceOf.get(group.toLowerCase()) === space);
+      return [{ name: space, pick: place(space, '') }, ...groups.map((group, i) => ({ name: group, branch: i === groups.length - 1 ? 'last' : 'mid', pick: place('', group) }))];
+    }),
+    ...groupNames.filter((group) => !spaceNames.includes(spaceOf.get(group.toLowerCase()))).map((group) => ({ name: group, pick: place('', group) })),
+  ];
+}
+attachCombo($('organize-group'), placeTree);
 attachCombo($('workspace-name'), () => spaceNames);
 attachCombo($('ask-value'), () => askNames);
 $('organize-cancel').onclick = () => organize.close();

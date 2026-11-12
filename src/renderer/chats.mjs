@@ -23,11 +23,15 @@ export function groupChats(sessions) {
   });
 }
 
-export function buildTree(chats, keyOf, workspaces = {}) {
+// parents maps a workspace to the workspace that holds it; names match in any case, and a loop leaves its workspaces on top.
+export function buildTree(chats, keyOf, workspaces = {}, parents = {}) {
   const byName = new Map();
   const workspace = (name) => {
-    if (!byName.has(name)) byName.set(name, { name, groups: [], chats: [], keys: new Set() });
-    return byName.get(name);
+    const found = byName.get(name.toLowerCase());
+    if (found) return found;
+    const created = { name, groups: [], chats: [], spaces: [], keys: new Set() };
+    byName.set(name.toLowerCase(), created);
+    return created;
   };
   const groups = new Map();
   const top = [];
@@ -54,8 +58,30 @@ export function buildTree(chats, keyOf, workspaces = {}) {
     }
     list.push(chat);
   }
+  const parentOf = new Map(Object.entries(parents).filter(([, parent]) => parent).map(([name, parent]) => [name.toLowerCase(), parent]));
+  const loops = (name) => {
+    const seen = new Set();
+    for (let at = name.toLowerCase(); parentOf.has(at); at = parentOf.get(at).toLowerCase()) {
+      if (seen.has(at)) return true;
+      seen.add(at);
+    }
+    return false;
+  };
+  const nested = new Set();
+  const pending = [...byName.values()];
+  while (pending.length) {
+    const child = pending.pop();
+    const parentName = parentOf.get(child.name.toLowerCase());
+    if (!parentName || nested.has(child) || loops(child.name)) continue;
+    const isNew = !byName.has(parentName.toLowerCase());
+    const parent = workspace(parentName);
+    if (isNew) pending.push(parent);
+    parent.spaces.push(child);
+    nested.add(child);
+  }
+  const out = ({ name, groups, chats: own, spaces }) => ({ name, groups, chats: own, spaces: spaces.map(out) });
   return {
-    workspaces: [...byName.values()].map(({ name, groups, chats }) => ({ name, groups, chats })),
+    workspaces: [...byName.values()].filter((space) => !nested.has(space)).map(out),
     groups: top,
   };
 }

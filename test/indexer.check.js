@@ -3,7 +3,7 @@ const assert = require('assert');
 const fs = require('fs');
 const os = require('os');
 const path = require('path');
-const { openIndex, syncFile, scan, listSessions, listIndex, chatLinks, promptTitle, saveOrganization, saveAutomatic, clearAutoTitles, saveLink, undoLastLink, clearModelLinks, saveGroup, saveWorkspace, saveModelWorkspaces, clearModelWorkspaces, renameWorkspace, deleteWorkspace, renameGroup, deleteGroup } = require('../src/main/indexer.js');
+const { openIndex, syncFile, scan, listSessions, listIndex, chatLinks, promptTitle, saveOrganization, saveAutomatic, clearAutoTitles, saveLink, undoLastLink, clearModelLinks, saveGroup, saveWorkspace, saveWorkspaceParent, saveModelWorkspaces, clearModelWorkspaces, renameWorkspace, deleteWorkspace, renameGroup, deleteGroup } = require('../src/main/indexer.js');
 
 const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'deck-index-'));
 const root = path.join(dir, 'projects');
@@ -257,6 +257,19 @@ assert.equal(renameWorkspace(db, 'oldspace', 'NewSpace'), true);
 assert.equal(listIndex(db).workspaces.BetaGroup, 'NewSpace');
 assert.equal(listedSession('b').space, 'NewSpace');
 assert.equal(db.prepare('SELECT origin FROM group_workspace WHERE name = ?').get('BetaGroup').origin, 'user');
+
+assert.equal(saveWorkspaceParent(db, 'PA', 'PB'), true);
+assert.equal(listIndex(db).workspaceParents.PA, 'PB');
+assert.equal(saveWorkspaceParent(db, 'pb', 'PA'), false);
+assert.equal(saveWorkspaceParent(db, 'PA', 'pa'), false);
+assert.equal(saveWorkspaceParent(db, 'PB', 'PC'), true);
+assert.equal(saveWorkspaceParent(db, 'PC', 'PA'), false);
+assert.equal(renameWorkspace(db, 'pb', 'PBx'), true);
+assert.deepEqual(listIndex(db).workspaceParents, { PA: 'PBx', PBx: 'PC' });
+assert.equal(deleteWorkspace(db, 'PBx'), true);
+assert.deepEqual(listIndex(db).workspaceParents, { PA: 'PC' });
+assert.equal(deleteWorkspace(db, 'PC'), true);
+assert.deepEqual(listIndex(db).workspaceParents, {});
 
 assert.equal(saveGroup(db, id('a'), 'Shared'), true);
 assert.equal(saveGroup(db, id('b'), 'Shared'), true);

@@ -60,6 +60,7 @@ function openIndex(file) {
   db.exec('CREATE TABLE IF NOT EXISTS session_links (session_id TEXT PRIMARY KEY, parent_id TEXT, origin TEXT NOT NULL)');
   db.exec('CREATE TABLE IF NOT EXISTS session_group (session_id TEXT PRIMARY KEY, name TEXT NOT NULL)');
   db.exec('CREATE TABLE IF NOT EXISTS group_workspace (name TEXT PRIMARY KEY COLLATE NOCASE, workspace TEXT NOT NULL, origin TEXT NOT NULL)');
+  db.exec('CREATE TABLE IF NOT EXISTS workspace_parent (name TEXT PRIMARY KEY COLLATE NOCASE, parent TEXT NOT NULL)');
   if (stale) db.exec('PRAGMA user_version = 1');
   return db;
 }
@@ -264,6 +265,7 @@ function listIndex(db) {
   }
   return {
     workspaces: Object.fromEntries(db.prepare('SELECT name, workspace FROM group_workspace').all().map(({ name, workspace }) => [name, workspace])),
+    workspaceParents: Object.fromEntries(db.prepare('SELECT name, parent FROM workspace_parent').all().map(({ name, parent }) => [name, parent])),
     modelWorkspaces: db.prepare("SELECT COUNT(*) AS n FROM group_workspace WHERE origin = 'model'").get().n,
     sessions, ambiguous: unresolved, modelJoins: db.prepare(`SELECT COUNT(*) AS n FROM session_links WHERE origin = 'model'`).get().n };
 }
@@ -357,6 +359,9 @@ function renameWorkspace(db, from, to) {
   try {
     db.prepare("UPDATE group_workspace SET workspace = ?, origin = 'user' WHERE workspace = ? COLLATE NOCASE").run(to, from);
     db.prepare('UPDATE session_org SET space = ? WHERE space = ? COLLATE NOCASE').run(to, from);
+    db.prepare('UPDATE OR REPLACE workspace_parent SET name = ? WHERE name = ? COLLATE NOCASE').run(to, from);
+    db.prepare('UPDATE workspace_parent SET parent = ? WHERE parent = ? COLLATE NOCASE').run(to, from);
+    db.prepare('DELETE FROM workspace_parent WHERE name = parent COLLATE NOCASE').run();
     db.exec('COMMIT');
   } catch (error) {
     db.exec('ROLLBACK');
@@ -371,6 +376,10 @@ function deleteWorkspace(db, name) {
   if (!name || name.length > 40) return false;
   db.exec('BEGIN');
   try {
+    const up = db.prepare('SELECT parent FROM workspace_parent WHERE name = ?').get(name)?.parent;
+    if (up) db.prepare('UPDATE workspace_parent SET parent = ? WHERE parent = ? COLLATE NOCASE').run(up, name);
+    else db.prepare('DELETE FROM workspace_parent WHERE parent = ? COLLATE NOCASE').run(name);
+    db.prepare('DELETE FROM workspace_parent WHERE name = ?').run(name);
     db.prepare('DELETE FROM group_workspace WHERE workspace = ? COLLATE NOCASE').run(name);
     db.prepare('UPDATE session_org SET space = NULL WHERE space = ? COLLATE NOCASE').run(name);
     db.exec('COMMIT');
@@ -378,6 +387,25 @@ function deleteWorkspace(db, name) {
     db.exec('ROLLBACK');
     throw error;
   }
+  return true;
+}
+
+function saveWorkspaceParent(db, name, parent) {
+  if (typeof name !== 'string' || typeof parent !== 'string') return false;
+  name = name.trim();
+  parent = parent.trim();
+  if (!name || name.length > 40 || parent.length > 40) return false;
+  if (!parent) {
+    db.prepare('DELETE FROM workspace_parent WHERE name = ?').run(name);
+    return true;
+  }
+  const find = db.prepare('SELECT parent FROM workspace_parent WHERE name = ?');
+  const seen = new Set();
+  for (let at = parent; at && !seen.has(at.toLowerCase()); at = find.get(at)?.parent) {
+    if (at.toLowerCase() === name.toLowerCase()) return false;
+    seen.add(at.toLowerCase());
+  }
+  db.prepare('INSERT OR REPLACE INTO workspace_parent (name, parent) VALUES (?, ?)').run(name, parent);
   return true;
 }
 
@@ -459,11 +487,13 @@ function runWorker({ roots, dbFile }) {
   scan(db, roots, () => publish(true));
   publish(false);
 
-  parentPort.on('message', ({ id, organization, automatic, clearTitles, link, undoLink, joins, clearJoins, setGroup, setWorkspace, modelWorkspaces, clearWorkspaces, renameWorkspace: spaceRename, deleteWorkspace: spaceDelete, renameGroup: groupRename, deleteGroup: groupDelete }) => {
+  parentPort.on('message', ({ id, organization, automatic, clearTitles, link, undoLink, joins, clearJoins, setGroup, setWorkspace, setWorkspaceParent, modelWorkspaces, clearWorkspaces, renameWorkspace: spaceRename, deleteWorkspace: spaceDelete, renameGroup: groupRename, deleteGroup: groupDelete }) => {
     if (setGroup) {
       if (!saveGroup(db, setGroup.id, setGroup.name)) return;
     } else if (setWorkspace) {
       if (!saveWorkspace(db, setWorkspace.group, setWorkspace.workspace)) return;
+    } else if (setWorkspaceParent) {
+      if (!saveWorkspaceParent(db, setWorkspaceParent.name, setWorkspaceParent.parent)) return;
     } else if (spaceRename) {
       if (!renameWorkspace(db, spaceRename.from, spaceRename.to)) return;
     } else if (spaceDelete) {
@@ -515,6 +545,6 @@ function runWorker({ roots, dbFile }) {
   }
 }
 
-module.exports = { saveGroup, saveWorkspace, saveModelWorkspaces, clearModelWorkspaces, openIndex, syncFile, scan, listSessions, listIndex, chatLinks, promptTitle, saveOrganization, saveAutomatic, clearAutoTitles, saveLink, undoLastLink, clearModelLinks, renameWorkspace, deleteWorkspace, renameGroup, deleteGroup };
+module.exports = { saveGroup, saveWorkspace, saveWorkspaceParent, saveModelWorkspaces, clearModelWorkspaces, openIndex, syncFile, scan, listSessions, listIndex, chatLinks, promptTitle, saveOrganization, saveAutomatic, clearAutoTitles, saveLink, undoLastLink, clearModelLinks, renameWorkspace, deleteWorkspace, renameGroup, deleteGroup };
 
 if (parentPort) runWorker(workerData);

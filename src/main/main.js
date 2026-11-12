@@ -27,7 +27,7 @@ const chatInfo = new Map();
 // Administrator chats wait on the UAC prompt; closing one there must not leave it running unseen.
 const launching = new Map();
 const pickedFolders = new Set();
-let index = { indexing: true, sessions: [], error: null, ambiguous: [], modelJoins: 0, workspaces: {}, modelWorkspaces: 0 };
+let index = { indexing: true, sessions: [], error: null, ambiguous: [], modelJoins: 0, workspaces: {}, workspaceParents: {}, modelWorkspaces: 0 };
 let win;
 let indexer;
 // Written to userData at startup: the .cmd runs the script with Deck's own binary as plain Node.
@@ -483,6 +483,7 @@ ipcMain.handle('topics:run', (_, options) => exclusiveRun(options, (claude, run)
 
 ipcMain.on('sessions:set-group', (_, id, name) => indexer?.postMessage({ setGroup: { id, name } }));
 ipcMain.on('sessions:set-workspace', (_, group, workspace) => indexer?.postMessage({ setWorkspace: { group, workspace } }));
+ipcMain.on('workspaces:set-parent', (_, name, parent) => indexer?.postMessage({ setWorkspaceParent: { name, parent } }));
 ipcMain.on('workspaces:rename', (_, from, to) => indexer?.postMessage({ renameWorkspace: { from, to } }));
 ipcMain.on('workspaces:delete', (_, name) => indexer?.postMessage({ deleteWorkspace: { name } }));
 ipcMain.on('groups:rename', (_, ids, from, to) => indexer?.postMessage({ renameGroup: { ids, from, to } }));
