@@ -2,6 +2,7 @@
 
 mod chat;
 mod index;
+mod statusline;
 
 use serde_json::{json, Value};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -62,6 +63,13 @@ fn main() {
                     }
                 }
             });
+            let meters = app.handle().clone();
+            let edits = app.handle().clone();
+            let bridge = statusline::create_status_bridge(
+                move |id, value| { let _ = meters.emit("chat:meters", [json!(id), value]); },
+                move |id, text| edits.emit("chat:edit", [json!(id), json!(text)]).is_ok(),
+            )?;
+            app.manage(bridge);
             index::start(app.handle().clone());
             Ok(())
         })
@@ -90,7 +98,8 @@ fn main() {
             chat::chat_start,
             chat::chat_input,
             chat::chat_resize,
-            chat::chat_kill
+            chat::chat_kill,
+            statusline::chat_save_edit
         ])
         .build(tauri::generate_context!())
         .expect("Frugal Deck failed to start")
