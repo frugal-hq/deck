@@ -239,6 +239,7 @@ ipcMain.handle('chat:subagents', async (_, id, cwd) => {
     agents.set(job.id, { name: job.id, description: job.brief, model: job.model, account: job.account, cost: job.cost, status, running: status === 'running', updatedAt: (job.end ?? job.start) * 1000 });
   }
   const tasks = [...agents.entries()].map(([key, task]) => ({ ...task, status: task.status ?? (task.running ? 'running' : 'done'), key: `${id}:${key}` }));
+  saveTaskHistory(id, cwd, tasks);
   return tasks;
 });
 
@@ -259,6 +260,25 @@ async function delegateJobs() {
     jobsCache = { mtimeMs, jobs: [...byId.values()] };
   } catch {}
   return jobsCache.jobs;
+}
+
+// Finished tasks of every chat, one JSON line each, to look back on what ran, where and what it cost.
+const TASKS_FILE = path.join(os.homedir(), '.frugal-deck', 'tasks.jsonl');
+let savedTasks = null;
+function saveTaskHistory(chat, cwd, tasks) {
+  if (!savedTasks) {
+    savedTasks = new Set();
+    try {
+      for (const line of fs.readFileSync(TASKS_FILE, 'utf8').split('\n')) {
+        try { savedTasks.add(JSON.parse(line).key); } catch {}
+      }
+    } catch {}
+  }
+  const lines = tasks.filter((task) => !task.running && !savedTasks.has(task.key)).map((task) => {
+    savedTasks.add(task.key);
+    return JSON.stringify({ at: new Date(task.updatedAt).toISOString(), chat, cwd, ...task });
+  });
+  if (lines.length) fs.promises.appendFile(TASKS_FILE, lines.join('\n') + '\n').catch(() => {});
 }
 
 ipcMain.handle('sessions:get', sidebarIndex);
