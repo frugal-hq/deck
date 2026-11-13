@@ -52,7 +52,7 @@
     setVoiceMode: (mode) => send('voice:mode', { mode }),
     voiceStatus: (model) => invoke('voice:status', { model }),
     voicePrepare: (model) => invoke('voice:prepare', { model }),
-    voiceTranscribe: (options) => invoke('voice:transcribe', { options }),
+    voiceTranscribe: (options) => invoke('voice:transcribe', { options: { ...options, audio: options?.audio instanceof ArrayBuffer ? Array.from(new Uint8Array(options.audio)) : options?.audio } }),
     onVoiceProgress: (callback) => on('voice:progress', callback),
     setAttention: (count) => send('window:attention', { count }),
     login: (options) => invoke('accounts:login', { options }),

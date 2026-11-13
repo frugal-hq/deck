@@ -3,6 +3,7 @@
 mod chat;
 mod index;
 mod statusline;
+mod voice;
 
 use serde_json::{json, Value};
 use std::sync::atomic::{AtomicBool, Ordering};
@@ -93,6 +94,10 @@ fn main() {
             index::topics_restore_titles,
             accounts_get,
             settings_roles,
+            voice::voice_mode,
+            voice::voice_status,
+            voice::voice_prepare,
+            voice::voice_transcribe,
             window_action,
             chat::folder_default,
             chat::chat_start,
