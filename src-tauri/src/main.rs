@@ -5,6 +5,8 @@ mod chat;
 mod handoff;
 mod index;
 mod mcp;
+#[allow(dead_code)]
+mod organizer;
 mod statusline;
 mod voice;
 
