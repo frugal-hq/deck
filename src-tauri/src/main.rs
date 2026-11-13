@@ -1,25 +1,16 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod accounts;
 mod chat;
 mod handoff;
 mod index;
 mod statusline;
 mod voice;
 
-use serde_json::{json, Value};
+use serde_json::json;
 use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Mutex;
 use tauri::{webview::Color, Emitter, Manager, RunEvent, WebviewUrl, WebviewWindow, WebviewWindowBuilder, WindowEvent};
-
-// Startup reads answer what Electron's main answers before accounts and settings load; phase 4 ports them.
-#[tauri::command]
-fn accounts_get() -> Value {
-    json!({ "primary": null, "accounts": [], "others": [] })
-}
-
-#[tauri::command]
-fn settings_roles() -> bool {
-    true
-}
 
 #[tauri::command]
 fn window_action(window: WebviewWindow, action: String) -> tauri::Result<()> {
@@ -35,6 +26,9 @@ fn window_action(window: WebviewWindow, action: String) -> tauri::Result<()> {
 fn main() {
     tauri::Builder::default()
         .setup(|app| {
+            let home = std::path::PathBuf::from(std::env::var_os("USERPROFILE").ok_or("No user folder.")?);
+            let codex_home = std::env::var_os("CODEX_HOME").filter(|s| !s.is_empty()).map(std::path::PathBuf::from).unwrap_or_else(|| home.join(".codex"));
+            app.manage(Mutex::new(accounts::Accounts::new(home, codex_home)));
             let window = WebviewWindowBuilder::new(app, "main", WebviewUrl::App("src/renderer/index.html".into()))
                 .title("Frugal Deck")
                 .inner_size(1200.0, 800.0)
@@ -93,8 +87,16 @@ fn main() {
             index::sessions_undo_link,
             index::joins_clear,
             index::topics_restore_titles,
-            accounts_get,
-            settings_roles,
+            accounts::accounts_get,
+            accounts::settings_roles,
+            accounts::settings_set_roles,
+            accounts::accounts_rename,
+            accounts::accounts_set_cap,
+            accounts::accounts_set_primary,
+            accounts::accounts_refresh,
+            accounts::accounts_logout,
+            accounts::accounts_remove,
+            accounts::mcp_set,
             voice::voice_mode,
             voice::voice_status,
             voice::voice_prepare,
@@ -102,6 +104,9 @@ fn main() {
             window_action,
             chat::folder_default,
             chat::chat_start,
+            chat::chat_continue,
+            chat::chat_switch_account,
+            chat::accounts_login,
             chat::chat_input,
             chat::chat_resize,
             chat::chat_kill,

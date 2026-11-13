@@ -7,20 +7,43 @@ use std::collections::{HashMap, HashSet};
 use std::io::{Read, Write};
 use std::path::{Path, PathBuf};
 use std::process::Command;
-use std::sync::{mpsc, Mutex};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{mpsc, Arc, Mutex};
 use std::thread;
-use std::time::Duration;
-use tauri::{ipc::Channel, AppHandle, Manager, State};
+use std::time::{Duration, Instant};
+use tauri::{ipc::Channel, AppHandle, Emitter, Manager, State};
+use crate::accounts::{self, Accounts, MAIN};
 use crate::index::{self, Index};
 
-const NO_CLAUDE: &str = "claude.exe not found in PATH. Install Claude Code and reopen Deck.";
+pub const NO_CLAUDE: &str = "claude.exe not found in PATH. Install Claude Code and reopen Deck.";
 // Under a frame, so typing still echoes at once.
 const BATCH: Duration = Duration::from_millis(4);
+// main.js IDLE_MS: a chat restarts only once Claude has been quiet this long.
+const IDLE: Duration = Duration::from_millis(2000);
+const INVALID: &str = "Invalid request.";
+
+// Electron's chatInfo; a sign-in terminal has none.
+struct Info {
+    account: String,
+    folder: PathBuf,
+    bypass: bool,
+    admin: bool,
+    voice: bool,
+}
+
+// Shared with the pump. A switch mutes the old chat, so its last output and its exit never reach the restarted one.
+struct Activity {
+    muted: AtomicBool,
+    last_output: Mutex<Instant>,
+}
 
 struct Chat {
     master: Box<dyn MasterPty + Send>,
     writer: Box<dyn Write + Send>,
     killer: Box<dyn ChildKiller + Send + Sync>,
+    info: Option<Info>,
+    activity: Arc<Activity>,
+    exited: mpsc::Receiver<()>,
 }
 
 #[derive(Default)]
@@ -39,6 +62,10 @@ impl Chats {
     pub fn is_live(&self, id: &str) -> bool {
         self.live.lock().unwrap().contains_key(id)
     }
+
+    pub fn open_accounts(&self) -> HashSet<String> {
+        self.live.lock().unwrap().values().filter_map(|chat| Some(chat.info.as_ref()?.account.clone())).collect()
+    }
 }
 
 #[derive(Deserialize)]
@@ -55,6 +82,48 @@ pub struct StartOptions {
     bypass: Value,
     #[serde(default)]
     admin: Value,
+    #[serde(default)]
+    frugal: Value,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct ContinueOptions {
+    id: String,
+    from: String,
+    account_id: String,
+    #[serde(default)]
+    prompt: Value,
+    cols: u16,
+    rows: u16,
+    #[serde(default)]
+    bypass: Value,
+    #[serde(default)]
+    admin: Value,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SwitchOptions {
+    id: String,
+    account_id: String,
+    cols: u16,
+    rows: u16,
+    #[serde(default)]
+    bypass: Value,
+    #[serde(default)]
+    admin: Value,
+}
+
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct LoginOptions {
+    id: String,
+    #[serde(default)]
+    name: Value,
+    account_id: Option<String>,
+    cols: u16,
+    rows: u16,
 }
 
 fn is_uuid(id: &str) -> bool {
@@ -65,7 +134,11 @@ const fn is_size(n: u16) -> bool {
     n > 0 && n <= 1000
 }
 
-fn find_claude() -> Option<PathBuf> {
+fn invalid() -> Value {
+    json!({ "error": INVALID })
+}
+
+pub fn find_claude() -> Option<PathBuf> {
     let out = Command::new("where.exe").arg("claude").output().ok()?;
     String::from_utf8_lossy(&out.stdout).lines().filter(|line| !line.is_empty()).find_map(|entry| {
         let entry = Path::new(entry);
@@ -78,9 +151,38 @@ fn find_claude() -> Option<PathBuf> {
 }
 
 // Same keys Electron's cleanEnv drops, so claude.exe never inherits a parent Claude Code session.
-fn dropped(key: &str) -> bool {
+pub(crate) fn dropped(key: &str) -> bool {
     let key = key.to_ascii_uppercase();
     key.starts_with("CLAUDE") || key.starts_with("NPM_") || matches!(key.as_str(), "ELECTRON_RUN_AS_NODE" | "NO_COLOR" | "INIT_CWD")
+}
+
+pub fn clean_env() -> HashMap<String, String> {
+    std::env::vars_os().filter_map(|(key, value)| Some((key.into_string().ok()?, value.into_string().ok()?))).filter(|(key, _)| !dropped(key)).collect()
+}
+
+// FRUGAL_ROLES is read by frugal's accounts server, so the setting applies to chats started after it changes.
+pub fn account_env(accounts: &Accounts, account: &Value) -> HashMap<String, String> {
+    let mut env = clean_env();
+    env.insert("FRUGAL_ROLES".into(), if accounts.roles() { "on" } else { "off" }.into());
+    if account["id"] != MAIN {
+        env.insert("CLAUDE_CONFIG_DIR".into(), account["configDir"].as_str().unwrap_or_default().into());
+    }
+    env
+}
+
+fn command(claude: PathBuf, env: HashMap<String, String>, cwd: &Path) -> CommandBuilder {
+    let mut command = CommandBuilder::new(claude);
+    command.env_clear();
+    for (key, value) in env {
+        command.env(key, value);
+    }
+    command.cwd(cwd);
+    command
+}
+
+// A bypass or administrator change restarts the chat too, so it waits like an account change; a chat not yet indexed never restarts.
+fn must_wait(indexed: bool, restart: bool, quiet: Duration) -> bool {
+    indexed && restart && quiet < IDLE
 }
 
 // Outside the install folder: Program Files needs admin rights and an update or uninstall could remove it.
@@ -94,7 +196,7 @@ pub fn folder_default(chats: tauri::State<Chats>) -> Result<PathBuf, String> {
 
 // Reads stop only at EOF, which ConPTY sends once the chat is removed and its pseudoconsole closes; until then the pipe must keep draining.
 // ConPTY writes about a line per read, and each channel message is one script run in the page, so reads within BATCH go as one message.
-fn pump(mut reader: Box<dyn Read + Send>, output: &Channel<Value>) {
+fn pump(mut reader: Box<dyn Read + Send>, output: &Channel<Value>, activity: &Activity) {
     let (reads, batches) = mpsc::channel::<Vec<u8>>();
     thread::spawn(move || {
         let mut buf = vec![0u8; 64 * 1024];
@@ -115,16 +217,140 @@ fn pump(mut reader: Box<dyn Read + Send>, output: &Channel<Value>) {
             _ => pending.len(),
         };
         if cut > 0 {
-            let _ = output.send(Value::String(String::from_utf8_lossy(&pending[..cut]).into_owned()));
+            if !activity.muted.load(Ordering::Relaxed) {
+                *activity.last_output.lock().unwrap() = Instant::now();
+                let _ = output.send(Value::String(String::from_utf8_lossy(&pending[..cut]).into_owned()));
+            }
             pending.drain(..cut);
         }
     }
 }
 
 // Output arrives as strings on the channel and the exit as {exit}, so the exit never overtakes the last output.
-// frugal: accounts, status line and Ctrl+G editor come in phase 4, administrator chats in phase 5.
+// on_exit runs after the terminal leaves the live chats and before {exit} is sent.
+#[allow(clippy::too_many_arguments)]
+fn spawn(app: &AppHandle, id: &str, command: CommandBuilder, (cols, rows): (u16, u16), info: Option<Info>, output: Channel<Value>, fail: &str, on_exit: impl FnOnce(&AppHandle, u32) + Send + 'static) -> Result<(), Value> {
+    let chats = app.state::<Chats>();
+    let mut live = chats.live.lock().unwrap();
+    if live.contains_key(id) {
+        return Err(invalid());
+    }
+    let size = PtySize { rows, cols, pixel_width: 0, pixel_height: 0 };
+    let started = native_pty_system().openpty(size).map_err(|error| error.to_string()).and_then(|pair| {
+        let reader = pair.master.try_clone_reader().map_err(|error| error.to_string())?;
+        let writer = pair.master.take_writer().map_err(|error| error.to_string())?;
+        let child = pair.slave.spawn_command(command).map_err(|error| error.to_string())?;
+        Ok((pair.master, reader, writer, child))
+    });
+    let (master, reader, writer, mut child) = started.map_err(|error| json!({ "error": format!("{fail}{error}") }))?;
+    let activity = Arc::new(Activity { muted: AtomicBool::new(false), last_output: Mutex::new(Instant::now()) });
+    let (done, exited) = mpsc::channel();
+    live.insert(id.to_owned(), Chat { master, writer, killer: child.clone_killer(), info, activity: activity.clone(), exited });
+    drop(live);
+
+    let (app, id) = (app.clone(), id.to_owned());
+    thread::spawn(move || {
+        let reading = {
+            let (output, activity) = (output.clone(), activity.clone());
+            thread::spawn(move || pump(reader, &output, &activity))
+        };
+        let code = child.wait().map_or(1, |status| status.exit_code());
+        let _ = done.send(());
+        // A switch takes the chat out first, so the restart never reads as an exit.
+        let chat = {
+            let chats = app.state::<Chats>();
+            let mut live = chats.live.lock().unwrap();
+            if activity.muted.load(Ordering::Relaxed) { None } else { Some(live.remove(&id)) }
+        };
+        // Dropped outside the lock: closing the pseudoconsole waits for its output to drain.
+        let replaced = chat.is_none();
+        drop(chat);
+        let _ = reading.join();
+        if !replaced {
+            on_exit(&app, code);
+            let _ = output.send(json!({ "exit": code }));
+        }
+    });
+    Ok(())
+}
+
+// main.js launchChat. frugal: administrator chats come in phase 5.
+#[allow(clippy::too_many_arguments)]
+fn launch(app: &AppHandle, id: &str, folder: PathBuf, size: (u16, u16), resume: bool, group: &Value, account: &Value, prompt: Option<&str>, bypass: bool, admin: bool, output: Channel<Value>) -> Value {
+    if admin {
+        return json!({ "error": "Administrator chats are not ported yet." });
+    }
+    let Some(claude) = find_claude() else {
+        return json!({ "error": NO_CLAUDE });
+    };
+    let accounts = app.state::<Mutex<Accounts>>();
+    let index = app.state::<Index>();
+    let mut env = account_env(&accounts.lock().unwrap(), account);
+    let session = index.session(id).unwrap_or_default();
+    let dir = Path::new(account["configDir"].as_str().unwrap_or_default());
+    let group = group.as_str().filter(|group| !group.is_empty());
+    let prepared = (|| -> Result<Vec<Value>, Box<dyn std::error::Error>> {
+        if account["id"] != MAIN {
+            accounts::ensure_onboarded(dir)?;
+        }
+        if resume {
+            accounts::share_transcript(Path::new(session["file"].as_str().unwrap_or_default()), dir)?;
+        }
+        let topic = group.or(session["topic"].as_str().filter(|topic| !topic.is_empty()));
+        let workspaces = index.workspaces_of(&session["space"], topic, &folder.to_string_lossy());
+        accounts.lock().unwrap().denied_servers(&folder, topic, &workspaces)
+    })();
+    let denied = match prepared {
+        Ok(denied) => denied,
+        Err(error) => return json!({ "error": format!("Failed to start Claude: {error}") }),
+    };
+    let bridge = app.state::<crate::statusline::StatusBridge>();
+    let pairs: Vec<_> = env.iter().map(|(k, v)| (k.into(), v.into())).collect();
+    let status = bridge.register(id, &folder, &pairs, crate::statusline::read_user_status_line(&dir.join("settings.json")).as_ref());
+    let token = status["token"].as_str().unwrap_or_default().to_owned();
+    // frugal: VISUAL (the Ctrl+G editor command) joins DECK_EDIT_URL once the editor helper is ported.
+    env.insert("DECK_EDIT_URL".into(), status["editUrl"].as_str().unwrap_or_default().into());
+    let voice = crate::voice::anthropic_voice();
+    // The Deck's own warning took the consent, so Claude Code's disclaimer is skipped (it reads this key from flag settings too).
+    // Claude Code reads voice.enabled before voiceEnabled, and /voice off writes it to user settings. The mic button holds Space, so the mode is hold.
+    let mut settings = json!({ "statusLine": status["statusLine"] });
+    if voice {
+        settings["voice"] = json!({ "enabled": true, "mode": "hold" });
+    }
+    if bypass {
+        settings["skipDangerousModePermissionPrompt"] = json!(true);
+    }
+    if !denied.is_empty() {
+        settings["deniedMcpServers"] = json!(denied);
+    }
+    let mut command = command(claude, env, &folder);
+    command.args([if resume { "--resume" } else { "--session-id" }, id, "--settings", &settings.to_string()]);
+    if let Some(prompt) = prompt {
+        command.arg(prompt);
+    }
+    if bypass {
+        command.arg("--dangerously-skip-permissions");
+    }
+    let info = Info { account: account["id"].as_str().unwrap_or_default().to_owned(), folder, bypass, admin, voice };
+    let exit_token = token.clone();
+    let exit_id = id.to_owned();
+    if let Err(error) = spawn(app, id, command, size, Some(info), output, "Failed to start Claude: ", move |app, _| {
+        let bridge = app.state::<crate::statusline::StatusBridge>();
+        bridge.release(&exit_token);
+        bridge.save_edit(&exit_id, None);
+    }) {
+        bridge.release(&token);
+        return error;
+    }
+    if let Some(group) = group {
+        index.set_group(id.to_owned(), group.to_owned());
+    }
+    index::changed(app);
+    json!({ "ok": true, "account": account["id"] })
+}
+
 #[tauri::command]
-pub fn chat_start(app: AppHandle, chats: State<Chats>, index: State<Index>, options: StartOptions, output: Channel<Value>) -> Value {
+pub fn chat_start(app: AppHandle, chats: State<Chats>, index: State<Index>, accounts: State<Mutex<Accounts>>, options: StartOptions, output: Channel<Value>) -> Value {
     let resume = !matches!(options.resume, Value::Null | Value::Bool(false));
     // A resumed chat always runs in the folder the index recorded, never one sent by the renderer.
     let folder = if resume {
@@ -132,66 +358,129 @@ pub fn chat_start(app: AppHandle, chats: State<Chats>, index: State<Index>, opti
     } else {
         options.cwd.filter(|cwd| chats.picked.lock().unwrap().contains(Path::new(cwd)) || index.has_cwd(cwd)).map(PathBuf::from)
     };
-    let (Some(folder), true, true, true) = (folder, is_uuid(&options.id), is_size(options.cols), is_size(options.rows)) else {
-        return json!({ "error": "Invalid request." });
+    let (Some(folder), true, false, true, true) = (folder, is_uuid(&options.id), chats.is_live(&options.id), is_size(options.cols), is_size(options.rows)) else {
+        return invalid();
     };
-    if options.admin == Value::Bool(true) {
-        return json!({ "error": "Administrator chats are not ported yet." });
+    let account = accounts.lock().unwrap().primary();
+    let frugal = !resume && options.frugal == true && accounts::has_frugal(&account);
+    let prompt = frugal.then_some("/frugal:frugal");
+    let mut started = launch(&app, &options.id, folder, (options.cols, options.rows), resume, &options.group, &account, prompt, options.bypass == true, options.admin == true, output);
+    if started["ok"] == true {
+        started["frugal"] = json!(frugal);
+    }
+    started
+}
+
+// A handoff continues in the folder its chat runs in, or the one the index recorded once it exits, on the account it ran on.
+#[tauri::command]
+pub fn chat_continue(app: AppHandle, chats: State<Chats>, index: State<Index>, accounts: State<Mutex<Accounts>>, options: ContinueOptions, output: Channel<Value>) -> Value {
+    let o = options;
+    let running = chats.live.lock().unwrap().get(&o.from).and_then(|chat| Some(chat.info.as_ref()?.folder.clone()));
+    let folder = running.or_else(|| index.session(&o.from).and_then(|session| session["cwd"].as_str().map(PathBuf::from)));
+    let account = accounts.lock().unwrap().claude_accounts().into_iter().find(|account| account["id"] == o.account_id);
+    let text = index::trim(o.prompt.as_str().unwrap_or_default());
+    // A leading dash would be read as a flag of claude.exe.
+    let (Some(folder), Some(account), true, false, false, false, true, true) =
+        (folder, account, is_uuid(&o.id), chats.is_live(&o.id), text.is_empty(), text.starts_with('-'), is_size(o.cols), is_size(o.rows)) else {
+        return invalid();
+    };
+    launch(&app, &o.id, folder, (o.cols, o.rows), false, &Value::Null, &account, Some(text), o.bypass == true, o.admin == true, output)
+}
+
+// Waits for the old claude.exe to exit, so it runs off the main thread.
+#[tauri::command]
+pub async fn chat_switch_account(app: AppHandle, options: SwitchOptions, output: Channel<Value>) -> Value {
+    tauri::async_runtime::spawn_blocking(move || switch_account(&app, options, output)).await.unwrap_or_else(|error| json!({ "error": error.to_string() }))
+}
+
+fn switch_account(app: &AppHandle, o: SwitchOptions, output: Channel<Value>) -> Value {
+    let account = app.state::<Mutex<Accounts>>().lock().unwrap().claude_accounts().into_iter().find(|account| account["id"] == o.account_id);
+    let session = app.state::<Index>().session(&o.id);
+    let (bypass, admin) = (o.bypass == true, o.admin == true);
+    let chats = app.state::<Chats>();
+    let mut live = chats.live.lock().unwrap();
+    let (Some(account), Some(chat), true, true) = (account, live.get(&o.id), is_size(o.cols), is_size(o.rows)) else {
+        return invalid();
+    };
+    let Some(info) = &chat.info else {
+        return invalid();
+    };
+    let account_id = account["id"].as_str().unwrap_or_default().to_owned();
+    let moving = info.account != account_id;
+    // Anthropic voice turns on at launch (Claude Code reads the voice setting only then), so a chat started without it restarts once.
+    let flags_changed = bypass != info.bypass || admin != info.admin || (crate::voice::anthropic_voice() && !info.voice);
+    if must_wait(session.is_some(), moving || flags_changed, chat.activity.last_output.lock().unwrap().elapsed()) {
+        return json!({ "error": "Claude is working. Switch accounts when it is idle." });
+    }
+    // A bypass or administrator toggle restarts on the chat's own account, which is no reason to make it the primary.
+    if moving || !flags_changed {
+        let accounts = app.state::<Mutex<Accounts>>();
+        let mut a = accounts.lock().unwrap();
+        if let Err(error) = a.set_primary(&account_id).and_then(|()| accounts::publish(app, &mut a)) {
+            return json!({ "error": error.to_string() });
+        }
+        drop(a);
+        accounts::read_now(app, &account_id);
+    }
+    if !moving && !flags_changed {
+        return json!({ "ok": true, "account": account_id });
+    }
+    let Some(session) = session else {
+        return json!({ "error": "Send a first message before switching this chat. New chats will use this account." });
+    };
+    let mut chat = live.remove(&o.id).unwrap();
+    chat.activity.muted.store(true, Ordering::Relaxed);
+    drop(live);
+    let _ = chat.killer.kill();
+    let _ = chat.exited.recv();
+    drop(chat);
+    let _ = app.emit("chat:restarting", [&o.id]);
+    let folder = session["cwd"].as_str().map(PathBuf::from).unwrap_or_default();
+    let mut started = launch(app, &o.id, folder, (o.cols, o.rows), true, &Value::Null, &account, None, bypass, admin, output);
+    if started["error"].is_string() {
+        started["stopped"] = json!(true);
+    }
+    started
+}
+
+// accountId signs a known account in again; without it a new account is made from name.
+#[tauri::command]
+pub fn accounts_login(app: AppHandle, chats: State<Chats>, accounts: State<Mutex<Accounts>>, options: LoginOptions, output: Channel<Value>) -> Value {
+    let o = options;
+    if !is_uuid(&o.id) || chats.is_live(&o.id) || !is_size(o.cols) || !is_size(o.rows) {
+        return invalid();
     }
     let Some(claude) = find_claude() else {
         return json!({ "error": NO_CLAUDE });
     };
-    let bypass = options.bypass == Value::Bool(true);
-    let mut command = CommandBuilder::new(claude);
-    for (key, _) in std::env::vars_os() {
-        if dropped(&key.to_string_lossy()) {
-            command.env_remove(key);
-        }
-    }
-    command.env("FRUGAL_ROLES", "on");
-    command.cwd(folder);
-    let settings = if bypass { json!({ "skipDangerousModePermissionPrompt": true }) } else { json!({}) };
-    command.args([if resume { "--resume" } else { "--session-id" }, &options.id, "--settings", &settings.to_string()]);
-    if bypass {
-        command.arg("--dangerously-skip-permissions");
-    }
-
-    let mut live = chats.live.lock().unwrap();
-    if live.contains_key(&options.id) {
-        return json!({ "error": "Invalid request." });
-    }
-    let size = PtySize { rows: options.rows, cols: options.cols, pixel_width: 0, pixel_height: 0 };
-    let started = native_pty_system().openpty(size).map_err(|error| error.to_string()).and_then(|pair| {
-        let reader = pair.master.try_clone_reader().map_err(|error| error.to_string())?;
-        let writer = pair.master.take_writer().map_err(|error| error.to_string())?;
-        let child = pair.slave.spawn_command(command).map_err(|error| error.to_string())?;
-        Ok((pair.master, reader, writer, child))
-    });
-    let (master, reader, writer, mut child) = match started {
-        Ok(started) => started,
-        Err(error) => return json!({ "error": format!("Failed to start Claude: {error}") }),
+    let a = accounts.lock().unwrap();
+    let account = match &o.account_id {
+        Some(id) => match a.claude_accounts().into_iter().find(|account| account["id"] == *id) {
+            Some(account) => account,
+            None => return invalid(),
+        },
+        None => match a.prepare_account(&o.name) {
+            Ok(account) => account,
+            Err(error) => return json!({ "error": error.to_string() }),
+        },
     };
-    live.insert(options.id.clone(), Chat { master, writer, killer: child.clone_killer() });
-    drop(live);
-    if let Some(group) = options.group.as_str().filter(|group| !group.is_empty()) {
-        index.set_group(options.id.clone(), group.to_owned());
-    }
-    index::changed(&app);
-
-    let id = options.id;
-    thread::spawn(move || {
-        let reading = {
-            let output = output.clone();
-            thread::spawn(move || pump(reader, &output))
-        };
-        let code = child.wait().map_or(1, |status| status.exit_code());
-        // Dropped outside the lock: closing the pseudoconsole waits for its output to drain.
-        let chat = app.state::<Chats>().live.lock().unwrap().remove(&id);
-        drop(chat);
-        let _ = reading.join();
-        let _ = output.send(json!({ "exit": code }));
+    let mut command = command(claude, account_env(&a, &account), &a.home);
+    drop(a);
+    command.args(["auth", "login"]);
+    let existing = o.account_id.is_some();
+    let result = spawn(&app, &o.id, command, (o.cols, o.rows), None, output, "", move |app, code| {
+        let accounts = app.state::<Mutex<Accounts>>();
+        let mut a = accounts.lock().unwrap();
+        if existing {
+            a.clear_emails();
+            let _ = accounts::publish(app, &mut a);
+        } else if code == 0 && a.finish_account(&account).unwrap_or(false) {
+            let _ = accounts::publish(app, &mut a);
+            drop(a);
+            index::start(app.clone());
+        }
     });
-    json!({ "ok": true, "account": "main", "frugal": false })
+    result.map_or_else(|error| error, |()| json!({ "ok": true }))
 }
 
 #[tauri::command]
@@ -229,5 +518,15 @@ mod tests {
         assert!(!is_uuid("0f8e2c1a11b2c-4d3e-8f90-abcdefABCDEF"));
         assert!(dropped("ClaudeCode") && dropped("npm_config_x") && dropped("no_color"));
         assert!(!dropped("PATH") && !dropped("NO_COLORS"));
+    }
+
+    #[test]
+    fn restarts_wait_for_an_idle_indexed_chat() {
+        let busy = Duration::from_millis(1999);
+        let idle = Duration::from_millis(2000);
+        assert!(must_wait(true, true, busy));
+        assert!(!must_wait(true, true, idle));
+        assert!(!must_wait(true, false, busy), "no restart: only the primary changes");
+        assert!(!must_wait(false, true, busy), "not indexed: the switch is refused later instead");
     }
 }

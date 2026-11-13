@@ -7,7 +7,7 @@ use std::fs;
 use std::io::{Read, Seek, SeekFrom};
 use std::path::{Component, Path, PathBuf};
 use std::sync::mpsc::{self, RecvTimeoutError};
-use std::sync::{Mutex, OnceLock};
+use std::sync::Mutex;
 use std::thread;
 use std::time::{Duration, Instant};
 use notify::{RecursiveMode, Watcher};
@@ -23,7 +23,7 @@ fn text(value: &Value) -> Value {
     value.as_str().map_or(Value::Null, |s| json!(s))
 }
 
-fn truthy(value: &Value) -> bool {
+pub(crate) fn truthy(value: &Value) -> bool {
     match value {
         Value::Null => false,
         Value::Bool(b) => *b,
@@ -33,11 +33,11 @@ fn truthy(value: &Value) -> bool {
     }
 }
 
-fn whitespace(c: char) -> bool {
+pub(crate) fn whitespace(c: char) -> bool {
     (c.is_whitespace() && c != '\u{85}') || c == '\u{feff}'
 }
 
-fn trim(s: &str) -> &str {
+pub(crate) fn trim(s: &str) -> &str {
     s.trim_matches(whitespace)
 }
 
@@ -704,6 +704,7 @@ type Job = Box<dyn FnOnce(&Connection, &mut Option<LastLink>) -> Result<bool> + 
 enum Msg {
     Job(Job),
     Changed(PathBuf),
+    Stop,
 }
 
 // frugal: the sidebar shows the newest sessions plus every organized one and every open chat, and never cuts a chat in half; the palette and resume use all of them.
@@ -714,19 +715,19 @@ const DEBOUNCE: Duration = Duration::from_secs(1);
 
 pub struct Index {
     state: Mutex<Value>,
-    jobs: OnceLock<mpsc::Sender<Msg>>,
+    jobs: Mutex<Option<mpsc::Sender<Msg>>>,
 }
 
 impl Default for Index {
     fn default() -> Self {
         let state = json!({ "indexing": true, "sessions": [], "error": null, "ambiguous": [], "modelJoins": 0, "workspaces": {}, "workspaceParents": {}, "modelWorkspaces": 0 });
-        Index { state: Mutex::new(state), jobs: OnceLock::new() }
+        Index { state: Mutex::new(state), jobs: Mutex::new(None) }
     }
 }
 
 impl Index {
     fn run(&self, job: impl FnOnce(&Connection, &mut Option<LastLink>) -> Result<bool> + Send + 'static) {
-        if let Some(jobs) = self.jobs.get() {
+        if let Some(jobs) = self.jobs.lock().unwrap().as_ref() {
             let _ = jobs.send(Msg::Job(Box::new(job)));
         }
     }
@@ -742,6 +743,29 @@ impl Index {
     pub fn set_group(&self, id: String, name: String) {
         self.run(move |db, _| save_group(db, &id, Some(&name)));
     }
+
+    pub fn workspaces_of(&self, space: &Value, topic: Option<&str>, folder: &str) -> Vec<String> {
+        workspaces_of(&self.state.lock().unwrap(), space, topic, folder)
+    }
+}
+
+// main.js:293-301: the chat's workspace, then each workspace it is nested in, as the sidebar places it.
+fn workspaces_of(index: &Value, space: &Value, topic: Option<&str>, folder: &str) -> Vec<String> {
+    let lower = |map: &Value| -> HashMap<String, String> {
+        map.as_object().into_iter().flatten().filter_map(|(k, v)| Some((k.to_lowercase(), v.as_str()?.to_owned()))).collect()
+    };
+    let (workspaces, parents) = (lower(&index["workspaces"]), lower(&index["workspaceParents"]));
+    let mut at = if space.is_null() {
+        topic.and_then(|t| workspaces.get(&t.to_lowercase())).or_else(|| workspaces.get(&folder.to_lowercase())).cloned()
+    } else {
+        space.as_str().map(str::to_owned)
+    };
+    let mut chain = Vec::new();
+    while let Some(name) = at.filter(|name| !name.is_empty() && chain.len() < 50) {
+        at = parents.get(&name.to_lowercase()).cloned();
+        chain.push(name);
+    }
+    chain
 }
 
 fn sidebar(index: &Value, live: impl Fn(&str) -> bool) -> Value {
@@ -796,9 +820,12 @@ fn listed(db: &Connection, indexing: bool) -> Result<Value> {
     Ok(index)
 }
 
+// Also restarts it, as Electron's startIndexer, when an account's projects folder joins or leaves the roots.
 pub fn start(app: AppHandle) {
     let (jobs, inbox) = mpsc::channel();
-    let _ = app.state::<Index>().jobs.set(jobs.clone());
+    if let Some(old) = app.state::<Index>().jobs.lock().unwrap().replace(jobs.clone()) {
+        let _ = old.send(Msg::Stop);
+    }
     thread::spawn(move || {
         if let Err(error) = index_loop(&app, jobs, inbox) {
             publish(&app, json!({ "indexing": false, "error": error.to_string() }));
@@ -806,10 +833,10 @@ pub fn start(app: AppHandle) {
     });
 }
 
-// frugal: only the main account's sessions until accounts are ported in phase 4.
 fn index_loop(app: &AppHandle, jobs: mpsc::Sender<Msg>, inbox: mpsc::Receiver<Msg>) -> Result<()> {
     let home = PathBuf::from(std::env::var_os("USERPROFILE").ok_or("No user folder.")?);
-    let roots = [home.join(".claude").join("projects")];
+    let roots: Vec<PathBuf> = crate::accounts::Accounts::new(home.clone(), home.join(".codex")).claude_accounts()
+        .iter().map(|a| Path::new(a["configDir"].as_str().unwrap()).join("projects")).collect();
     let file = home.join(".frugal-deck").join("deck.db").to_string_lossy().into_owned();
     let names: Vec<String> = roots.iter().map(|root| root.to_string_lossy().into_owned()).collect();
     let db = until_free(|| {
@@ -854,6 +881,7 @@ fn index_loop(app: &AppHandle, jobs: mpsc::Sender<Msg>, inbox: mpsc::Receiver<Ms
                 due.get_or_insert_with(|| Instant::now() + DEBOUNCE);
             }
             Ok(Msg::Changed(_)) => {}
+            Ok(Msg::Stop) => return Ok(()),
             Err(RecvTimeoutError::Timeout) => {
                 due = None;
                 let mut handoffs = Vec::new();
@@ -927,10 +955,14 @@ pub fn workspaces_set_parent(index: State<Index>, name: String, parent: String) 
     index.run(move |db, _| save_workspace_parent(db, &name, &parent));
 }
 
-// frugal: Electron also renames the workspace's or group's MCP settings; that comes with accounts in phase 4.
 #[tauri::command]
-pub fn workspaces_rename(index: State<Index>, from: String, to: String) {
+pub fn workspaces_rename(app: AppHandle, accounts: State<Mutex<crate::accounts::Accounts>>, index: State<Index>, from: String, to: String) -> std::result::Result<(), String> {
+    if !from.is_empty() && !to.is_empty() {
+        let mut a = accounts.lock().unwrap();
+        a.rename_mcp_scope("workspace", &from, &to).and_then(|()| crate::accounts::publish(&app, &mut a)).map_err(|e| e.to_string())?;
+    }
     index.run(move |db, _| rename_workspace(db, &from, &to));
+    Ok(())
 }
 
 #[tauri::command]
@@ -939,8 +971,13 @@ pub fn workspaces_delete(index: State<Index>, name: String) {
 }
 
 #[tauri::command]
-pub fn groups_rename(index: State<Index>, ids: Value, from: String, to: String) {
+pub fn groups_rename(app: AppHandle, accounts: State<Mutex<crate::accounts::Accounts>>, index: State<Index>, ids: Value, from: String, to: String) -> std::result::Result<(), String> {
+    if !from.is_empty() && !to.is_empty() {
+        let mut a = accounts.lock().unwrap();
+        a.rename_mcp_scope("group", &from, &to).and_then(|()| crate::accounts::publish(&app, &mut a)).map_err(|e| e.to_string())?;
+    }
     index.run(move |db, _| rename_group(db, &ids, &from, &to));
+    Ok(())
 }
 
 #[tauri::command]
@@ -1833,5 +1870,16 @@ mod tests {
         assert_eq!(ids.len(), 525);
         assert!(dropped.iter().all(|id| !ids.contains(id)));
         assert_eq!(out["indexing"], false);
+    }
+
+    #[test]
+    fn workspaces_follow_space_topic_then_folder_and_parents() {
+        let index = json!({"workspaces": {"Plan": "Deck", r"c:\work": "Folder"}, "workspaceParents": {"deck": "Root", "ROOT": "Top", "loop": "Loop"}});
+        assert_eq!(workspaces_of(&index, &Value::Null, Some("plan"), r"C:\Work"), ["Deck", "Root", "Top"]);
+        assert_eq!(workspaces_of(&index, &Value::Null, Some("other"), r"C:\Work"), ["Folder"]);
+        assert_eq!(workspaces_of(&index, &Value::Null, None, r"C:\Work"), ["Folder"]);
+        assert_eq!(workspaces_of(&index, &json!("Own"), Some("plan"), r"C:\Work"), ["Own"]);
+        assert!(workspaces_of(&index, &json!(""), Some("plan"), r"C:\Work").is_empty(), "an empty space is not null");
+        assert_eq!(workspaces_of(&index, &json!("loop"), None, "x").len(), 50, "a parent cycle stops at 50");
     }
 }
