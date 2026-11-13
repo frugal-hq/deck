@@ -37,7 +37,7 @@ CPU since start: renderer 349 s, GPU 190 s, main 108 s. Re-measure the same way 
 ## Phases
 
 1. **Scaffold.** Create the `tauri` branch, add `src-tauri/`, serve `src/renderer` plus copies of xterm and fonts as frontendDist, and add the `deck.js` shim with every channel stubbed. Done when the window opens with the sidebar empty.
-2. **Terminal.** Port start, input, resize, kill and the output stream. Done when a Claude chat runs, resizes and closes, and its output keeps up with a long turn without lag.
+2. **Terminal.** Port start, input, resize, kill and the output stream. Done when a Claude chat runs, resizes and closes, and its output keeps up with a long turn without lag. Ported in `src-tauri/src/chat.rs`: new chats in the default folder start, echo, resize, exit and close, and closing the window kills them. Resume waits for the index (phase 3), the folder picker for the dialog plugin (phase 6), administrator chats for phase 5, and accounts, the status line and the Ctrl+G editor for phase 4. Still to check by hand: a long turn, and that Ctrl+R and F5 no longer reload the page.
 3. **Index.** Port indexer.js to Rust with tests ported from `test/indexer.check.js`. Done when the sidebar, groups, workspaces, links and rename/delete match Electron on the same `deck.db`.
 4. **Accounts and settings.** Port accounts.js, mcp.js, handoff.js, organizer.js, statusline.js and voice.js, porting each `test/*.check.js` to `cargo test`. Done when switching accounts, the MCP dialogs, handoff, the organizer, the badge status line and dictation work.
 5. **Elevated.** Port the helper, UAC launch and `~/.frugal-deck/elevated.log`. Done when an admin chat starts after one UAC prompt.
@@ -62,6 +62,6 @@ CPU since start: renderer 349 s, GPU 190 s, main 108 s. Re-measure the same way 
 
 ## Risks
 
-- **Output throughput** over IPC: measure in phase 2 before porting anything else.
+- **Output throughput** over IPC, measured in phase 2 with `cmd /c type` of a 17.6 MB ANSI file at 200x50: node-pty alone reads 1.0 MB/s from ConPTY; the Tauri debug build delivers 0.9 MB/s to the page in 4,401 channel messages (output is batched every 4 ms; unbatched it was 0.8 MB/s in 198,894 messages). ConPTY is the ceiling, not the IPC.
 - **WebView2 missing** on old Windows 10: the bootstrapper installs it.
 - **Quick win without the port:** xterm's WebGL addon may cut renderer and GPU CPU. Try it in phase 2 on both builds.
