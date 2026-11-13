@@ -127,10 +127,14 @@ fn main() {
                         let _ = events.emit("window:maximized", [now]);
                     }
                 }
-                if let WindowEvent::Focused(true) = event {
-                    let _ = events.request_user_attention(None);
+                if let WindowEvent::Focused(focused) = event {
+                    os::save_memory(&events, !focused);
+                    if *focused {
+                        let _ = events.request_user_attention(None);
+                    }
                 }
             });
+            os::save_memory(&window, !window.is_focused().unwrap_or(true));
             let meters = app.handle().clone();
             let edits = app.handle().clone();
             let bridge = statusline::create_status_bridge(

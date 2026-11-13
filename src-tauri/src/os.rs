@@ -181,6 +181,17 @@ pub unsafe fn serve_drop_paths(core: &ICoreWebView2) -> windows_core::Result<()>
     core.add_WebMessageReceived(&handler, &mut token)
 }
 
+// While the window is in the background WebView2 may trim its memory; chats keep streaming, only slower to repaint after.
+pub fn save_memory(window: &WebviewWindow, low: bool) {
+    use webview2_com::Microsoft::Web::WebView2::Win32::{ICoreWebView2_19, COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_LOW, COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_NORMAL};
+    let level = if low { COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_LOW } else { COREWEBVIEW2_MEMORY_USAGE_TARGET_LEVEL_NORMAL };
+    let _ = window.with_webview(move |webview| unsafe {
+        if let Ok(core) = webview.controller().CoreWebView2().and_then(|core| core.cast::<ICoreWebView2_19>()) {
+            let _ = core.SetMemoryUsageTargetLevel(level);
+        }
+    });
+}
+
 const DOT: u32 = 16;
 
 // An amber dot for the taskbar button, drawn as pixels so no image file ships for it.
