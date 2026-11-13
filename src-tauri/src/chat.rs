@@ -308,7 +308,10 @@ fn launch(app: &AppHandle, id: &str, folder: PathBuf, size: (u16, u16), resume: 
     let pairs: Vec<_> = env.iter().map(|(k, v)| (k.into(), v.into())).collect();
     let status = bridge.register(id, &folder, &pairs, crate::statusline::read_user_status_line(&dir.join("settings.json")).as_ref());
     let token = status["token"].as_str().unwrap_or_default().to_owned();
-    // frugal: VISUAL (the Ctrl+G editor command) joins DECK_EDIT_URL once the editor helper is ported.
+    // Quoted: Claude Code runs VISUAL through the shell, and the user folder may contain spaces.
+    if let Ok(dir) = app.path().app_data_dir() {
+        env.insert("VISUAL".into(), format!("\"{}\"", dir.join(crate::statusline::EDITOR).display()));
+    }
     env.insert("DECK_EDIT_URL".into(), status["editUrl"].as_str().unwrap_or_default().into());
     let voice = crate::voice::anthropic_voice();
     // The Deck's own warning took the consent, so Claude Code's disclaimer is skipped (it reads this key from flag settings too).

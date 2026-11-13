@@ -282,6 +282,22 @@ impl StatusBridge {
 }
 
 // main.js:591: a save writes the text back before the response ends; a cancel (text === null) ends it without writing.
+pub const EDITOR: &str = "prompt-editor.cmd";
+
+// Claude Code runs $VISUAL with the prompt file appended and waits for it; the .cmd runs this exe with --edit.
+pub fn write_editor(dir: &Path) -> std::io::Result<()> {
+    std::fs::create_dir_all(dir)?;
+    std::fs::write(dir.join(EDITOR), format!("@echo off\r\n\"{}\" --edit %*\r\n", std::env::current_exe()?.display()))
+}
+
+// The --edit side: posts the file to the chat's edit URL and returns once the Deck answers, when the edit ends.
+pub fn edit(url: &str, file: &str) {
+    let Some((host, path)) = url.strip_prefix("http://").and_then(|rest| rest.split_once('/')) else { return };
+    let Ok(mut stream) = TcpStream::connect(host) else { return };
+    let _ = write!(stream, "POST /{path} HTTP/1.1\r\nHost: {host}\r\nContent-Type: text/plain\r\nContent-Length: {}\r\nConnection: close\r\n\r\n{file}", file.len());
+    let _ = stream.read_to_end(&mut Vec::new());
+}
+
 #[tauri::command]
 pub fn chat_save_edit(bridge: tauri::State<StatusBridge>, id: String, text: Option<String>) {
     bridge.save_edit(&id, text.as_deref());

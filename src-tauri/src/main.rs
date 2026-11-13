@@ -26,8 +26,14 @@ fn window_action(window: WebviewWindow, action: String) -> tauri::Result<()> {
 }
 
 fn main() {
+    let args: Vec<String> = std::env::args_os().map(|arg| arg.to_string_lossy().into_owned()).collect();
+    if args.get(1).is_some_and(|arg| arg == "--edit") {
+        statusline::edit(&std::env::var("DECK_EDIT_URL").unwrap_or_default(), args.get(2).map_or("", String::as_str));
+        return;
+    }
     tauri::Builder::default()
         .setup(|app| {
+            statusline::write_editor(&app.path().app_data_dir()?)?;
             let home = std::path::PathBuf::from(std::env::var_os("USERPROFILE").ok_or("No user folder.")?);
             let codex_home = std::env::var_os("CODEX_HOME").filter(|s| !s.is_empty()).map(std::path::PathBuf::from).unwrap_or_else(|| home.join(".codex"));
             app.manage(Mutex::new(accounts::Accounts::new(home, codex_home)));
