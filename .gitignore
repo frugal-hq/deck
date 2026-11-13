@@ -5,3 +5,5 @@ out/
 spikes/08-whisper/
 /nul
 /spikes03-resume/
+/src-tauri/target/
+/src-tauri/gen/
