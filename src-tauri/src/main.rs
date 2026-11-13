@@ -1,22 +1,13 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod chat;
+mod index;
 
 use serde_json::{json, Value};
 use std::sync::atomic::{AtomicBool, Ordering};
 use tauri::{webview::Color, Emitter, Manager, RunEvent, WebviewUrl, WebviewWindow, WebviewWindowBuilder, WindowEvent};
 
-// Startup reads answer what Electron's main answers before the index and settings load; later phases port each one.
-#[tauri::command]
-fn sessions_get() -> Value {
-    json!({ "indexing": false, "sessions": [], "error": null, "ambiguous": [], "modelJoins": 0, "workspaces": {}, "workspaceParents": {}, "modelWorkspaces": 0 })
-}
-
-#[tauri::command]
-fn sessions_all() -> Value {
-    json!([])
-}
-
+// Startup reads answer what Electron's main answers before accounts and settings load; phase 4 ports them.
 #[tauri::command]
 fn accounts_get() -> Value {
     json!({ "primary": null, "accounts": [], "others": [] })
@@ -71,12 +62,27 @@ fn main() {
                     }
                 }
             });
+            index::start(app.handle().clone());
             Ok(())
         })
         .manage(chat::Chats::default())
+        .manage(index::Index::default())
         .invoke_handler(tauri::generate_handler![
-            sessions_get,
-            sessions_all,
+            index::sessions_get,
+            index::sessions_all,
+            index::sessions_organize,
+            index::sessions_set_group,
+            index::sessions_set_workspace,
+            index::workspaces_set_parent,
+            index::workspaces_rename,
+            index::workspaces_delete,
+            index::groups_rename,
+            index::groups_delete,
+            index::workspaces_clear,
+            index::sessions_link,
+            index::sessions_undo_link,
+            index::joins_clear,
+            index::topics_restore_titles,
             accounts_get,
             settings_roles,
             window_action,

@@ -10,7 +10,8 @@ use std::process::Command;
 use std::sync::{mpsc, Mutex};
 use std::thread;
 use std::time::Duration;
-use tauri::{ipc::Channel, AppHandle, Manager};
+use tauri::{ipc::Channel, AppHandle, Manager, State};
+use crate::index::{self, Index};
 
 const NO_CLAUDE: &str = "claude.exe not found in PATH. Install Claude Code and reopen Deck.";
 // Under a frame, so typing still echoes at once.
@@ -34,6 +35,10 @@ impl Chats {
             let _ = chat.killer.kill();
         }
     }
+
+    pub fn is_live(&self, id: &str) -> bool {
+        self.live.lock().unwrap().contains_key(id)
+    }
 }
 
 #[derive(Deserialize)]
@@ -44,6 +49,8 @@ pub struct StartOptions {
     rows: u16,
     #[serde(default)]
     resume: Value,
+    #[serde(default)]
+    group: Value,
     #[serde(default)]
     bypass: Value,
     #[serde(default)]
@@ -115,12 +122,17 @@ fn pump(mut reader: Box<dyn Read + Send>, output: &Channel<Value>) {
 }
 
 // Output arrives as strings on the channel and the exit as {exit}, so the exit never overtakes the last output.
-// frugal: resume needs the index (phase 3), accounts, status line and Ctrl+G editor come in phase 4, administrator chats in phase 5.
+// frugal: accounts, status line and Ctrl+G editor come in phase 4, administrator chats in phase 5.
 #[tauri::command]
-pub fn chat_start(app: AppHandle, chats: tauri::State<Chats>, options: StartOptions, output: Channel<Value>) -> Value {
-    let folder = options.cwd.map(PathBuf::from).filter(|cwd| chats.picked.lock().unwrap().contains(cwd));
+pub fn chat_start(app: AppHandle, chats: State<Chats>, index: State<Index>, options: StartOptions, output: Channel<Value>) -> Value {
     let resume = !matches!(options.resume, Value::Null | Value::Bool(false));
-    let (Some(folder), false, true, true, true) = (folder, resume, is_uuid(&options.id), is_size(options.cols), is_size(options.rows)) else {
+    // A resumed chat always runs in the folder the index recorded, never one sent by the renderer.
+    let folder = if resume {
+        index.session(&options.id).and_then(|session| session["cwd"].as_str().map(PathBuf::from))
+    } else {
+        options.cwd.filter(|cwd| chats.picked.lock().unwrap().contains(Path::new(cwd)) || index.has_cwd(cwd)).map(PathBuf::from)
+    };
+    let (Some(folder), true, true, true) = (folder, is_uuid(&options.id), is_size(options.cols), is_size(options.rows)) else {
         return json!({ "error": "Invalid request." });
     };
     if options.admin == Value::Bool(true) {
@@ -139,7 +151,7 @@ pub fn chat_start(app: AppHandle, chats: tauri::State<Chats>, options: StartOpti
     command.env("FRUGAL_ROLES", "on");
     command.cwd(folder);
     let settings = if bypass { json!({ "skipDangerousModePermissionPrompt": true }) } else { json!({}) };
-    command.args(["--session-id", &options.id, "--settings", &settings.to_string()]);
+    command.args([if resume { "--resume" } else { "--session-id" }, &options.id, "--settings", &settings.to_string()]);
     if bypass {
         command.arg("--dangerously-skip-permissions");
     }
@@ -161,6 +173,10 @@ pub fn chat_start(app: AppHandle, chats: tauri::State<Chats>, options: StartOpti
     };
     live.insert(options.id.clone(), Chat { master, writer, killer: child.clone_killer() });
     drop(live);
+    if let Some(group) = options.group.as_str().filter(|group| !group.is_empty()) {
+        index.set_group(options.id.clone(), group.to_owned());
+    }
+    index::changed(&app);
 
     let id = options.id;
     thread::spawn(move || {
