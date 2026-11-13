@@ -2,6 +2,7 @@
 
 mod accounts;
 mod chat;
+mod elevated;
 mod handoff;
 mod index;
 mod mcp;
@@ -27,6 +28,10 @@ fn window_action(window: WebviewWindow, action: String) -> tauri::Result<()> {
 
 fn main() {
     let args: Vec<String> = std::env::args_os().map(|arg| arg.to_string_lossy().into_owned()).collect();
+    if args.get(1).is_some_and(|arg| arg == elevated::FLAG) {
+        elevated::run_helper(&args);
+        return;
+    }
     if args.get(1).is_some_and(|arg| arg == "--edit") {
         statusline::edit(&std::env::var("DECK_EDIT_URL").unwrap_or_default(), args.get(2).map_or("", String::as_str));
         return;
@@ -78,6 +83,7 @@ fn main() {
             Ok(())
         })
         .manage(chat::Chats::default())
+        .manage(elevated::Host::default())
         .manage(index::Index::default())
         .manage(organizer::Organizer::default())
         .invoke_handler(tauri::generate_handler![

@@ -49,6 +49,8 @@ struct Chat {
 #[derive(Default)]
 pub struct Chats {
     live: Mutex<HashMap<String, Chat>>,
+    // Chats still starting, with their cancel flag; locked after live.
+    launching: Mutex<HashMap<String, Arc<AtomicBool>>>,
     picked: Mutex<HashSet<PathBuf>>,
 }
 
@@ -211,11 +213,7 @@ fn pump(mut reader: Box<dyn Read + Send>, output: &Channel<Value>, activity: &Ac
         for chunk in batches.try_iter() {
             pending.extend_from_slice(&chunk);
         }
-        // A character split across two reads waits for its tail.
-        let cut = match std::str::from_utf8(&pending) {
-            Err(error) if error.error_len().is_none() => error.valid_up_to(),
-            _ => pending.len(),
-        };
+        let cut = crate::elevated::utf8_cut(&pending);
         if cut > 0 {
             if !activity.muted.load(Ordering::Relaxed) {
                 *activity.last_output.lock().unwrap() = Instant::now();
@@ -231,18 +229,34 @@ fn pump(mut reader: Box<dyn Read + Send>, output: &Channel<Value>, activity: &Ac
 #[allow(clippy::too_many_arguments)]
 fn spawn(app: &AppHandle, id: &str, command: CommandBuilder, (cols, rows): (u16, u16), info: Option<Info>, output: Channel<Value>, fail: &str, on_exit: impl FnOnce(&AppHandle, u32) + Send + 'static) -> Result<(), Value> {
     let chats = app.state::<Chats>();
-    let mut live = chats.live.lock().unwrap();
-    if live.contains_key(id) {
-        return Err(invalid());
+    // Administrator chats wait on the UAC prompt; closing one there must not leave it running unseen.
+    let cancelled = Arc::new(AtomicBool::new(false));
+    {
+        let live = chats.live.lock().unwrap();
+        let mut launching = chats.launching.lock().unwrap();
+        if live.contains_key(id) || launching.contains_key(id) {
+            return Err(invalid());
+        }
+        launching.insert(id.to_owned(), cancelled.clone());
     }
     let size = PtySize { rows, cols, pixel_width: 0, pixel_height: 0 };
-    let started = native_pty_system().openpty(size).map_err(|error| error.to_string()).and_then(|pair| {
-        let reader = pair.master.try_clone_reader().map_err(|error| error.to_string())?;
-        let writer = pair.master.take_writer().map_err(|error| error.to_string())?;
-        let child = pair.slave.spawn_command(command).map_err(|error| error.to_string())?;
-        Ok((pair.master, reader, writer, child))
-    });
+    let started = if info.as_ref().is_some_and(|info| info.admin) {
+        app.state::<crate::elevated::Host>().spawn(&command, size)
+    } else {
+        native_pty_system().openpty(size).map_err(|error| error.to_string()).and_then(|pair| {
+            let reader = pair.master.try_clone_reader().map_err(|error| error.to_string())?;
+            let writer = pair.master.take_writer().map_err(|error| error.to_string())?;
+            let child = pair.slave.spawn_command(command).map_err(|error| error.to_string())?;
+            Ok((pair.master, reader, writer, child))
+        })
+    };
+    let mut live = chats.live.lock().unwrap();
+    chats.launching.lock().unwrap().remove(id);
     let (master, reader, writer, mut child) = started.map_err(|error| json!({ "error": format!("{fail}{error}") }))?;
+    if cancelled.load(Ordering::Relaxed) {
+        let _ = child.kill();
+        return Err(json!({ "error": "The chat was closed before it started." }));
+    }
     let activity = Arc::new(Activity { muted: AtomicBool::new(false), last_output: Mutex::new(Instant::now()) });
     let (done, exited) = mpsc::channel();
     live.insert(id.to_owned(), Chat { master, writer, killer: child.clone_killer(), info, activity: activity.clone(), exited });
@@ -274,12 +288,9 @@ fn spawn(app: &AppHandle, id: &str, command: CommandBuilder, (cols, rows): (u16,
     Ok(())
 }
 
-// main.js launchChat. frugal: administrator chats come in phase 5.
+// main.js launchChat.
 #[allow(clippy::too_many_arguments)]
 fn launch(app: &AppHandle, id: &str, folder: PathBuf, size: (u16, u16), resume: bool, group: &Value, account: &Value, prompt: Option<&str>, bypass: bool, admin: bool, output: Channel<Value>) -> Value {
-    if admin {
-        return json!({ "error": "Administrator chats are not ported yet." });
-    }
     let Some(claude) = find_claude() else {
         return json!({ "error": NO_CLAUDE });
     };
@@ -352,8 +363,14 @@ fn launch(app: &AppHandle, id: &str, folder: PathBuf, size: (u16, u16), resume: 
     json!({ "ok": true, "account": account["id"] })
 }
 
+// An administrator chat waits on the UAC prompt, so starts run off the main thread.
 #[tauri::command]
-pub fn chat_start(app: AppHandle, chats: State<Chats>, index: State<Index>, accounts: State<Mutex<Accounts>>, options: StartOptions, output: Channel<Value>) -> Value {
+pub async fn chat_start(app: AppHandle, options: StartOptions, output: Channel<Value>) -> Value {
+    tauri::async_runtime::spawn_blocking(move || start(&app, options, output)).await.unwrap_or_else(|error| json!({ "error": error.to_string() }))
+}
+
+fn start(app: &AppHandle, options: StartOptions, output: Channel<Value>) -> Value {
+    let (chats, index, accounts) = (app.state::<Chats>(), app.state::<Index>(), app.state::<Mutex<Accounts>>());
     let resume = !matches!(options.resume, Value::Null | Value::Bool(false));
     // A resumed chat always runs in the folder the index recorded, never one sent by the renderer.
     let folder = if resume {
@@ -367,7 +384,7 @@ pub fn chat_start(app: AppHandle, chats: State<Chats>, index: State<Index>, acco
     let account = accounts.lock().unwrap().primary();
     let frugal = !resume && options.frugal == true && accounts::has_frugal(&account);
     let prompt = frugal.then_some("/frugal:frugal");
-    let mut started = launch(&app, &options.id, folder, (options.cols, options.rows), resume, &options.group, &account, prompt, options.bypass == true, options.admin == true, output);
+    let mut started = launch(app, &options.id, folder, (options.cols, options.rows), resume, &options.group, &account, prompt, options.bypass == true, options.admin == true, output);
     if started["ok"] == true {
         started["frugal"] = json!(frugal);
     }
@@ -376,8 +393,12 @@ pub fn chat_start(app: AppHandle, chats: State<Chats>, index: State<Index>, acco
 
 // A handoff continues in the folder its chat runs in, or the one the index recorded once it exits, on the account it ran on.
 #[tauri::command]
-pub fn chat_continue(app: AppHandle, chats: State<Chats>, index: State<Index>, accounts: State<Mutex<Accounts>>, options: ContinueOptions, output: Channel<Value>) -> Value {
-    let o = options;
+pub async fn chat_continue(app: AppHandle, options: ContinueOptions, output: Channel<Value>) -> Value {
+    tauri::async_runtime::spawn_blocking(move || continue_chat(&app, options, output)).await.unwrap_or_else(|error| json!({ "error": error.to_string() }))
+}
+
+fn continue_chat(app: &AppHandle, o: ContinueOptions, output: Channel<Value>) -> Value {
+    let (chats, index, accounts) = (app.state::<Chats>(), app.state::<Index>(), app.state::<Mutex<Accounts>>());
     let running = chats.live.lock().unwrap().get(&o.from).and_then(|chat| Some(chat.info.as_ref()?.folder.clone()));
     let folder = running.or_else(|| index.session(&o.from).and_then(|session| session["cwd"].as_str().map(PathBuf::from)));
     let account = accounts.lock().unwrap().claude_accounts().into_iter().find(|account| account["id"] == o.account_id);
@@ -387,7 +408,7 @@ pub fn chat_continue(app: AppHandle, chats: State<Chats>, index: State<Index>, a
         (folder, account, is_uuid(&o.id), chats.is_live(&o.id), text.is_empty(), text.starts_with('-'), is_size(o.cols), is_size(o.rows)) else {
         return invalid();
     };
-    launch(&app, &o.id, folder, (o.cols, o.rows), false, &Value::Null, &account, Some(text), o.bypass == true, o.admin == true, output)
+    launch(app, &o.id, folder, (o.cols, o.rows), false, &Value::Null, &account, Some(text), o.bypass == true, o.admin == true, output)
 }
 
 // Waits for the old claude.exe to exit, so it runs off the main thread.
@@ -505,8 +526,12 @@ pub fn chat_resize(chats: tauri::State<Chats>, id: String, cols: u16, rows: u16)
 
 #[tauri::command]
 pub fn chat_kill(chats: tauri::State<Chats>, id: String) {
-    if let Some(chat) = chats.live.lock().unwrap().get_mut(&id) {
+    let mut live = chats.live.lock().unwrap();
+    if let Some(chat) = live.get_mut(&id) {
         let _ = chat.killer.kill();
+    }
+    if let Some(cancelled) = chats.launching.lock().unwrap().get(&id) {
+        cancelled.store(true, Ordering::Relaxed);
     }
 }
 
