@@ -10,6 +10,17 @@
   const on = (channel, callback) => {
     window.__TAURI__.event.listen(channel, (event) => callback(...event.payload));
   };
+  // A chat's output and exit come on its own channel, in order: a string is output, {exit} the exit code.
+  const dataCallbacks = [];
+  const exitCallbacks = [];
+  const output = (id) => {
+    const channel = new window.__TAURI__.core.Channel();
+    channel.onmessage = (message) => {
+      if (typeof message === 'string') for (const callback of dataCallbacks) callback(id, message);
+      else for (const callback of exitCallbacks) callback(id, message.exit);
+    };
+    return channel;
+  };
 
   window.deck = {
     pickFolder: () => invoke('folder:pick'),
@@ -23,15 +34,15 @@
     runTopics: (options) => invoke('topics:run', { options }),
     restoreTitles: () => send('topics:restore-titles'),
     onTopicsProgress: (callback) => on('topics:progress', callback),
-    start: (options) => invoke('chat:start', { options }),
+    start: (options) => invoke('chat:start', { options, output: output(options.id) }),
     subagents: (id, cwd) => invoke('chat:subagents', { id, cwd }),
     input: (id, data) => send('chat:input', { id, data }),
     resize: (id, cols, rows) => send('chat:resize', { id, cols, rows }),
     kill: (id) => send('chat:kill', { id }),
-    onData: (callback) => on('chat:data', callback),
+    onData: (callback) => dataCallbacks.push(callback),
     onEdit: (callback) => on('chat:edit', callback),
     saveEdit: (id, text) => send('chat:save-edit', { id, text }),
-    onExit: (callback) => on('chat:exit', callback),
+    onExit: (callback) => exitCallbacks.push(callback),
     onMeters: (callback) => on('chat:meters', callback),
     onRestarting: (callback) => on('chat:restarting', callback),
     onTurnEnd: (callback) => on('chat:turn-end', callback),

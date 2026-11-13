@@ -1,8 +1,10 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
+mod chat;
+
 use serde_json::{json, Value};
 use std::sync::atomic::{AtomicBool, Ordering};
-use tauri::{webview::Color, Emitter, WebviewUrl, WebviewWindow, WebviewWindowBuilder, WindowEvent};
+use tauri::{webview::Color, Emitter, Manager, RunEvent, WebviewUrl, WebviewWindow, WebviewWindowBuilder, WindowEvent};
 
 // Startup reads answer what Electron's main answers before the index and settings load; later phases port each one.
 #[tauri::command]
@@ -49,6 +51,14 @@ fn main() {
                 .disable_drag_drop_handler()
                 .on_navigation(|url| url.host_str() == Some("tauri.localhost"))
                 .build()?;
+            // Ctrl+R, Ctrl+F, F5 and the like belong to the terminal, not to a browser; copy and paste keys stay.
+            window.with_webview(|webview| unsafe {
+                use webview2_com::Microsoft::Web::WebView2::Win32::ICoreWebView2Settings3;
+                use windows_core::Interface;
+                if let Ok(settings) = webview.controller().CoreWebView2().and_then(|core| core.Settings()).and_then(|settings| settings.cast::<ICoreWebView2Settings3>()) {
+                    let _ = settings.SetAreBrowserAcceleratorKeysEnabled(false);
+                }
+            })?;
             let events = window.clone();
             let maximized = AtomicBool::new(false);
             window.on_window_event(move |event| {
@@ -61,7 +71,24 @@ fn main() {
             });
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![sessions_get, sessions_all, accounts_get, settings_roles, window_action])
-        .run(tauri::generate_context!())
-        .expect("Frugal Deck failed to start");
+        .manage(chat::Chats::default())
+        .invoke_handler(tauri::generate_handler![
+            sessions_get,
+            sessions_all,
+            accounts_get,
+            settings_roles,
+            window_action,
+            chat::folder_default,
+            chat::chat_start,
+            chat::chat_input,
+            chat::chat_resize,
+            chat::chat_kill
+        ])
+        .build(tauri::generate_context!())
+        .expect("Frugal Deck failed to start")
+        .run(|app, event| {
+            if let RunEvent::Exit = event {
+                app.state::<chat::Chats>().kill_all();
+            }
+        });
 }
