@@ -22,13 +22,46 @@
     return channel;
   };
 
+  // WebView2 gives File objects no path: a drop is held, its files go to the host (os.rs serve_drop_paths), and the
+  // drop is dispatched again with the paths it answers, which pathForFile then reads.
+  const dropPaths = new Map();
+  const fileKey = (file) => `${file.name}\0${file.size}\0${file.lastModified}`;
+  let held = null;
+  const release = (paths) => {
+    const { target, files, init } = held;
+    held = null;
+    dropPaths.clear();
+    const dataTransfer = new DataTransfer();
+    files.forEach((file, i) => {
+      if (typeof paths[i] === 'string') dropPaths.set(fileKey(file), paths[i]);
+      dataTransfer.items.add(file);
+    });
+    target.dispatchEvent(new DragEvent('drop', { ...init, dataTransfer }));
+  };
+  window.addEventListener('drop', (event) => {
+    if (!event.isTrusted || !event.dataTransfer?.files.length || !window.chrome?.webview) return;
+    event.preventDefault();
+    event.stopImmediatePropagation();
+    const files = [...event.dataTransfer.files];
+    held = { target: event.target, files, init: { bubbles: true, cancelable: true, composed: true, clientX: event.clientX, clientY: event.clientY } };
+    try {
+      window.chrome.webview.postMessageWithAdditionalObjects('deck:drop', files);
+    } catch {
+      // A file not on disk (an image dragged from a browser) is refused; like Electron, it gets no path.
+      release([]);
+    }
+  }, true);
+  window.chrome?.webview?.addEventListener('message', ({ data }) => {
+    if (held && Array.isArray(data?.dropped)) release(data.dropped);
+  });
+
   window.deck = {
     pickFolder: () => invoke('folder:pick'),
     pickFiles: () => invoke('files:pick'),
-    // frugal: File objects carry no path in WebView2; phase 6 maps window drop events to paths.
-    pathForFile: () => '',
+    // frugal: a pasted file has a path only if it was dropped before; savePasted copies pasted images.
+    pathForFile: (file) => dropPaths.get(fileKey(file)) ?? '',
     thumbnail: (file) => invoke('files:thumbnail', { file }),
-    savePasted: (bytes, type) => invoke('files:save-pasted', { bytes, type }),
+    savePasted: (bytes, type) => invoke('files:save-pasted', { bytes: Array.from(bytes), kind: type }),
     defaultFolder: () => invoke('folder:default'),
     estimateTopics: (options) => invoke('topics:estimate', { options }),
     runTopics: (options) => invoke('topics:run', { options }),

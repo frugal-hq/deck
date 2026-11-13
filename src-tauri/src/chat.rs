@@ -68,6 +68,10 @@ impl Chats {
     pub fn open_accounts(&self) -> HashSet<String> {
         self.live.lock().unwrap().values().filter_map(|chat| Some(chat.info.as_ref()?.account.clone())).collect()
     }
+
+    pub fn pick(&self, folder: PathBuf) {
+        self.picked.lock().unwrap().insert(folder);
+    }
 }
 
 #[derive(Deserialize)]
@@ -128,7 +132,7 @@ pub struct LoginOptions {
     rows: u16,
 }
 
-fn is_uuid(id: &str) -> bool {
+pub(crate) fn is_uuid(id: &str) -> bool {
     id.len() == 36 && id.char_indices().all(|(i, c)| if matches!(i, 8 | 13 | 18 | 23) { c == '-' } else { c.is_ascii_hexdigit() })
 }
 
