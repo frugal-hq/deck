@@ -5,7 +5,6 @@ mod chat;
 mod handoff;
 mod index;
 mod mcp;
-#[allow(dead_code)]
 mod organizer;
 mod statusline;
 mod voice;
@@ -74,6 +73,7 @@ fn main() {
         })
         .manage(chat::Chats::default())
         .manage(index::Index::default())
+        .manage(organizer::Organizer::default())
         .invoke_handler(tauri::generate_handler![
             index::sessions_get,
             index::sessions_all,
@@ -114,6 +114,12 @@ fn main() {
             chat::chat_resize,
             chat::chat_kill,
             mcp::mcp_list,
+            organizer::topics_estimate,
+            organizer::topics_run,
+            organizer::workspaces_estimate,
+            organizer::workspaces_run,
+            organizer::joins_estimate,
+            organizer::joins_run,
             statusline::chat_save_edit
         ])
         .build(tauri::generate_context!())
@@ -121,6 +127,7 @@ fn main() {
         .run(|app, event| {
             if let RunEvent::Exit = event {
                 app.state::<chat::Chats>().kill_all();
+                app.state::<organizer::Organizer>().stop();
             }
         });
 }

@@ -726,10 +726,14 @@ impl Default for Index {
 }
 
 impl Index {
-    fn run(&self, job: impl FnOnce(&Connection, &mut Option<LastLink>) -> Result<bool> + Send + 'static) {
+    pub(crate) fn run(&self, job: impl FnOnce(&Connection, &mut Option<LastLink>) -> Result<bool> + Send + 'static) {
         if let Some(jobs) = self.jobs.lock().unwrap().as_ref() {
             let _ = jobs.send(Msg::Job(Box::new(job)));
         }
+    }
+
+    pub fn get(&self, key: &str) -> Value {
+        self.state.lock().unwrap()[key].clone()
     }
 
     pub fn session(&self, id: &str) -> Option<Value> {

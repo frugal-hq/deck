@@ -1,9 +1,15 @@
 // Sorts sessions into topics and rewrites titles with one-shot `claude -p` calls. Sends titles only, never transcripts.
+use crate::chat::{clean_env, find_claude, NO_CLAUDE};
+use crate::index::{self, Index};
 use serde_json::{json, Value};
+use std::collections::{HashMap, HashSet};
 use std::io::{Read, Write};
 use std::path::PathBuf;
 use std::process::{Command, Stdio};
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex};
 use std::time::{Duration, Instant};
+use tauri::{AppHandle, Emitter, Manager, State};
 
 type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 
@@ -83,6 +89,7 @@ fn needs_work_at(session: &Value, rename: bool, resort: bool, groups: Option<&Va
         || (rename && !truthy(&session["autoTitle"]) && !truthy(&session["customTitle"]))
 }
 
+#[cfg(test)]
 pub fn needs_work(session: &Value, rename: bool) -> bool {
     needs_work_at(session, rename, false, None)
 }
@@ -184,7 +191,7 @@ struct Options {
 }
 
 pub struct Run {
-    pub stopped: bool,
+    pub stopped: Arc<AtomicBool>,
     pub killed: bool,
     pub spawned: usize,
     pub args: Vec<String>,
@@ -194,7 +201,7 @@ pub struct Run {
 
 impl Default for Run {
     fn default() -> Self {
-        Run { stopped: false, killed: false, spawned: 0, args: Vec::new(), input: String::new(), child: None }
+        Run { stopped: Arc::default(), killed: false, spawned: 0, args: Vec::new(), input: String::new(), child: None }
     }
 }
 
@@ -243,8 +250,9 @@ fn ask_claude(options: &Options, schema: &Value, system: &str, input: &str, run:
             Ok(None) => {}
             Err(error) => return Err(Box::new(error)),
         }
-        if started.elapsed() >= timeout {
-            timed_out = true;
+        let stopped = run.stopped.load(Ordering::Relaxed);
+        if stopped || started.elapsed() >= timeout {
+            timed_out = !stopped;
             let child = run.child.as_mut().unwrap();
             let _ = child.kill();
             run.killed = true;
@@ -297,7 +305,7 @@ pub fn organize(claude: &str, env: &Value, sessions: &[Value], options: &Value, 
     }
     let request = Options { claude: claude.to_owned(), env: env.clone(), model: options["model"].as_str().unwrap_or("sonnet").to_owned(), effort: options["effort"].as_str().unwrap_or("medium").to_owned() };
     let mut start = 0;
-    while start < pending.len() && !run.stopped {
+    while start < pending.len() && !run.stopped.load(Ordering::Relaxed) {
         let batch: Vec<Value> = pending[start..(start + BATCH).min(pending.len())].iter().map(|session| (*session).clone()).collect();
         let lines = batch.iter().enumerate().map(|(index, session)| input_line(session, index, rename)).collect::<Vec<_>>().join("\n");
         let items = ask_claude(&request, &schema(rename), &system_prompt(rename), &organize_input(&options["notes"], &known, &lines), run, timeout_ms)?["items"].clone();
@@ -463,6 +471,122 @@ pub fn resolve_workspaces(claude: &str, env: &Value, sessions: &[Value], options
     let request = Options { claude: claude.to_owned(), env: env.clone(), model: options["model"].as_str().unwrap_or("sonnet").to_owned(), effort: options["effort"].as_str().unwrap_or("medium").to_owned() };
     let items = ask_claude(&request, &workspace_schema(), &workspace_system(), &input, run, timeout_ms)?;
     Ok(clean_workspaces(&groups, &items["items"]))
+}
+
+// main.js:632-704. One run at a time; the Deck's exit sets its stop flag, and ask_claude then kills the claude it waits on.
+#[derive(Default)]
+pub struct Organizer(Mutex<Option<Arc<AtomicBool>>>);
+
+impl Organizer {
+    pub fn stop(&self) {
+        if let Some(stopped) = self.0.lock().unwrap().as_ref() {
+            stopped.store(true, Ordering::Relaxed);
+        }
+    }
+}
+
+fn slice(list: &Value) -> &[Value] {
+    list.as_array().map_or(&[][..], Vec::as_slice)
+}
+
+fn exclusive_run(app: &AppHandle, options: &Value, work: impl FnOnce(&str, &Value, &mut Run) -> Result<()>) -> Value {
+    let organizer = app.state::<Organizer>();
+    let mut run = Run::default();
+    let claude = {
+        let mut slot = organizer.0.lock().unwrap();
+        if slot.is_some() || !valid_options(options) { return json!({ "error": "Invalid request." }); }
+        let Some(claude) = find_claude() else { return json!({ "error": NO_CLAUDE }) };
+        *slot = Some(run.stopped.clone());
+        claude
+    };
+    let result = work(&claude.to_string_lossy(), &json!(clean_env()), &mut run);
+    *organizer.0.lock().unwrap() = None;
+    match result {
+        _ if run.stopped.load(Ordering::Relaxed) => json!({ "stopped": true }),
+        Ok(()) => json!({ "ok": true }),
+        Err(error) => json!({ "error": error.to_string() }),
+    }
+}
+
+async fn in_background(app: AppHandle, options: Value, work: impl FnOnce(&AppHandle, &str, &Value, &Value, &mut Run) -> Result<()> + Send + 'static) -> Value {
+    tauri::async_runtime::spawn_blocking(move || exclusive_run(&app, &options, |claude, env, run| work(&app, claude, env, &options, run)))
+        .await
+        .unwrap_or_else(|error| json!({ "error": error.to_string() }))
+}
+
+// Chosen groups that all sit in one workspace keep the topics they split into there.
+fn workspace_of(workspaces: &Value, groups: &Value) -> Option<String> {
+    let lower: HashMap<String, &str> = workspaces.as_object()?.iter().filter_map(|(group, workspace)| Some((group.to_lowercase(), workspace.as_str()?))).collect();
+    let spaces: HashSet<Option<&str>> = groups.as_array()?.iter().map(|group| group.as_str().and_then(|group| lower.get(&group.to_lowercase()).copied())).collect();
+    if spaces.len() == 1 { spaces.into_iter().next().flatten().map(str::to_owned) } else { None }
+}
+
+#[tauri::command]
+pub fn topics_estimate(index: State<Index>, options: Value) -> Value {
+    if !valid_options(&options) { return json!({ "sessions": 0, "tokens": 0 }); }
+    estimate(slice(&index.get("sessions")), &options)
+}
+
+#[tauri::command]
+pub async fn topics_run(app: AppHandle, options: Value) -> Value {
+    in_background(app, options, |app, claude, env, options, run| {
+        let index = app.state::<Index>();
+        let (sessions, workspaces) = (index.get("sessions"), index.get("workspaces"));
+        let workspace = workspace_of(&workspaces, &options["groups"]);
+        let mut placed: HashSet<String> = workspaces.as_object().into_iter().flatten().map(|(group, _)| group.to_lowercase()).collect();
+        organize(claude, env, slice(&sessions), options, run, |rows, done, total| {
+            let moves: Vec<(String, String)> = workspace.iter().flat_map(|workspace| {
+                rows.iter().filter_map(|row| row["topic"].as_str()).filter(|topic| placed.insert(topic.to_lowercase())).map(|topic| (topic.to_owned(), workspace.clone())).collect::<Vec<_>>()
+            }).collect();
+            let rows = json!(rows);
+            index.run(move |db, _| {
+                index::save_automatic(db, &rows)?;
+                for (group, workspace) in &moves {
+                    index::save_workspace(db, Some(group), Some(workspace))?;
+                }
+                Ok(true)
+            });
+            let _ = app.emit("topics:progress", json!([done, total]));
+        }, BATCH_TIMEOUT_MS)
+    }).await
+}
+
+#[tauri::command]
+pub fn workspaces_estimate(index: State<Index>) -> Value {
+    estimate_workspaces(slice(&index.get("sessions")))
+}
+
+#[tauri::command]
+pub async fn workspaces_run(app: AppHandle, options: Value) -> Value {
+    in_background(app, options, |app, claude, env, options, run| {
+        let index = app.state::<Index>();
+        let rows = json!(resolve_workspaces(claude, env, slice(&index.get("sessions")), options, run, BATCH_TIMEOUT_MS)?);
+        index.run(move |db, _| index::save_model_workspaces(db, &rows).map(|()| true));
+        Ok(())
+    }).await
+}
+
+#[tauri::command]
+pub fn joins_estimate(index: State<Index>) -> Value {
+    estimate_joins(slice(&index.get("ambiguous")))
+}
+
+#[tauri::command]
+pub async fn joins_run(app: AppHandle, options: Value) -> Value {
+    in_background(app, options, |app, claude, env, options, run| {
+        let index = app.state::<Index>();
+        let joins = resolve_joins(claude, env, slice(&index.get("ambiguous")), options, run, BATCH_TIMEOUT_MS)?;
+        index.run(move |db, last_link| {
+            let transaction = db.unchecked_transaction()?;
+            let mut ok = true;
+            for join in &joins {
+                ok = index::save_link(db, join["id"].as_str().unwrap_or_default(), join["parentId"].as_str(), "model", last_link)? && ok;
+            }
+            transaction.commit()?;
+            Ok(ok)
+        });
+        Ok(())
+    }).await
 }
 
 #[cfg(test)]
