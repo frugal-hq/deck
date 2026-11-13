@@ -11,6 +11,13 @@ const project = path.join(root, 'p');
 fs.mkdirSync(project, { recursive: true });
 const db = openIndex(path.join(dir, 'nested', 'deck.db'));
 
+// Another instance holding deck.db's lock no longer fails a read with "database is locked".
+const other = openIndex(path.join(dir, 'nested', 'deck.db'));
+other.exec('BEGIN EXCLUSIVE');
+assert.equal(db.prepare('SELECT count(*) AS n FROM sessions').get().n, 0);
+other.exec('ROLLBACK');
+other.close();
+
 // Must exist and sit outside the temp folder, wherever the repo is checked out.
 const cwd = os.homedir();
 const id = (n) => `00000000-0000-4000-8000-00000000000${n}`;

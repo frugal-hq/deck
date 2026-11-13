@@ -15,6 +15,9 @@ const text = (value) => (typeof value === 'string' ? value : null);
 function openIndex(file) {
   fs.mkdirSync(path.dirname(file), { recursive: true });
   const db = new DatabaseSync(file);
+  // Another instance (installed, dev or Tauri) may hold deck.db: wait for its lock instead of failing, and let readers run beside a writer.
+  db.exec('PRAGMA busy_timeout = 5000');
+  db.exec('PRAGMA journal_mode = WAL');
   // user_version below 1 marks a pre-handoff index: dropping sessions re-reads every transcript once.
   const stale = db.prepare('PRAGMA user_version').get().user_version < 1;
   if (stale) db.exec('DROP TABLE IF EXISTS sessions');

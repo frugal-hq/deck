@@ -209,6 +209,8 @@ fn all(db: &Connection, sql: &str, params: impl rusqlite::Params) -> rusqlite::R
 pub fn open_index(file: &str) -> Result<Connection> {
     if let Some(parent) = Path::new(file).parent().filter(|p| !p.as_os_str().is_empty()) { fs::create_dir_all(parent)?; }
     let db = Connection::open(file)?;
+    // Another instance may hold deck.db: rusqlite already waits 5 s for its lock; WAL lets readers run beside a writer.
+    db.query_row("PRAGMA journal_mode = WAL", [], |r| r.get::<_, String>(0))?;
     let stale = db.query_row("PRAGMA user_version", [], |r| r.get::<_, i64>(0))? < 1;
     if stale { db.execute_batch("DROP TABLE IF EXISTS sessions")?; }
     db.execute_batch(r#"CREATE TABLE IF NOT EXISTS sessions (
@@ -1044,6 +1046,16 @@ mod tests {
     }
 
     const HAND: &str = "Goal: Fix the deck\nDone: built\nPending: reviewed";
+
+    #[test]
+    fn read_beside_other_instance_lock() {
+        let dir = TempDir::new();
+        let file = dir.0.join("deck.db");
+        let (db, other) = (open_index(file.to_str().unwrap()).unwrap(), open_index(file.to_str().unwrap()).unwrap());
+        other.execute_batch("BEGIN EXCLUSIVE").unwrap();
+        assert_eq!(db.query_row("SELECT count(*) FROM sessions", [], |r| r.get::<_, i64>(0)).unwrap(), 0);
+        other.execute_batch("ROLLBACK").unwrap();
+    }
 
     // indexer.check.js:23-30: 4 assertions ported, 2 typed-input skips.
     #[test]
