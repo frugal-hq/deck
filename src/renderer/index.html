@@ -79,8 +79,14 @@
   <h2 id="info-heading">Chat details</h2>
   <dl id="info-details"></dl>
   <section id="info-subagents" aria-labelledby="info-subagents-heading" hidden>
-    <h2 id="info-subagents-heading">Subagents</h2>
-    <div id="info-subagents-list"></div>
+    <div id="info-running">
+      <h2 id="info-subagents-heading">In progress</h2>
+      <div id="info-running-list"></div>
+    </div>
+    <details id="info-done">
+      <summary>Done <span id="info-done-count" class="info-panel__muted"></span></summary>
+      <div id="info-done-list"></div>
+    </details>
   </section>
 </aside>
 <footer id="readout" class="readout" hidden>

@@ -198,6 +198,11 @@ body:has(.info-panel:not([hidden])) { grid-template-columns: var(--sidebar-width
 .info-panel__agent-head { display: flex; align-items: baseline; justify-content: space-between; gap: var(--space-xs); color: var(--color-ink-2); }
 .info-panel__agent-head .info-panel__muted { flex: none; font-size: var(--text-xs); }
 .info-panel__agent p { margin-top: var(--space-2xs); }
+.info-panel__agent-title { display: -webkit-box; -webkit-box-orient: vertical; -webkit-line-clamp: 2; overflow: hidden; }
+.info-panel__status { flex: none; color: var(--color-muted); font-size: var(--text-xs); }
+.info-panel__status.is-running { color: var(--color-cool); }
+.info-panel__status.is-failed, .info-panel__status.is-not-delegated { color: var(--color-bad); }
+.info-panel summary { padding: var(--space-xs); color: var(--color-ink-2); font-size: var(--text-sm); font-weight: 500; cursor: pointer; }
 
 .sidebar__status {
   padding: var(--space-xs) var(--space-md);

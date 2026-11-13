@@ -729,17 +729,29 @@ function drawInfo(chat) {
   }));
 }
 
-function drawSubagents(agents) {
-  $('info-subagents').hidden = !agents.length;
-  $('info-subagents-list').replaceChildren(...agents.sort((a, b) => Number(b.running) - Number(a.running) || b.updatedAt - a.updatedAt).slice(0, 10).map((agent) => {
-    const row = node('div', 'info-panel__agent');
-    const head = node('div', 'info-panel__agent-head');
-    head.append(node('span', '', agent.name), node('span', 'info-panel__muted', agent.running ? 'Running' : 'Done'));
-    row.append(head);
-    if (agent.description) row.append(node('p', 'info-panel__muted', agent.description));
-    if (agent.model) row.append(node('p', 'info-panel__muted', agent.model));
-    return row;
-  }));
+const TASK_STATUS = { running: 'Running', done: 'Done', failed: 'Failed', 'not delegated': 'Not delegated' };
+
+function taskRow(task) {
+  const row = node('div', 'info-panel__agent');
+  const head = node('div', 'info-panel__agent-head');
+  head.append(node('span', 'info-panel__agent-title', task.description || task.name), node('span', `info-panel__status is-${task.status.replace(' ', '-')}`, TASK_STATUS[task.status] ?? task.status));
+  row.append(head);
+  const meta = [task.account, task.model, task.cost != null && `$${task.cost.toFixed(2)}`, task.tokens && `${compact.format(task.tokens)} tokens`].filter(Boolean).join(' · ');
+  if (meta) row.append(node('p', 'info-panel__muted', meta));
+  return row;
+}
+
+// Delegate jobs and subagents of the active chat: running ones first, finished ones folded under Done.
+function drawSubagents(tasks) {
+  tasks.sort((a, b) => b.updatedAt - a.updatedAt);
+  const running = tasks.filter((task) => task.running);
+  const done = tasks.filter((task) => !task.running).slice(0, 20);
+  $('info-subagents').hidden = !tasks.length;
+  $('info-running').hidden = !running.length;
+  $('info-running-list').replaceChildren(...running.map(taskRow));
+  $('info-done').hidden = !done.length;
+  $('info-done-count').textContent = done.length;
+  $('info-done-list').replaceChildren(...done.map(taskRow));
 }
 
 function syncInfoPanel() {

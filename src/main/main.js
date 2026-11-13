@@ -202,6 +202,7 @@ ipcMain.handle('chat:subagents', async (_, id, cwd) => {
         let description = '';
         let prompt = '';
         let model = null;
+        let tokens = 0;
         const input = fs.createReadStream(file, { encoding: 'utf8' });
         const lines = createInterface({ input, crlfDelay: Infinity });
         try {
@@ -212,6 +213,8 @@ ipcMain.handle('chat:subagents', async (_, id, cwd) => {
             if (typeof record.agentName === 'string' && record.agentName) name = record.agentName;
             if (!description && typeof record.description === 'string') description = record.description;
             if (typeof record.message?.model === 'string') model = record.message.model;
+            const usage = record.message?.usage;
+            if (usage) tokens += (usage.input_tokens ?? 0) + (usage.output_tokens ?? 0) + (usage.cache_creation_input_tokens ?? 0);
             if (!prompt && record.type === 'user') {
               const content = record.message?.content;
               const text = typeof content === 'string' ? content : Array.isArray(content) ? content.filter((part) => part?.type === 'text').map((part) => part.text).join('\n') : '';
@@ -222,15 +225,41 @@ ipcMain.handle('chat:subagents', async (_, id, cwd) => {
           lines.close();
           input.destroy();
         }
-        // frugal: running is guessed from mtime; frugal delegate jobs need the accounts server to write a jobs file.
-        const info = { name, description: (description || prompt).slice(0, 80), model, updatedAt };
+        // frugal: running is guessed from mtime, and a subagent that failed still reads as done.
+        const info = { name, description: (description || prompt).slice(0, 80), model, tokens, updatedAt };
         subagentCache.set(file, info);
         agents.set(key, { ...info, running: Date.now() - updatedAt < 30000 });
       } catch {}
     }
   }
-  return [...agents.values()];
+  for (const job of await delegateJobs()) {
+    if (job.session ? job.session !== id : job.cwd !== cwd) continue; // a server started without the session id in its env
+    // A job whose server was killed never logs its end; past delegate's longest timeout it is no longer running.
+    const status = job.status === 'running' && Date.now() / 1000 - job.start > 2100 ? 'failed' : job.status;
+    agents.set(job.id, { name: job.id, description: job.brief, model: job.model, account: job.account, cost: job.cost, status, running: status === 'running', updatedAt: (job.end ?? job.start) * 1000 });
+  }
+  const tasks = [...agents.entries()].map(([key, task]) => ({ ...task, status: task.status ?? (task.running ? 'running' : 'done'), key: `${id}:${key}` }));
+  return tasks;
 });
+
+// Written by frugal's delegate tool: a line when each brief starts and one when it ends.
+const JOBS_FILE = path.join(os.homedir(), '.frugal', 'jobs.jsonl');
+let jobsCache = { mtimeMs: 0, jobs: [] };
+async function delegateJobs() {
+  try {
+    const { mtimeMs } = await fs.promises.stat(JOBS_FILE);
+    if (mtimeMs === jobsCache.mtimeMs) return jobsCache.jobs;
+    const byId = new Map();
+    for (const line of (await fs.promises.readFile(JOBS_FILE, 'utf8')).split('\n')) {
+      try {
+        const job = JSON.parse(line);
+        if (typeof job?.id === 'string') byId.set(job.id, job);
+      } catch {}
+    }
+    jobsCache = { mtimeMs, jobs: [...byId.values()] };
+  } catch {}
+  return jobsCache.jobs;
+}
 
 ipcMain.handle('sessions:get', sidebarIndex);
 ipcMain.handle('sessions:all', () => index.sessions);
