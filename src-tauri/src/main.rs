@@ -4,6 +4,7 @@ mod accounts;
 mod chat;
 mod handoff;
 mod index;
+mod mcp;
 mod statusline;
 mod voice;
 
@@ -110,6 +111,7 @@ fn main() {
             chat::chat_input,
             chat::chat_resize,
             chat::chat_kill,
+            mcp::mcp_list,
             statusline::chat_save_edit
         ])
         .build(tauri::generate_context!())
