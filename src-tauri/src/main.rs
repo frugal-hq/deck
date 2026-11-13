@@ -46,6 +46,8 @@ fn main() {
                 .inner_size(1200.0, 800.0)
                 .decorations(false)
                 .background_color(Color(0x14, 0x17, 0x1b, 0xff))
+                // Test runs open the window behind the one in use, so it never takes the keyboard.
+                .focused(std::env::var_os("DECK_BACKGROUND").is_none())
                 .initialization_script(include_str!("deck.js"))
                 // WebView2's own drop handler would break the sidebar's HTML5 drag; file drop paths come back in phase 6.
                 .disable_drag_drop_handler()
