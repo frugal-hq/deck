@@ -14,7 +14,12 @@
     }
   },
   "bundle": {
-    "active": false,
-    "icon": ["../assets/icon.ico"]
+    "active": true,
+    "targets": ["nsis"],
+    "icon": ["../assets/icon.ico"],
+    "windows": {
+      "webviewInstallMode": { "type": "downloadBootstrapper" },
+      "nsis": { "installMode": "both", "installerHooks": "./installer.nsh" }
+    }
   }
 }
