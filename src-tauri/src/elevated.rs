@@ -90,7 +90,7 @@ fn system32() -> PathBuf {
 }
 
 // JavaScript's toISOString, from Howard Hinnant's civil_from_days.
-fn iso(ms: u64) -> String {
+pub(crate) fn iso(ms: u64) -> String {
     let (days, ms) = (ms / 86_400_000, ms % 86_400_000);
     let z = days + 719_468;
     let (era, doe) = (z / 146_097, z % 146_097);
