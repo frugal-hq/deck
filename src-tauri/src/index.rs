@@ -809,14 +809,18 @@ pub fn start(app: AppHandle) {
 fn index_loop(app: &AppHandle, jobs: mpsc::Sender<Msg>, inbox: mpsc::Receiver<Msg>) -> Result<()> {
     let home = PathBuf::from(std::env::var_os("USERPROFILE").ok_or("No user folder.")?);
     let roots = [home.join(".claude").join("projects")];
-    let db = open_index(&home.join(".frugal-deck").join("deck.db").to_string_lossy())?;
-    publish(app, listed(&db, true)?);
+    let file = home.join(".frugal-deck").join("deck.db").to_string_lossy().into_owned();
     let names: Vec<String> = roots.iter().map(|root| root.to_string_lossy().into_owned()).collect();
-    scan(&db, &names, || {
-        if let Ok(index) = listed(&db, true) {
-            publish(app, index);
-        }
-    })?;
+    let db = until_free(|| {
+        let db = open_index(&file)?;
+        publish(app, listed(&db, true)?);
+        scan(&db, &names, || {
+            if let Ok(index) = listed(&db, true) {
+                publish(app, index);
+            }
+        })?;
+        Ok(db)
+    }, |error| publish(app, json!({ "indexing": true, "error": error.to_string() })), RETRY)?;
     publish(app, listed(&db, false)?);
 
     let mut watcher = notify::recommended_watcher(move |event: notify::Result<notify::Event>| {
@@ -840,9 +844,9 @@ fn index_loop(app: &AppHandle, jobs: mpsc::Sender<Msg>, inbox: mpsc::Receiver<Ms
         };
         match msg {
             Ok(Msg::Job(job)) => match job(&db, &mut last_link) {
-                Ok(true) => publish(app, listed(&db, false)?),
+                Ok(true) => report(app, listed(&db, false)),
                 Ok(false) => {}
-                Err(error) => publish(app, json!({ "error": error.to_string() })),
+                Err(error) => report(app, Err(error)),
             },
             Ok(Msg::Changed(path)) if session_file(&path) => {
                 pending.insert(path);
@@ -851,17 +855,43 @@ fn index_loop(app: &AppHandle, jobs: mpsc::Sender<Msg>, inbox: mpsc::Receiver<Ms
             Ok(Msg::Changed(_)) => {}
             Err(RecvTimeoutError::Timeout) => {
                 due = None;
-                for path in pending.drain() {
+                let swept = pending.drain().try_for_each(|path| {
                     let file = path.to_string_lossy();
                     if sync_file(&db, &file, None).is_err() && !path.exists() {
                         remove_session(&db, &file)?;
                     }
-                }
-                publish(app, listed(&db, false)?);
+                    Ok(())
+                });
+                report(app, swept.and_then(|()| listed(&db, false)));
             }
             Err(RecvTimeoutError::Disconnected) => return Ok(()),
         }
     }
+}
+
+// A failed write or read shows as the sidebar error until the next change, instead of stopping the index.
+fn report(app: &AppHandle, next: Result<Value>) {
+    publish(app, next.unwrap_or_else(|error| json!({ "error": error.to_string() })));
+}
+
+const RETRY: Duration = Duration::from_secs(5);
+
+// Another instance can hold deck.db past busy_timeout at startup; waiting beats an index that stays dead until restart.
+fn until_free<T>(mut attempt: impl FnMut() -> Result<T>, mut busy: impl FnMut(&dyn std::error::Error), pause: Duration) -> Result<T> {
+    loop {
+        match attempt() {
+            Err(error) if is_busy(&*error) => {
+                busy(&*error);
+                thread::sleep(pause);
+            }
+            done => return done,
+        }
+    }
+}
+
+fn is_busy(error: &(dyn std::error::Error + 'static)) -> bool {
+    use rusqlite::ErrorCode::{DatabaseBusy, DatabaseLocked};
+    matches!(error.downcast_ref::<rusqlite::Error>().and_then(|e| e.sqlite_error_code()), Some(DatabaseBusy | DatabaseLocked))
 }
 
 #[tauri::command]
@@ -1055,6 +1085,22 @@ mod tests {
         other.execute_batch("BEGIN EXCLUSIVE").unwrap();
         assert_eq!(db.query_row("SELECT count(*) FROM sessions", [], |r| r.get::<_, i64>(0)).unwrap(), 0);
         other.execute_batch("ROLLBACK").unwrap();
+    }
+
+    #[test]
+    fn retry_while_other_instance_locks() {
+        let dir = TempDir::new();
+        let file = dir.0.join("deck.db");
+        let (db, other) = (open_index(file.to_str().unwrap()).unwrap(), open_index(file.to_str().unwrap()).unwrap());
+        db.busy_timeout(Duration::ZERO).unwrap();
+        other.execute_batch("BEGIN EXCLUSIVE").unwrap();
+        let mut waits = 0;
+        until_free(|| Ok(db.execute_batch("DELETE FROM sessions")?), |_| {
+            waits += 1;
+            other.execute_batch("ROLLBACK").unwrap();
+        }, Duration::ZERO).unwrap();
+        assert_eq!(waits, 1);
+        assert!(until_free(|| -> Result<()> { Err("broken".into()) }, |_| panic!("not busy"), Duration::ZERO).is_err());
     }
 
     // indexer.check.js:23-30: 4 assertions ported, 2 typed-input skips.
