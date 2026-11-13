@@ -13,6 +13,7 @@ use std::time::{Duration, Instant};
 use notify::{RecursiveMode, Watcher};
 use tauri::{AppHandle, Emitter, Manager, State};
 use crate::chat::Chats;
+use crate::handoff;
 
 type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 const CHUNK: usize = 1 << 20;
@@ -805,7 +806,7 @@ pub fn start(app: AppHandle) {
     });
 }
 
-// frugal: only the main account's sessions until accounts are ported in phase 4, and no handoff offers until handoff.js is.
+// frugal: only the main account's sessions until accounts are ported in phase 4.
 fn index_loop(app: &AppHandle, jobs: mpsc::Sender<Msg>, inbox: mpsc::Receiver<Msg>) -> Result<()> {
     let home = PathBuf::from(std::env::var_os("USERPROFILE").ok_or("No user folder.")?);
     let roots = [home.join(".claude").join("projects")];
@@ -855,13 +856,15 @@ fn index_loop(app: &AppHandle, jobs: mpsc::Sender<Msg>, inbox: mpsc::Receiver<Ms
             Ok(Msg::Changed(_)) => {}
             Err(RecvTimeoutError::Timeout) => {
                 due = None;
+                let mut handoffs = Vec::new();
                 let swept = pending.drain().try_for_each(|path| {
                     let file = path.to_string_lossy();
-                    if sync_file(&db, &file, None).is_err() && !path.exists() {
+                    if sync_file(&db, &file, Some(&mut handoffs)).is_err() && !path.exists() {
                         remove_session(&db, &file)?;
                     }
                     Ok(())
                 });
+                handoff::offer_handoffs(app, handoffs);
                 report(app, swept.and_then(|()| listed(&db, false)));
             }
             Err(RecvTimeoutError::Disconnected) => return Ok(()),
