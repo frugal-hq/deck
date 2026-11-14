@@ -731,13 +731,33 @@ function drawInfo(chat) {
 
 const TASK_STATUS = { running: 'Running', done: 'Done', failed: 'Failed', 'not delegated': 'Not delegated' };
 
+// Accounts go by the name the usage panel shows; a run job with no account ran its command here, with no model.
+const accountLabel = (id) => [...accountState.accounts, ...accountState.others].find((account) => account.id === id)?.name ?? id.replace(/^oc-/, '');
+const taskAccount = (task) => (task.account ? accountLabel(task.account) : task.kind === 'run' ? 'Local' : '');
+const taskSpan = (seconds) => (seconds == null ? '' : seconds < 60 ? `${seconds} s` : spanText(seconds * 1000));
+// A run job's command names it, without the cd, export and set steps around it.
+const commandTitle = (check) => check.split(/;|&&/).map((part) => part.trim()).filter((part) => part && !/^(set|export|cd|taskkill)\b|^\w+=/.test(part)).join(' && ') || check;
+
 function taskRow(task) {
   const row = node('div', 'info-panel__agent');
   const head = node('div', 'info-panel__agent-head');
-  head.append(node('span', 'info-panel__agent-title', task.description || task.name), node('span', `info-panel__status is-${task.status.replace(' ', '-')}`, TASK_STATUS[task.status] ?? task.status));
+  const title = task.check ? commandTitle(task.check) : task.description || task.name;
+  head.append(node('span', 'info-panel__agent-title', title), node('span', `info-panel__status is-${task.status.replace(' ', '-')}`, TASK_STATUS[task.status] ?? task.status));
   row.append(head);
-  const meta = [task.account, task.model, task.cost != null && `$${task.cost.toFixed(2)}`, task.tokens && `${compact.format(task.tokens)} tokens`].filter(Boolean).join(' · ');
+  const cost = task.cost != null && `$${task.cost.toFixed(2)}`;
+  const tokens = task.tokens && `${compact.format(task.tokens)} tokens`;
+  const meta = [taskAccount(task), taskSpan(task.seconds), tokens, cost].filter(Boolean).join(' · ');
   if (meta) row.append(node('p', 'info-panel__muted', meta));
+  const chat = task.chat && currentIndex?.sessions?.find((s) => s.id === task.chat)?.title;
+  row.dataset.tip = [
+    task.check ? `Command: ${task.check}` : task.description,
+    task.kind === 'run' && !task.account ? 'Ran here, with no model' : '',
+    [task.account, task.model].filter(Boolean).join(': '),
+    [task.kind, TASK_STATUS[task.status] ?? task.status, taskSpan(task.seconds), tokens, cost].filter(Boolean).join(' · '),
+    chat ? `Chat: ${chat}` : '',
+    task.updatedAt ? new Date(task.updatedAt).toLocaleString() : '',
+    task.result ? `\n${task.result}` : '',
+  ].filter(Boolean).join('\n');
   return row;
 }
 

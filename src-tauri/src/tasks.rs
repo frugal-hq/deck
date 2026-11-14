@@ -112,21 +112,7 @@ fn collect(cache: &mut Cache, id: &str, cwd: &str, folders: &[PathBuf], jobs_fil
         if other {
             continue;
         }
-        let start = job["start"].as_f64();
-        let status = if job["status"] == "running" && start.is_some_and(|start| now / 1000.0 - start > STALE_S) { json!("failed") } else { job["status"].clone() };
-        let mut task = Map::new();
-        task.insert("name".into(), job["id"].clone());
-        // JSON.stringify drops undefined fields, so a field the job never logged stays out.
-        for (key, from) in [("description", "brief"), ("model", "model"), ("account", "account"), ("cost", "cost")] {
-            if let Some(value) = job.get(from) {
-                task.insert(key.into(), value.clone());
-            }
-        }
-        let running = status == "running";
-        task.insert("status".into(), status);
-        task.insert("running".into(), json!(running));
-        task.insert("updatedAt".into(), job["end"].as_f64().or(start).map_or(Value::Null, |time| num(time * 1000.0)));
-        agents.insert(job["id"].as_str().unwrap_or_default().to_owned(), Value::Object(task));
+        agents.insert(job["id"].as_str().unwrap_or_default().to_owned(), job_task(job, now));
     }
     let tasks: Vec<Value> = agents
         .into_iter()
@@ -173,6 +159,34 @@ fn read_agent(file: &Path, name: &str, updated_at: f64) -> std::io::Result<Value
     }
     let description = if description.is_empty() { prompt } else { description };
     Ok(json!({ "name": name, "description": utf16_prefix(&description, 80), "model": model, "tokens": num(tokens), "updatedAt": num(updated_at) }))
+}
+
+fn job_task(job: &Value, now: f64) -> Value {
+    let start = job["start"].as_f64();
+    let status = if job["status"] == "running" && start.is_some_and(|start| now / 1000.0 - start > STALE_S) { json!("failed") } else { job["status"].clone() };
+    let mut task = Map::new();
+    task.insert("name".into(), job["id"].clone());
+    // JSON.stringify drops undefined fields, so a field the job never logged stays out.
+    for (key, from) in [("description", "brief"), ("model", "model"), ("account", "account"), ("cost", "cost"), ("kind", "kind")] {
+        if let Some(value) = job.get(from) {
+            task.insert(key.into(), value.clone());
+        }
+    }
+    let running = status == "running";
+    task.insert("status".into(), status);
+    task.insert("running".into(), json!(running));
+    task.insert("updatedAt".into(), job["end"].as_f64().or(start).map_or(Value::Null, |time| num(time * 1000.0)));
+    if let (Some(start), Some(end)) = (start, job["end"].as_f64()) {
+        task.insert("seconds".into(), num((end - start).round()));
+    }
+    // A run job logs a stock brief: its command, quoted in the result, names it better.
+    if let Some(result) = job["result"].as_str() {
+        if let Some(check) = result.split_once("check `").and_then(|(_, rest)| rest.split_once("` ")).map(|(check, _)| check) {
+            task.insert("check".into(), json!(utf16_prefix(check, 300)));
+        }
+        task.insert("result".into(), json!(utf16_prefix(result, 600)));
+    }
+    Value::Object(task)
 }
 
 // Written by frugal's delegate tool: a line when each brief starts and one when it ends.
@@ -274,5 +288,8 @@ mod tests {
         assert_eq!(utf16_prefix("ab😀c", 3), "ab");
         assert_eq!(num(5.0).to_string(), "5");
         assert_eq!(num(1.5).to_string(), "1.5");
+        let run = job_task(&json!({"id": "r", "kind": "run", "status": "done", "start": 10.0, "end": 72.4, "result": "frugal: check `cargo test` exited 0, passed:
+ok"}), 0.0);
+        assert_eq!((&run["check"], &run["seconds"], &run["kind"]), (&json!("cargo test"), &json!(62), &json!("run")));
     }
 }
