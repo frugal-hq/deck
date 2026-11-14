@@ -23,12 +23,10 @@ jobs:
     steps:
       - uses: actions/checkout@v4
       - run: npm ci
-      - run: npx install-electron
-      - name: Run checks
+      - name: Run renderer checks
         shell: bash
-        env:
-          ELECTRON_RUN_AS_NODE: "1"
-        run: for f in test/*.check.*; do node_modules/electron/dist/electron.exe "$f"; done
+        run: for f in test/*.check.mjs; do node "$f"; done
+      - run: cargo test --manifest-path src-tauri/Cargo.toml
 
   release:
     needs: check
