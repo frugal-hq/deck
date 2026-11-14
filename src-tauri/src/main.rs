@@ -139,7 +139,16 @@ fn main() {
             let meters = app.handle().clone();
             let edits = app.handle().clone();
             let bridge = statusline::create_status_bridge(
-                move |id, value| { let _ = meters.emit("chat:meters", [json!(id), value]); },
+                // main.js statusBridge: a chat's limits are its account's reading, shown in the usage panel.
+                move |id, value| {
+                    if let Some(account) = meters.state::<chat::Chats>().account_of(id) {
+                        let at = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap_or_default().as_secs_f64() * 1000.0;
+                        let accounts = meters.state::<Mutex<accounts::Accounts>>();
+                        let mut accounts = accounts.lock().unwrap();
+                        if accounts.save_reading(&account, &value, at).unwrap_or(false) { let _ = accounts::publish(&meters, &mut accounts); }
+                    }
+                    let _ = meters.emit("chat:meters", [json!(id), value]);
+                },
                 move |id, text| edits.emit("chat:edit", [json!(id), json!(text)]).is_ok(),
             )?;
             app.manage(bridge);

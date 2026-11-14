@@ -69,6 +69,10 @@ impl Chats {
         self.live.lock().unwrap().values().filter_map(|chat| Some(chat.info.as_ref()?.account.clone())).collect()
     }
 
+    pub fn account_of(&self, id: &str) -> Option<String> {
+        Some(self.live.lock().unwrap().get(id)?.info.as_ref()?.account.clone())
+    }
+
     pub fn pick(&self, folder: PathBuf) {
         self.picked.lock().unwrap().insert(folder);
     }
