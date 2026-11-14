@@ -2499,6 +2499,15 @@ attachCombo($('organize-group'), placeTree);
 attachCombo($('workspace-name'), () => spaceNames);
 attachCombo($('ask-value'), () => askNames);
 $('organize-cancel').onclick = () => organize.close();
+$('organize-link').onclick = () => {
+  organize.close();
+  const session = organizing;
+  const otherChats = async () => groupChats(await deck.getAllSessions()).filter((c) => c.chatId !== session.chatId);
+  showPalette(otherChats, (target) => {
+    deck.link(session.chatId, target.id);
+    showUndo(`Linked to ${target.title}.`);
+  }, 'Link to which chat?');
+};
 $('organize-unlink').onclick = () => {
   organize.close();
   deck.link(organizing.id, null);
