@@ -6,9 +6,9 @@ All agreed scope fits in 0.1.0, Windows only.
 
 | Component | Technology | Role |
 |---|---|---|
-| Application | Electron | Window, panels, processes |
+| Application | Tauri 2 with WebView2 (Electron until the Tauri port) | Window, panels, processes |
 | Terminal | xterm.js with `FitAddon` | Shows the real TUI |
-| PTY | node-pty (ConPTY) | Runs `claude` without a console window |
+| PTY | portable-pty (ConPTY) | Runs `claude` without a console window |
 | Index | SQLite | Chats, sessions, tags, spaces, accounts |
 | Voice | whisper.cpp as a helper process, or `/voice` in the PTY | Local transcription or on Anthropic |
 | Administrator | Helper process elevated by UAC and named pipe | Hosts the PTY for elevated sessions |

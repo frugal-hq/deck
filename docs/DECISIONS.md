@@ -4,7 +4,7 @@
 |---|---|---|---|
 | Name | Frugal Deck (`frugal-deck`) | Available on GitHub and npm when checked; Frugal family | "Frugal Client": generic and with a same-named repository. Avoid "Claude" in the name for trademark reasons |
 | Version | 0.1.0 with all agreed scope | User request | |
-| Stack | Electron, node-pty, xterm.js | Most proven combination for a real TUI | Tauri: lighter, with more risk in the PTY flow |
+| Stack | Tauri 2, portable-pty, xterm.js | Electron, node-pty and xterm.js until 2026-11; Tauri cut private memory and the installer size (`docs/tauri-port.md`) | Electron: heavier |
 | Platform | Windows only in 0.1.0 | Reduces risk; it is the usage environment | Multiplatform |
 | Integration | Official binary in PTY | Preserves all features and is the route allowed by the terms | Agent SDK or `stream-json` with own UI |
 | Product rule | Zero added tokens | The project exists to save | Prompts, MCP, or own calls |
