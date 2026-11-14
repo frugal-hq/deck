@@ -145,7 +145,10 @@ fn invalid() -> Value {
 }
 
 pub fn find_claude() -> Option<PathBuf> {
-    let out = Command::new("where.exe").arg("claude").output().ok()?;
+    let mut command = Command::new("where.exe");
+    #[cfg(windows)]
+    { use std::os::windows::process::CommandExt; command.creation_flags(0x0800_0000); }
+    let out = command.arg("claude").output().ok()?;
     String::from_utf8_lossy(&out.stdout).lines().filter(|line| !line.is_empty()).find_map(|entry| {
         let entry = Path::new(entry);
         if entry.extension().is_some_and(|ext| ext.eq_ignore_ascii_case("exe")) {

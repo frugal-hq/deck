@@ -71,7 +71,10 @@ pub fn read_user_status_line(file: &Path) -> Option<Value> {
 
 // statusline.js:47-54: Git Bash when installed, otherwise PowerShell.
 fn find_chain_shell() -> (PathBuf, Vec<String>) {
-    if let Ok(output) = Command::new("where.exe").arg("git").output() {
+    let mut where_git = Command::new("where.exe");
+    #[cfg(windows)]
+    { use std::os::windows::process::CommandExt; where_git.creation_flags(0x0800_0000); }
+    if let Ok(output) = where_git.arg("git").output() {
         let stdout = String::from_utf8_lossy(&output.stdout);
         if let Some(git) = stdout.lines().next().filter(|git| !git.is_empty()) {
             for relative in ["../bin/bash.exe", "../../bin/bash.exe"] {
@@ -229,6 +232,9 @@ fn run_chain(chain: &Chain, body: &str) -> String {
     let mut command = Command::new(&chain.shell);
     command.args(&chain.args).arg(&chain.command).current_dir(&chain.cwd).env_clear().envs(chain.env.iter().cloned());
     command.stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::null());
+    // A console shell from a windowed app flashes a window on every status line refresh.
+    #[cfg(windows)]
+    { use std::os::windows::process::CommandExt; command.creation_flags(0x0800_0000); }
     let Ok(mut child) = command.spawn() else { return String::new() };
     if let Some(mut stdin) = child.stdin.take() { let _ = stdin.write_all(body.as_bytes()); }
     let reader = child.stdout.take().map(|mut stdout| thread::spawn(move || {
