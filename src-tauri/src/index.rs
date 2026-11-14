@@ -116,6 +116,12 @@ fn starts(line: &str, prefix: &str) -> bool {
     line.trim_start_matches(whitespace).starts_with(prefix)
 }
 
+// "Done:" or a note before the colon, as in "Done (uncommitted):".
+fn label(line: &str, name: &str) -> bool {
+    line.trim_start_matches(whitespace).strip_prefix(name).map(|rest| rest.trim_start_matches(whitespace))
+        .is_some_and(|rest| rest.starts_with(':') || (rest.starts_with('(') && rest.contains("):")))
+}
+
 fn handoff_block(body: &Value) -> Option<HandoffBlock> {
     let body = body.as_str()?;
     let cut = ["</pasted_content", "</command-args"].iter().filter_map(|s| body.find(s)).min().unwrap_or(body.len());
@@ -123,7 +129,7 @@ fn handoff_block(body: &Value) -> Option<HandoffBlock> {
     let from = lines.iter().position(|s| starts(s, "Goal:"))?;
     let taken = &lines[from..];
     let taken = &taken[..taken.iter().skip(1).position(|s| starts(s, "```")).map_or(taken.len(), |i| i + 1)];
-    if !taken.iter().any(|s| starts(s, "Done:")) || !taken.iter().any(|s| starts(s, "Pending:")) { return None; }
+    if !taken.iter().any(|s| label(s, "Done")) || !taken.iter().any(|s| label(s, "Pending")) { return None; }
     let kept: Vec<_> = taken.iter().filter(|s| !starts(s, "Usage:")).map(|s| collapse_ws(s)).filter(|s| !s.is_empty()).collect();
     Some(HandoffBlock { hash: sha1_hex(kept.join("\n").as_bytes()), goal: trim(&kept[0][5..]).to_owned() })
 }
@@ -212,7 +218,7 @@ pub fn open_index(file: &str) -> Result<Connection> {
     let db = Connection::open(file)?;
     // Another instance may hold deck.db: rusqlite already waits 5 s for its lock; WAL lets readers run beside a writer.
     db.query_row("PRAGMA journal_mode = WAL", [], |r| r.get::<_, String>(0))?;
-    let stale = db.query_row("PRAGMA user_version", [], |r| r.get::<_, i64>(0))? < 1;
+    let stale = db.query_row("PRAGMA user_version", [], |r| r.get::<_, i64>(0))? < 2;
     if stale { db.execute_batch("DROP TABLE IF EXISTS sessions")?; }
     db.execute_batch(r#"CREATE TABLE IF NOT EXISTS sessions (
     id TEXT PRIMARY KEY,
@@ -254,7 +260,7 @@ pub fn open_index(file: &str) -> Result<Connection> {
     db.execute_batch(r#"CREATE TABLE IF NOT EXISTS session_group (session_id TEXT PRIMARY KEY, name TEXT NOT NULL)"#)?;
     db.execute_batch(r#"CREATE TABLE IF NOT EXISTS group_workspace (name TEXT PRIMARY KEY COLLATE NOCASE, workspace TEXT NOT NULL, origin TEXT NOT NULL)"#)?;
     db.execute_batch(r#"CREATE TABLE IF NOT EXISTS workspace_parent (name TEXT PRIMARY KEY COLLATE NOCASE, parent TEXT NOT NULL)"#)?;
-    if stale { db.execute_batch("PRAGMA user_version = 1")?; }
+    if stale { db.execute_batch("PRAGMA user_version = 2")?; }
     Ok(db)
 }
 
@@ -1426,7 +1432,7 @@ mod tests {
         assert_eq!(f.index()["modelWorkspaces"], 0);
         assert!(save_workspace(&f.db, Some("SUPPORT"), Some("  ")).unwrap());
         assert_eq!(f.index()["workspaces"], json!({"plan": "User"}));
-        assert_eq!(all(&f.db, "PRAGMA user_version", []).unwrap()[0]["user_version"], 1);
+        assert_eq!(all(&f.db, "PRAGMA user_version", []).unwrap()[0]["user_version"], 2);
         f.write("a", &f.user("alpha", "2026-05-01T00:00:00Z"));
         f.write("b", &f.user("beta", "2026-05-02T00:00:00Z"));
         f.write("c", &f.user("gamma", "2026-05-03T00:00:00Z"));
@@ -1584,6 +1590,12 @@ mod tests {
     fn command_args_closes_on_last_line() {
         let _dir = TempDir::new();
         assert_eq!(handoff_block(&json!("<command-args>\n".to_owned() + &PLAIN.replace("link chats to roots", "link chats to roots</command-args>"))).unwrap().hash, handoff_block(&json!(PLAIN)).unwrap().hash);
+    }
+
+    #[test]
+    fn done_label_may_carry_a_note() {
+        assert!(handoff_block(&json!(PLAIN.replace("Done:", "Done (uncommitted, built):"))).is_some());
+        assert_eq!(handoff_block(&json!(PLAIN.replace("Done:", "Done later"))), None);
     }
 
     // handoff.check.js:20-22: 1 assertions ported.
@@ -1826,7 +1838,7 @@ mod tests {
         f.db.close().unwrap();
         let db = open_index(file.to_str().unwrap()).unwrap();
         assert!(all(&db, "SELECT id, file FROM sessions", []).unwrap().is_empty());
-        assert_eq!(all(&db, "PRAGMA user_version", []).unwrap()[0]["user_version"], 1);
+        assert_eq!(all(&db, "PRAGMA user_version", []).unwrap()[0]["user_version"], 2);
         assert_eq!(all(&db, "SELECT session_id, pinned, space, tags FROM session_org", []).unwrap(),
             vec![json!({"session_id": id(1), "pinned": 1, "space": "Work", "tags": "[\"keep\"]"})]);
         assert_eq!(all(&db, "SELECT session_id, name FROM session_group", []).unwrap(), vec![json!({"session_id": id(1), "name": "Manual"})]);
