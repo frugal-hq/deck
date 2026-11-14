@@ -779,6 +779,7 @@ function syncInfoPanel() {
   const chat = chats.get(activeId);
   const open = infoPanelOpen && Boolean(chat);
   $('info-panel').hidden = !open;
+  $('info-resize').hidden = !open;
   const label = open ? 'Hide details' : 'Show details';
   $('info-toggle').dataset.tip = label;
   $('info-toggle').setAttribute('aria-label', label);
@@ -1536,38 +1537,37 @@ stage.addEventListener('drop', (event) => {
   attach(chat, [...event.dataTransfer.files].map((file) => deck.pathForFile(file)).filter(Boolean));
 });
 
-const SIDEBAR_WIDTH = { min: 220, max: 520, base: 280 };
-const resizer = $('sidebar-resize');
-resizer.setAttribute('aria-valuemin', SIDEBAR_WIDTH.min);
-resizer.setAttribute('aria-valuemax', SIDEBAR_WIDTH.max);
-
-// The terminal refits through the stage's ResizeObserver.
-function setSidebarWidth(width) {
-  const clamped = Math.round(Math.min(SIDEBAR_WIDTH.max, Math.max(SIDEBAR_WIDTH.min, width)));
-  document.documentElement.style.setProperty('--sidebar-width', `${clamped}px`);
-  resizer.setAttribute('aria-valuenow', clamped);
-  localStorage.setItem('sidebarWidth', clamped);
-}
-
-const sidebarWidth = () => document.querySelector('.sidebar').getBoundingClientRect().width;
-
-resizer.onpointerdown = (event) => {
-  if (event.button !== 0) return;
-  resizer.setPointerCapture(event.pointerId);
-  const offset = event.clientX - sidebarWidth();
-  resizer.onpointermove = (move) => setSidebarWidth(move.clientX - offset);
-  resizer.onlostpointercapture = () => {
-    resizer.onpointermove = null;
+// A side column's drag handle; side is 1 for a column on the left, -1 on the right. The terminal refits through the stage's ResizeObserver.
+function columnResizer(resizer, panel, { min, max, base, variable, key, side }) {
+  resizer.setAttribute('aria-valuemin', min);
+  resizer.setAttribute('aria-valuemax', max);
+  const setWidth = (width) => {
+    const clamped = Math.round(Math.min(max, Math.max(min, width)));
+    document.documentElement.style.setProperty(variable, `${clamped}px`);
+    resizer.setAttribute('aria-valuenow', clamped);
+    localStorage.setItem(key, clamped);
   };
-};
-resizer.ondblclick = () => setSidebarWidth(SIDEBAR_WIDTH.base);
-resizer.onkeydown = (event) => {
-  const width = { ArrowLeft: sidebarWidth() - 16, ArrowRight: sidebarWidth() + 16, Home: SIDEBAR_WIDTH.min, End: SIDEBAR_WIDTH.max }[event.key];
-  if (width === undefined) return;
-  event.preventDefault();
-  setSidebarWidth(width);
-};
-setSidebarWidth(Number(localStorage.getItem('sidebarWidth')) || SIDEBAR_WIDTH.base);
+  const width = () => panel.getBoundingClientRect().width;
+  resizer.onpointerdown = (event) => {
+    if (event.button !== 0) return;
+    resizer.setPointerCapture(event.pointerId);
+    const offset = event.clientX - side * width();
+    resizer.onpointermove = (move) => setWidth(side * (move.clientX - offset));
+    resizer.onlostpointercapture = () => {
+      resizer.onpointermove = null;
+    };
+  };
+  resizer.ondblclick = () => setWidth(base);
+  resizer.onkeydown = (event) => {
+    const next = { ArrowLeft: width() - 16 * side, ArrowRight: width() + 16 * side, Home: min, End: max }[event.key];
+    if (next === undefined) return;
+    event.preventDefault();
+    setWidth(next);
+  };
+  setWidth(Number(localStorage.getItem(key)) || base);
+}
+columnResizer($('sidebar-resize'), document.querySelector('.sidebar'), { min: 220, max: 520, base: 280, variable: '--sidebar-width', key: 'sidebarWidth', side: 1 });
+columnResizer($('info-resize'), $('info-panel'), { min: 220, max: 560, base: 288, variable: '--info-width', key: 'infoWidth', side: -1 });
 
 deck.onExit((id, code) => {
   const chat = chats.get(id);
