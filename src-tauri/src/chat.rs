@@ -300,7 +300,11 @@ fn launch(app: &AppHandle, id: &str, folder: PathBuf, size: (u16, u16), resume: 
     };
     let accounts = app.state::<Mutex<Accounts>>();
     let index = app.state::<Index>();
-    let mut env = account_env(&accounts.lock().unwrap(), account);
+    let (mut env, mouse) = { let a = accounts.lock().unwrap(); (account_env(&a, account), a.mouse()) };
+    // Claude Code's fullscreen renderer takes mouse clicks; forcing it also overrides the sticky auto-disable that chats killed while starting leave behind.
+    if mouse {
+        env.insert("CLAUDE_CODE_NO_FLICKER".into(), "1".into());
+    }
     let session = index.session(id).unwrap_or_default();
     let dir = Path::new(account["configDir"].as_str().unwrap_or_default());
     let group = group.as_str().filter(|group| !group.is_empty());

@@ -2663,6 +2663,7 @@ async function openSettings() {
   $('settings-voice-language').value = voiceLanguage();
   showVoiceOptions();
   $('settings-roles').checked = await deck.getRoles();
+  $('settings-mouse').checked = await deck.getMouse();
   $('settings-frugal').checked = startsWithFrugal();
   $('settings-tooltips').value = tooltipPlacement();
   $('settings-reopen').checked = reopensChats();
@@ -2782,6 +2783,14 @@ $('settings-admin').onchange = async (event) => {
   for (const chat of chats.values()) drawBadge(chat);
 };
 $('settings-roles').onchange = (event) => deck.setRoles(event.target.checked);
+$('settings-mouse').onchange = async (event) => {
+  if (event.target.checked) {
+    event.target.checked = false; // Stays off until the warning is accepted.
+    if (!await askConfirm('Turn on mouse clicks in chats?', "Chats start in Claude Code's fullscreen renderer, which takes clicks in menus and questions. Deck forces it on, which overrides Claude Code's safeguard that switches back to the classic renderer after failed starts. If chats fail to start, flicker or draw wrong, turn this off. Applies to chats started after the change.", 'Turn on')) return;
+    event.target.checked = true;
+  }
+  deck.setMouse(event.target.checked);
+};
 const VOICE_NOTICES = {
   local: ['Use local dictation?', 'Audio stays on this computer. The first dictation downloads whisper.cpp (8.9 MB) and the model you choose. Names and technical terms often come out wrong, so the text lands in the prompt for you to edit and is never sent by itself. Windows dictation (Win+H) needs no download.', 'Use local dictation'],
   anthropic: ['Use Anthropic voice?', 'The microphone button records through Claude Code, which sends your audio to Anthropic servers to transcribe it. Open chats restart once to turn it on. Claude Code sets the dictation language (/config). It uses no tokens, needs a claude.ai account, and does not work with ANTHROPIC_API_KEY or ANTHROPIC_AUTH_TOKEN set. Windows dictation (Win+H) needs no download.', 'Use Anthropic voice'],

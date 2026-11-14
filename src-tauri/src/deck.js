@@ -97,6 +97,8 @@
     mcpSet: (scope, names) => invoke('mcp:set', { scope, names }),
     getRoles: () => invoke('settings:roles'),
     setRoles: (on) => send('settings:set-roles', { on }),
+    getMouse: () => invoke('settings:mouse'),
+    setMouse: (on) => send('settings:set-mouse', { on }),
     renameAccount: (id, name) => invoke('accounts:rename', { id, name }),
     setAccountCap: (id, field, value) => invoke('accounts:set-cap', { id, field, value }),
     refreshAccounts: () => invoke('accounts:refresh'),

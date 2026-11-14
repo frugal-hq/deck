@@ -171,6 +171,8 @@ fn main() {
             accounts::accounts_get,
             accounts::settings_roles,
             accounts::settings_set_roles,
+            accounts::settings_mouse,
+            accounts::settings_set_mouse,
             accounts::accounts_rename,
             accounts::accounts_set_cap,
             accounts::accounts_set_primary,

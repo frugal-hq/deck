@@ -113,6 +113,8 @@ impl Accounts {
     pub fn set_primary(&self, id: &str) -> Result<()> { let mut s = self.load(); object(&mut s).insert("primary".into(), json!(id)); self.save(&s) }
     pub fn roles(&self) -> bool { self.load()["roles"] != false }
     pub fn set_roles(&self, on: bool) -> Result<()> { let mut s = self.load(); object(&mut s).insert("roles".into(), json!(on)); self.save(&s) }
+    pub fn mouse(&self) -> bool { self.load()["mouse"] != false }
+    pub fn set_mouse(&self, on: bool) -> Result<()> { let mut s = self.load(); object(&mut s).insert("mouse".into(), json!(on)); self.save(&s) }
 
     fn mcp_key(scope: &Value) -> Result<String> {
         for kind in ["workspace", "group"] {
@@ -653,6 +655,13 @@ pub fn publish(app: &AppHandle, accounts: &mut Accounts) -> Result<()> {
     Ok(())
 }
 
+#[tauri::command]
+pub fn settings_mouse(accounts: State<Mutex<Accounts>>) -> bool { accounts.lock().unwrap().mouse() }
+#[tauri::command]
+pub fn settings_set_mouse(accounts: State<Mutex<Accounts>>, on: Value) -> std::result::Result<(), String> {
+    let Some(on) = on.as_bool() else { return Ok(()); };
+    accounts.lock().unwrap().set_mouse(on).map_err(|e| e.to_string())
+}
 #[tauri::command]
 pub fn accounts_get(accounts: State<Mutex<Accounts>>) -> Value { accounts.lock().unwrap().snapshot(now()) }
 #[tauri::command]
