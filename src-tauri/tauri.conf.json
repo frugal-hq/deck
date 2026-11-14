@@ -19,7 +19,15 @@
     "icon": ["../assets/icon.ico"],
     "windows": {
       "webviewInstallMode": { "type": "downloadBootstrapper" },
-      "nsis": { "installMode": "both", "installerHooks": "./installer.nsh" }
+      "nsis": {
+        "installMode": "both",
+        "template": "./installer/installer.nsi",
+        "installerHooks": "./installer.nsh",
+        "installerIcon": "../assets/icon.ico",
+        "sidebarImage": "./installer/sidebar.bmp",
+        "headerImage": "./installer/header.bmp",
+        "uninstallerHeaderImage": "./installer/header.bmp"
+      }
     }
   }
 }
