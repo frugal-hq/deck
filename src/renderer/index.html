@@ -207,6 +207,16 @@
     </div>
   </form>
 </dialog>
+<dialog id="tasks-dialog" class="organize tasks" closedby="any" aria-labelledby="tasks-title">
+  <form method="dialog">
+    <h2 id="tasks-title" class="organize__title">Delegate tasks</h2>
+    <p id="tasks-summary" class="organize__text" role="status"></p>
+    <div id="tasks-list" class="tasks__list"></div>
+    <div class="organize__actions">
+      <button class="btn" type="submit" data-tip="Close tasks">Close</button>
+    </div>
+  </form>
+</dialog>
 <dialog id="update-dialog" class="organize" closedby="any" aria-labelledby="update-title">
   <form method="dialog">
     <h2 id="update-title" class="organize__title">Updates</h2>

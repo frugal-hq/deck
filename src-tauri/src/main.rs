@@ -200,6 +200,7 @@ fn main() {
             chat::chat_resize,
             chat::chat_kill,
             tasks::chat_subagents,
+            tasks::tasks_all,
             mcp::mcp_list,
             organizer::topics_estimate,
             organizer::topics_run,

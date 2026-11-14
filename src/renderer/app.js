@@ -2987,6 +2987,7 @@ $('app-menu').onclick = () => {
   openMenu(right, bottom + 4, [
     { label: 'New chat in a folder…', run: startInPicked },
     { label: 'Accounts', run: openAccounts },
+    { label: 'Tasks', run: openTasks },
     { label: 'Settings', run: openSettings },
     { label: 'Updates', run: openUpdates },
   ], $('app-menu'));
@@ -3015,6 +3016,26 @@ function updateRow(text, action, tip, run) {
   button.onclick = () => run(button);
   row.append(label, button);
   return row;
+}
+// Every delegate job, from any chat: how many each account took today and in all, newest first.
+async function openTasks() {
+  $('tasks-list').replaceChildren();
+  $('tasks-summary').textContent = 'Reading tasks…';
+  $('tasks-dialog').showModal();
+  const tasks = await deck.allTasks();
+  const today = new Date().toDateString();
+  const counts = new Map();
+  for (const task of tasks) {
+    const name = taskAccount(task) || 'Unknown';
+    const count = counts.get(name) ?? { all: 0, today: 0 };
+    count.all += 1;
+    if (task.updatedAt && new Date(task.updatedAt).toDateString() === today) count.today += 1;
+    counts.set(name, count);
+  }
+  const todayTotal = [...counts.values()].reduce((sum, count) => sum + count.today, 0);
+  const byAccount = [...counts].sort((a, b) => b[1].all - a[1].all).map(([name, count]) => `${name} ${count.all}${count.today ? ` (${count.today} today)` : ''}`);
+  $('tasks-summary').textContent = tasks.length ? `${tasks.length} tasks, ${todayTotal} today. ${byAccount.join(' · ')}` : 'No delegate tasks yet.';
+  $('tasks-list').replaceChildren(...tasks.map(taskRow));
 }
 async function openUpdates() {
   $('update-list').replaceChildren();

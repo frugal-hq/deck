@@ -161,6 +161,27 @@ fn read_agent(file: &Path, name: &str, updated_at: f64) -> std::io::Result<Value
     Ok(json!({ "name": name, "description": utf16_prefix(&description, 80), "model": model, "tokens": num(tokens), "updatedAt": num(updated_at) }))
 }
 
+// frugal's delegate jobs of every chat, newest first, for the Tasks dialog.
+#[tauri::command]
+pub async fn tasks_all(app: AppHandle) -> Vec<Value> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let home = app.state::<Mutex<crate::accounts::Accounts>>().lock().unwrap().home.clone();
+        let now = ms(SystemTime::now());
+        let mut cache = CACHE.lock().unwrap();
+        let mut tasks: Vec<Value> = delegate_jobs(&mut cache.jobs, &home.join(".frugal").join("jobs.jsonl")).iter().map(|job| {
+            let mut task = job_task(job, now);
+            task["chat"] = job["session"].clone();
+            task["cwd"] = job["cwd"].clone();
+            task
+        }).collect();
+        tasks.sort_by(|a, b| b["updatedAt"].as_f64().partial_cmp(&a["updatedAt"].as_f64()).unwrap_or(std::cmp::Ordering::Equal));
+        tasks.truncate(300);
+        tasks
+    })
+    .await
+    .unwrap_or_default()
+}
+
 fn job_task(job: &Value, now: f64) -> Value {
     let start = job["start"].as_f64();
     let status = if job["status"] == "running" && start.is_some_and(|start| now / 1000.0 - start > STALE_S) { json!("failed") } else { job["status"].clone() };
