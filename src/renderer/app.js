@@ -1126,6 +1126,8 @@ $('account-add').onclick = addAccount;
 let mouseHeld = false;
 addEventListener('mousedown', () => (mouseHeld = true), true);
 addEventListener('mouseup', () => (mouseHeld = false), true);
+// WebView2 shows the browser's own menu (Back, Refresh, Print) wherever the Deck has none; Electron showed nothing. Text fields keep it for cut, copy and paste.
+addEventListener('contextmenu', (event) => event.target.closest('input, textarea:not(.xterm-helper-textarea), [contenteditable="true"]') || event.preventDefault());
 
 async function openChat({ id, cwd, name, resume, group, login, accountId, handoff }) {
   const el = document.createElement('div');
