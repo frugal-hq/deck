@@ -1,0 +1,120 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Frugal Deck Setup</title>
+<link rel="stylesheet" href="tokens.css">
+<link rel="stylesheet" href="base.css">
+<link rel="stylesheet" href="fonts/host-grotesk/400.css">
+<link rel="stylesheet" href="fonts/host-grotesk/500.css">
+<style>
+  html, body { height: 100%; }
+  body { display: grid; grid-template-rows: 36px 1fr; overflow: hidden; font-size: var(--text-sm); user-select: none; }
+  .bar { display: flex; align-items: center; padding-inline: var(--space-sm) 0; -webkit-app-region: drag; }
+  .bar button { -webkit-app-region: no-drag; }
+  .mark { display: inline-flex; align-items: center; gap: var(--space-2xs); font-weight: 500; }
+  .mark svg, .hero svg { color: var(--color-accent); }
+  .mark svg { width: 18px; height: 18px; }
+  .close { display: grid; place-items: center; width: 46px; height: 36px; margin-inline-start: auto; border: 0; background: transparent; color: var(--color-muted); transition: background-color var(--dur-micro) var(--ease-out), color var(--dur-micro) var(--ease-out); }
+  .close:hover { background: var(--color-bad); color: var(--color-paper-3); }
+  .icon { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
+  main { display: grid; grid-template-rows: auto 1fr auto; gap: var(--space-md); padding: var(--space-md) var(--space-lg) var(--space-lg); }
+  .hero { display: flex; align-items: center; gap: var(--space-md); }
+  .hero svg { width: 48px; height: 48px; flex: none; }
+  h1 { font-size: var(--text-xl); font-weight: 500; }
+  .muted { color: var(--color-muted); }
+  .choices { display: grid; gap: var(--space-xs); align-content: start; }
+  .choice { display: grid; grid-template-columns: 16px 1fr; gap: 2px var(--space-sm); padding: var(--space-sm) var(--space-md); border: var(--rule-hair) solid var(--color-rule); border-radius: 12px; background: var(--color-paper-2); cursor: pointer; transition: border-color var(--dur-micro) var(--ease-out), background-color var(--dur-micro) var(--ease-out); }
+  .choice:hover { border-color: var(--color-rule-2); }
+  .choice:has(input:checked) { border-color: var(--color-accent); background: color-mix(in oklab, var(--color-accent-soft) 45%, var(--color-paper-2)); }
+  .choice input { appearance: none; width: 16px; height: 16px; margin: 3px 0 0; border-radius: 50%; background: var(--color-paper-3); box-shadow: inset 0 0 0 1px var(--color-rule-2); }
+  .choice input:checked { background: radial-gradient(var(--color-accent-ink) 30%, var(--color-accent) 34%); box-shadow: none; }
+  .choice span:last-child { grid-column: 2; }
+  .check { display: flex; align-items: center; gap: var(--space-xs); cursor: pointer; }
+  .check input { appearance: none; display: grid; place-content: center; width: 16px; height: 16px; margin: 0; border-radius: 4px; background: var(--color-paper-3); }
+  .check input:checked { background: var(--color-accent) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%23231a0c' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m3.5 8.5 3 3 6-7'/%3E%3C/svg%3E") center / 12px no-repeat; }
+  .actions { display: flex; justify-content: end; align-items: center; gap: var(--space-xs); }
+  .actions .check { margin-inline-end: auto; }
+  .btn { display: inline-flex; align-items: center; min-height: 36px; padding: var(--space-2xs) var(--space-md); border: 0; border-radius: var(--radius-pill); background: linear-gradient(180deg, var(--color-control), var(--color-control-2)); box-shadow: inset 0 1px 0 var(--color-highlight); color: var(--color-ink); font-weight: 500; cursor: pointer; transition: filter var(--dur-micro) var(--ease-out), scale var(--dur-micro) var(--ease-out); }
+  .btn:hover { filter: brightness(1.14); }
+  .btn:active { filter: brightness(0.92); scale: 0.97; }
+  .btn--primary { background: linear-gradient(180deg, color-mix(in oklab, var(--color-accent) 90%, var(--color-ink)), var(--color-accent)); color: var(--color-accent-ink); }
+  .progress { position: relative; height: 6px; overflow: hidden; border-radius: 3px; background: var(--color-paper-3); align-self: center; }
+  .progress::after { content: ""; position: absolute; inset: 0 auto 0 0; width: 35%; border-radius: inherit; background: var(--color-accent); animation: slide 1.4s var(--ease-in-out) infinite; }
+  @keyframes slide { from { translate: -100% 0; } to { translate: 290% 0; } }
+  body:not([data-view="choose"]) .on-choose, body:not([data-view="installing"]) .on-installing, body:not([data-view="done"]) .on-done, body:not([data-view="failed"]) .on-failed { display: none !important; }
+  body[data-view="installing"] .close { visibility: hidden; }
+</style>
+</head>
+<body data-view="choose">
+<svg width="0" height="0" aria-hidden="true" style="position: absolute">
+  <symbol id="logo" viewBox="0 0 256 256"><path fill="currentColor" fill-rule="evenodd" d="M80 24L52 24A44 44 0 0 0 8 68L8 188A44 44 0 0 0 52 232L80 232ZM96 24L204 24A44 44 0 0 1 248 68L248 188A44 44 0 0 1 204 232L96 232ZM148.96 188.48L148.96 133.76L134.56 133.76A14.4 14.4 0 0 1 134.56 104.96L148.96 104.96L148.96 99.2A46.08 46.08 0 0 1 195.04 53.12L209.44 53.12A14.4 14.4 0 0 1 209.44 81.92L195.04 81.92A17.28 17.28 0 0 0 177.76 99.2L177.76 104.96L184.96 104.96A14.4 14.4 0 0 1 184.96 133.76L177.76 133.76L177.76 188.48A14.4 14.4 0 0 1 148.96 188.48Z"/></symbol>
+</svg>
+<header class="bar">
+  <span class="mark"><svg aria-hidden="true"><use href="#logo"/></svg>Frugal Deck Setup</span>
+  <button id="close" class="close" type="button" aria-label="Close"><svg class="icon" viewBox="0 0 16 16" aria-hidden="true"><path d="m4 4 8 8m0-8-8 8"/></svg></button>
+</header>
+<main>
+  <div class="hero">
+    <svg aria-hidden="true"><use href="#logo"/></svg>
+    <div>
+      <h1 id="title">Install Frugal Deck</h1>
+      <p id="subtitle" class="muted"></p>
+    </div>
+  </div>
+  <form id="form" class="choices on-choose">
+    <label class="choice" id="choice-user"><input type="radio" name="mode" value="user" checked><span>Just for me</span><span class="muted">In your user folder. No administrator permission needed.</span></label>
+    <label class="choice" id="choice-machine"><input type="radio" name="mode" value="machine"><span>Everyone on this PC</span><span class="muted">In Program Files. Windows asks for administrator permission.</span></label>
+  </form>
+  <div class="progress on-installing" role="progressbar" aria-label="Installing"></div>
+  <p id="message" class="muted on-done on-failed" role="status"></p>
+  <div class="actions">
+    <label class="check on-choose"><input id="open" type="checkbox" checked> Open Frugal Deck when done</label>
+    <button id="cancel" class="btn on-choose" type="button">Cancel</button>
+    <button id="install" class="btn btn--primary on-choose" type="submit" form="form">Install</button>
+    <button id="retry" class="btn on-failed" type="button">Try again</button>
+    <button id="finish" class="btn btn--primary on-done on-failed" type="button">Close</button>
+  </div>
+</main>
+<script type="module">
+  const { invoke } = window.__TAURI__.core;
+  const $ = (id) => document.getElementById(id);
+  const show = (view, title, message = '') => {
+    document.body.dataset.view = view;
+    $('title').textContent = title;
+    $('message').textContent = message;
+  };
+  const { version, installed } = await invoke('info');
+  const verb = installed ? (installed.version === version ? 'Reinstall' : 'Update') : 'Install';
+  const choose = () => show('choose', `${verb} Frugal Deck`);
+  $('subtitle').textContent = installed
+    ? `Version ${installed.version} is installed ${installed.mode === 'machine' ? 'for everyone' : 'for you'}. This is version ${version}.`
+    : `Version ${version}`;
+  $('install').textContent = verb;
+  // An update stays where the installed copy is.
+  if (installed) {
+    $(`choice-${installed.mode === 'machine' ? 'user' : 'machine'}`).hidden = true;
+    $('form').elements.mode.value = installed.mode;
+  }
+  choose();
+  const quit = () => invoke('quit');
+  $('close').onclick = quit;
+  $('cancel').onclick = quit;
+  $('finish').onclick = quit;
+  $('retry').onclick = choose;
+  $('form').onsubmit = async (event) => {
+    event.preventDefault();
+    const open = $('open').checked;
+    show('installing', installed ? 'Updating Frugal Deck' : 'Installing Frugal Deck');
+    $('subtitle').textContent = 'Windows may ask for administrator permission.';
+    try {
+      await invoke('install', { everyone: $('form').elements.mode.value === 'machine', open });
+      show('done', 'Frugal Deck is installed', open ? 'It opens in a moment.' : 'Find it in the Start menu.');
+    } catch (error) {
+      show('failed', 'The installation stopped', String(error));
+    }
+    $('subtitle').textContent = `Version ${version}`;
+  };
+</script>
+</body>
+</html>

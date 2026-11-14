@@ -7,3 +7,5 @@ spikes/08-whisper/
 /spikes03-resume/
 /src-tauri/target/
 /src-tauri/gen/
+/setup/target/
+/setup/gen/
