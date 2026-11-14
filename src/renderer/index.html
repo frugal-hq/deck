@@ -206,6 +206,17 @@
     </div>
   </form>
 </dialog>
+<dialog id="update-dialog" class="organize" closedby="any" aria-labelledby="update-title">
+  <form method="dialog">
+    <h2 id="update-title" class="organize__title">Updates</h2>
+    <p id="update-status" class="organize__text" role="status"></p>
+    <div id="update-list" class="update__list"></div>
+    <div class="organize__actions">
+      <button id="update-pick" class="btn" type="button" data-tip="Install Frugal Deck from an installer file">Choose installer…</button>
+      <button class="btn" type="submit" data-tip="Close updates">Close</button>
+    </div>
+  </form>
+</dialog>
 <dialog id="settings-dialog" class="organize" closedby="any" aria-labelledby="settings-title">
   <form method="dialog">
     <h2 id="settings-title" class="organize__title">Settings</h2>

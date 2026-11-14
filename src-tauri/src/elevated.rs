@@ -85,7 +85,7 @@ pub fn utf8_cut(bytes: &[u8]) -> usize {
     }
 }
 
-fn system32() -> PathBuf {
+pub(crate) fn system32() -> PathBuf {
     PathBuf::from(std::env::var_os("SystemRoot").unwrap_or_else(|| "C:\\Windows".into())).join("System32")
 }
 

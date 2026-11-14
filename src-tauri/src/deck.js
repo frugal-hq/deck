@@ -123,5 +123,8 @@
     openLink: (url, cwd) => send('link:open', { url, cwd }),
     windowAction: (action) => send('window:action', { action }),
     onMaximized: (callback) => on('window:maximized', callback),
+    checkUpdates: () => invoke('update:check'),
+    pickInstaller: () => invoke('update:pick'),
+    installUpdate: (source) => invoke('update:install', { source }),
   };
 })();

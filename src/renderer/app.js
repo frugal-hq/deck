@@ -2948,7 +2948,51 @@ $('app-menu').onclick = () => {
     { label: 'New chat in a folder…', run: startInPicked },
     { label: 'Accounts', run: openAccounts },
     { label: 'Settings', run: openSettings },
+    { label: 'Updates', run: openUpdates },
   ], $('app-menu'));
+};
+// Installing closes the Deck, its chats with it, and the installer opens it again.
+async function installUpdate(source, button) {
+  for (const other of $('update-dialog').querySelectorAll('button')) other.disabled = true;
+  button?.setAttribute('aria-busy', 'true');
+  $('update-status').textContent = 'Installing. Frugal Deck closes and opens again.';
+  try {
+    await deck.installUpdate(source);
+  } catch (error) {
+    $('update-status').textContent = `The update did not start: ${error}`;
+    for (const other of $('update-dialog').querySelectorAll('button')) other.disabled = false;
+    button?.removeAttribute('aria-busy');
+  }
+}
+function updateRow(text, action, tip, run) {
+  const row = document.createElement('div');
+  row.className = 'update__row';
+  const label = document.createElement('span');
+  label.textContent = text;
+  const button = document.createElement('button');
+  Object.assign(button, { type: 'button', className: 'btn btn--primary', textContent: action });
+  button.dataset.tip = tip;
+  button.onclick = () => run(button);
+  row.append(label, button);
+  return row;
+}
+async function openUpdates() {
+  $('update-list').replaceChildren();
+  $('update-status').textContent = 'Checking for updates…';
+  $('update-dialog').showModal();
+  const { version, local, remote, error } = await deck.checkUpdates();
+  const install = 'Close Frugal Deck and its chats, install this version and open it again';
+  const rows = [];
+  if (local) rows.push(updateRow(`Local build from ${new Date(local.built).toLocaleString()}`, 'Install', install, (button) => installUpdate(local.path, button)));
+  if (remote?.url) rows.push(updateRow(`Version ${remote.version} on GitHub`, 'Install', install, (button) => installUpdate(remote.url, button)));
+  else if (remote) rows.push(updateRow(`Version ${remote.version} on GitHub has no installer`, 'Open', 'Open the release page', () => deck.openLink(remote.page)));
+  $('update-list').replaceChildren(...rows);
+  const github = error ? `GitHub could not be checked: ${error}` : rows.length ? '' : 'This is the latest version.';
+  $('update-status').textContent = `Frugal Deck ${version}. ${github}`.trim();
+}
+$('update-pick').onclick = async () => {
+  const file = await deck.pickInstaller();
+  if (file) installUpdate(file, $('update-pick'));
 };
 render();
 for (const button of document.querySelectorAll('[data-window-action]')) {

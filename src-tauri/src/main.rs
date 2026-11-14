@@ -10,6 +10,7 @@ mod organizer;
 mod os;
 mod statusline;
 mod tasks;
+mod update;
 mod voice;
 
 use serde_json::json;
@@ -204,7 +205,10 @@ fn main() {
             organizer::workspaces_run,
             organizer::joins_estimate,
             organizer::joins_run,
-            statusline::chat_save_edit
+            statusline::chat_save_edit,
+            update::update_check,
+            update::update_pick,
+            update::update_install
         ])
         .build(tauri::generate_context!())
         .expect("Frugal Deck failed to start")
