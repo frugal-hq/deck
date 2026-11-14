@@ -539,6 +539,7 @@ function accountBlock(account, primary, chat, caps) {
   block.append(head, ...loginLines(account));
   const limits = accountLimits(account).filter(([, limit]) => limit);
   block.append(...(limits.length ? limits.map(([label, limit]) => limitRow(label, limit)) : [node('span', 'account__detail', 'No reading yet')]));
+  if (caps && account.usedToday) block.append(node('span', 'account__detail', `${account.usedToday} delegated today`));
   if (caps) block.append(...capsBlock(account));
   return block;
 }

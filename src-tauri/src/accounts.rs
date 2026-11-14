@@ -168,6 +168,7 @@ impl Accounts {
     pub fn snapshot(&mut self, at: f64) -> Value {
         let s = self.load();
         let mut list = self.claude_accounts();
+        let frugal = self.frugal_accounts();
         for a in &mut list {
             let id = string(&a["id"]).to_owned();
             let signed_in = is_signed_in(a);
@@ -177,6 +178,8 @@ impl Accounts {
             a["limits"] = s["readings"][&id].clone();
             a["caps"] = account_caps(&id, &s);
             a["capsApply"] = json!(self.caps_apply(&id));
+            a["usedToday"] = frugal.iter().find(|e| e["id"] == id.as_str())
+                .filter(|e| e["day"] == local_day(at) && e["used"].is_number()).map_or(json!(0), |e| e["used"].clone());
         }
         for i in 0..list.len() {
             let email = string(&list[i]["email"]).to_lowercase();
