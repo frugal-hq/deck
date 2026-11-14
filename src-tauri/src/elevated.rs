@@ -348,7 +348,9 @@ fn handshake(stream: TcpStream, secret: &str) -> Option<Handshake> {
     if answer["elevated"] != true {
         return Some(Err(NOT_ELEVATED.to_owned()));
     }
+    // A cloned socket keeps the timeout it was cloned with on Windows, so both ends drop it; a stale one ended idle chats.
     stream.set_read_timeout(None).ok()?;
+    reader.get_ref().set_read_timeout(None).ok()?;
     Some(Ok((stream, reader)))
 }
 
