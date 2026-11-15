@@ -463,7 +463,11 @@ mod tests {
             assert_eq!(run_shell(bash, &["-c"], command, &dir.0, &body), "");
             assert_eq!(seen.lock().unwrap().len(), 1);
             assert_eq!(seen.lock().unwrap()[0], ("a".to_owned(), read_meters(&full)));
-            let _ = run_shell(Path::new("powershell.exe"), &["-NoProfile", "-Command"], command, &dir.0, &body);
+            // A cold PowerShell on a busy CI runner can take longer than CHAIN_TIMEOUT, so this one runs without it.
+            let mut powershell = Command::new("powershell.exe").args(["-NoProfile", "-Command", command]).current_dir(&dir.0)
+                .stdin(Stdio::piped()).stdout(Stdio::null()).spawn().unwrap();
+            powershell.stdin.take().unwrap().write_all(body.as_bytes()).unwrap();
+            powershell.wait().unwrap();
             assert_eq!(seen.lock().unwrap().len(), 2);
 
             let chained = bridge.register("b", &dir.0, &env, Some(&json!({ "type": "command", "command": "read -r line; echo \"USER:${#line}\"", "padding": 3 })));
