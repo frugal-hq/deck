@@ -11,7 +11,7 @@ use std::collections::HashMap;
 use std::io::{BufRead, BufReader, Read, Write};
 use std::net::{Shutdown, SocketAddrV4, TcpListener, TcpStream};
 use std::os::windows::process::CommandExt;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{mpsc, Arc, Condvar, Mutex};
@@ -105,10 +105,15 @@ pub(crate) fn iso(ms: u64) -> String {
 
 // The first elevated helper registers a scheduled task that runs it with highest privileges, so later Deck runs start it
 // without UAC; Task Scheduler puts the address and secret into $(Arg0) and $(Arg1).
-// frugal: any process of this user can run the task, and the Deck folder is user-writable until the installer (Phase 7).
+// Only for an exe in Program Files: in a user-writable folder any program could replace the exe the task starts as administrator.
+// frugal: any process of this user can still run the task with its own address and secret.
 const TASK_FOLDER: &str = "\\Frugal Deck";
 const TASK_NAME: &str = "Administrator helper";
 const TASK_ARGUMENTS: &str = "--elevated-helper $(Arg0) $(Arg1)";
+
+fn protected(exe: &Path) -> bool {
+    ["ProgramW6432", "ProgramFiles"].into_iter().filter_map(std::env::var_os).any(|folder| exe.starts_with(folder))
+}
 
 fn quote(text: &str) -> String {
     format!("'{}'", text.replace('\'', "''"))
@@ -140,11 +145,12 @@ fn log(text: &str) {
 // Start-Process fails when the UAC prompt is declined.
 fn launch_elevated(addr: &str, secret: &str) -> bool {
     let Ok(exe) = std::env::current_exe() else { return false };
+    let lookup = if protected(&exe) { find_task(&exe.to_string_lossy()) } else { "$current = $false; $why = 'the Deck is not in Program Files'".into() };
     let exe = exe.to_string_lossy();
     let argument_list = format!("\"{FLAG}\" \"{addr}\" \"{secret}\"");
     let script = format!(
         "{}\nif ($current) {{ try {{ $task.Run([string[]]@({}, {})) | Out-Null; exit 0 }} catch {{ \"task run failed: $_\" }} }} elseif ($why) {{ \"task lookup failed: $why\" }} else {{ \"task missing or changed: $($action.Path) $($action.Arguments)\" }}\nStart-Process -FilePath {} -ArgumentList {} -Verb RunAs -WindowStyle Hidden",
-        find_task(&exe), quote(addr), quote(secret), quote(&exe), quote(&argument_list)
+        lookup, quote(addr), quote(secret), quote(&exe), quote(&argument_list)
     );
     let Ok(out) = powershell(&script).output() else { return false };
     let text = String::from_utf8_lossy(&out.stdout);
@@ -157,6 +163,7 @@ fn launch_elevated(addr: &str, secret: &str) -> bool {
 // Runs in the elevated helper, which may create the task. A failure only means the next Deck run asks UAC again.
 fn register_task() {
     let Ok(exe) = std::env::current_exe() else { return };
+    if !protected(&exe) { return; }
     let exe = exe.to_string_lossy();
     let script = format!(
         "{}\nif ($current) {{ exit 0 }}\n$action = New-ScheduledTaskAction -Execute {} -Argument {}\n$principal = New-ScheduledTaskPrincipal -UserId ([Security.Principal.WindowsIdentity]::GetCurrent().Name) -LogonType Interactive -RunLevel Highest\n$settings = New-ScheduledTaskSettingsSet -AllowStartIfOnBatteries -DontStopIfGoingOnBatteries -ExecutionTimeLimit ([TimeSpan]::Zero) -MultipleInstances Parallel -Priority 4\nRegister-ScheduledTask -TaskPath {} -TaskName {} -Action $action -Principal $principal -Settings $settings -Force | Out-Null",
