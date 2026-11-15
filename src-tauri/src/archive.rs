@@ -2,7 +2,8 @@
 // A copy mirrors its transcript's path under %USERPROFILE%, so restoring needs no database.
 
 use flate2::{read::GzDecoder, write::GzEncoder, Compression};
-use serde_json::{json, Value};
+use rusqlite::{Connection, OpenFlags};
+use serde_json::json;
 use std::fs::{self, File};
 use std::io::{self, Write};
 use std::path::{Path, PathBuf};
@@ -70,21 +71,24 @@ pub fn restore(home: &Path, copy: &Path) -> Result<PathBuf> {
     Ok(target)
 }
 
-pub fn copy_all(app: &AppHandle, home: &Path, sessions: &[Value], idle: Duration) {
+pub fn copy_all(app: &AppHandle, home: &Path, files: &[String], idle: Duration) {
     let mut failed = None;
-    for file in sessions.iter().filter_map(|s| s["file"].as_str()).filter(|f| !is_copy(f)) {
+    for file in files.iter().filter(|f| !is_copy(f)) {
         if let Err(error) = copy(home, Path::new(file), idle) { failed.get_or_insert(format!("Archive copy of {file} failed: {error}")); }
     }
     if let Some(error) = failed { crate::index::publish(app, json!({ "error": error })); }
 }
 
-// After the startup scan, then every hour.
+// After the startup scan, then every hour. Read from deck.db, since the sidebar leaves out chats whose folder is gone, such as a removed worktree.
 pub fn start(app: AppHandle, home: PathBuf) {
+    let db = home.join(".frugal-deck").join("deck.db");
     thread::spawn(move || loop {
         let index = app.state::<Index>();
         while index.get("indexing") != false { thread::sleep(Duration::from_secs(5)); }
-        let sessions = index.get("sessions");
-        copy_all(&app, &home, sessions.as_array().map(Vec::as_slice).unwrap_or_default(), IDLE);
+        match Connection::open_with_flags(&db, OpenFlags::SQLITE_OPEN_READ_ONLY).map_err(Into::into).and_then(|db| crate::index::archivable(&db)) {
+            Ok(files) => copy_all(&app, &home, &files, IDLE),
+            Err(error) => crate::index::publish(&app, json!({ "error": format!("Archive copy failed: {error}") })),
+        }
         thread::sleep(EVERY);
     });
 }

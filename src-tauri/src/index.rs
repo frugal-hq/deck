@@ -503,6 +503,13 @@ pub fn list_index(db: &Connection) -> Result<Value> {
         "sessions": sessions, "ambiguous": unresolved, "modelJoins": model_joins}))
 }
 
+// What list_index shows, plus sessions whose folder is gone.
+pub fn archivable(db: &Connection) -> Result<Vec<String>> {
+    let mut query = db.prepare("SELECT file FROM sessions WHERE turns > 0 AND cwd IS NOT NULL AND last_at IS NOT NULL AND COALESCE(entrypoint, '') <> 'sdk-cli'")?;
+    let files = query.query_map([], |r| r.get(0))?.collect::<rusqlite::Result<_>>()?;
+    Ok(files)
+}
+
 pub fn list_sessions(db: &Connection) -> Result<Vec<Value>> {
     Ok(list_index(db)?["sessions"].as_array().unwrap().clone())
 }
@@ -1031,11 +1038,11 @@ pub fn groups_delete(index: State<Index>, ids: Value, group: String) {
 pub fn sessions_set_archived(app: AppHandle, index: State<Index>, ids: Value, archived: bool) {
     if archived && valid_ids(&ids) {
         let wanted: HashSet<&str> = ids.as_array().unwrap().iter().filter_map(Value::as_str).collect();
-        let sessions: Vec<Value> = index.state.lock().unwrap()["sessions"].as_array().into_iter().flatten()
-            .filter(|s| s["id"].as_str().is_some_and(|id| wanted.contains(id))).cloned().collect();
+        let files: Vec<String> = index.state.lock().unwrap()["sessions"].as_array().into_iter().flatten()
+            .filter(|s| s["id"].as_str().is_some_and(|id| wanted.contains(id))).filter_map(|s| s["file"].as_str().map(str::to_owned)).collect();
         if let Some(home) = std::env::var_os("USERPROFILE").map(PathBuf::from) {
             let app = app.clone();
-            thread::spawn(move || archive::copy_all(&app, &home, &sessions, Duration::ZERO));
+            thread::spawn(move || archive::copy_all(&app, &home, &files, Duration::ZERO));
         }
     }
     index.run(move |db, _| save_archived(db, &ids, archived));
@@ -1962,6 +1969,10 @@ mod tests {
         assert!(save_archived(&f.db, &json!([id(1)]), false).unwrap());
         assert_eq!(f.session(1)["archived"], false);
         assert!(!save_archived(&f.db, &json!(["x"]), true).unwrap());
+        f.write(2, &f.user_extra("gone", "2026-01-03T00:00:00Z", json!({"cwd": home.join("removed-worktree")})));
+        f.sync(2);
+        assert!(!f.listed().contains(&json!(id(2))), "hidden from the sidebar");
+        assert!(archivable(&f.db).unwrap().contains(&f.file(2)), "still copied");
     }
 
     #[test]
