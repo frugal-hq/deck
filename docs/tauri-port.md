@@ -51,9 +51,9 @@ Missed clicks, this session's UI changes and `~/.frugal-deck/elevated.log` after
 
 ### Unfinished from docs/PLAN.md
 
-- **Phase 1:** `claude.exe` is found on PATH, next to an npm shim, or in `%USERPROFILE%\.local\bin`, where the native installer puts it without changing PATH. Still to check by hand: a real user status line and an untrusted folder (Test 6).
+- **Phase 1:** `claude.exe` is found on PATH, next to an npm shim, or in `%USERPROFILE%\.local\bin`, where the native installer puts it without changing PATH. A real user status line and an untrusted folder with two accounts were checked by hand on 2026-11-14.
 - **Phase 3:** a handoff on 2026-11-14 named two `Read first:` paths and the new session read neither before its first reply, which only asked a question; frugal has no rule on the receiving side to read them.
-- **Phase 4:** the first admin chat, the scheduled-task path and the log were checked by hand on 2026-11-14. Still to check: the elevated TUI's resize and Ctrl+G from an elevated chat. The task is used only for an exe in Program Files; elsewhere every admin chat asks UAC.
+- **Phase 4:** the first admin chat, the scheduled-task path and the log were checked by hand on 2026-11-14. So were the elevated TUI's resize and Ctrl+G from an elevated chat. The task is used only for an exe in Program Files; elsewhere every admin chat asks UAC.
 - **Phase 5:** checked by hand on 2026-11-14. Parakeet stays later.
 - **Phase 6, not started:** git diff and worktree panel, `claude -w`, diff lines as `@file:line`, full chain view, archive and archived view, compressed copy in `~/.frugal-deck/archive/`, system notifications. The archive copy is mandatory before 0.1.0.
 - **Phase 7, not started:** installer and CI (the Tauri NSIS work in phase 7 above covers part), README with screenshots and terms notice, re-register the administrator task on install and remove it on uninstall.
