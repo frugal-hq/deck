@@ -339,7 +339,8 @@ pub fn sync_file(db: &Connection, file: &str, mut handoffs: Option<&mut Vec<Valu
     let id = session_id(file);
     let size = fs::metadata(file)?.len();
     let mut row = all(db, "SELECT * FROM sessions WHERE id = ?", [&id])?.pop().unwrap_or(Value::Null);
-    if row["size"].as_u64() == Some(size) { return Ok(false); }
+    // An archive copy may by chance be as long as the transcript it replaces, so the size alone does not mean unchanged.
+    if row["file"].as_str() == Some(file) && row["size"].as_u64() == Some(size) { return Ok(false); }
     // An archive copy is gzipped, so it is always read from the start.
     let copy = archive::is_copy(file);
     if row.is_null() || copy || size < row["offset"].as_u64().unwrap() {
