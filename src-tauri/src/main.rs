@@ -1,6 +1,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod accounts;
+mod archive;
 mod chat;
 mod elevated;
 mod handoff;
@@ -156,6 +157,7 @@ fn main() {
             )?;
             app.manage(bridge);
             index::start(app.handle().clone());
+            archive::start(app.handle().clone(), std::path::PathBuf::from(std::env::var_os("USERPROFILE").ok_or("No user folder.")?));
             Ok(())
         })
         .plugin(tauri_plugin_dialog::init())
@@ -177,6 +179,7 @@ fn main() {
             index::groups_delete,
             index::workspaces_clear,
             index::sessions_link,
+            index::sessions_set_archived,
             index::sessions_undo_link,
             index::joins_clear,
             index::topics_restore_titles,

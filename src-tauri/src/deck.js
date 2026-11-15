@@ -100,6 +100,7 @@
     setRoles: (on) => send('settings:set-roles', { on }),
     getMouse: () => invoke('settings:mouse'),
     setMouse: (on) => send('settings:set-mouse', { on }),
+    setArchived: (ids, archived) => send('sessions:set-archived', { ids, archived }),
     getKeepTranscripts: () => invoke('settings:keep-transcripts'),
     setKeepTranscripts: (on) => invoke('settings:set-keep-transcripts', { on }),
     renameAccount: (id, name) => invoke('accounts:rename', { id, name }),

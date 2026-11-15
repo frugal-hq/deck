@@ -324,7 +324,12 @@ fn launch(app: &AppHandle, id: &str, folder: PathBuf, size: (u16, u16), resume: 
             accounts::ensure_onboarded(dir)?;
         }
         if resume {
-            accounts::share_transcript(Path::new(session["file"].as_str().unwrap_or_default()), dir)?;
+            let mut file = PathBuf::from(session["file"].as_str().unwrap_or_default());
+            if crate::archive::is_copy(&file.to_string_lossy()) {
+                let home = accounts.lock().unwrap().home.clone();
+                file = crate::archive::restore(&home, &file)?;
+            }
+            accounts::share_transcript(&file, dir)?;
         }
         let topic = group.or(session["topic"].as_str().filter(|topic| !topic.is_empty()));
         let workspaces = index.workspaces_of(&session["space"], topic, &folder.to_string_lossy());
@@ -403,6 +408,12 @@ fn start(app: &AppHandle, options: StartOptions, output: Channel<Value>) -> Valu
     let account = accounts.lock().unwrap().primary();
     let frugal = !resume && options.frugal == true && accounts::has_frugal(&account);
     let prompt = frugal.then_some("/frugal:frugal");
+    // Reopening an archived session brings its whole chat back to the sidebar.
+    if let Some(chat) = index.session(&options.id).filter(|s| resume && s["archived"] == true).map(|s| s["chatId"].clone()) {
+        let ids: Vec<Value> = index.get("sessions").as_array().into_iter().flatten().filter(|s| s["chatId"] == chat).map(|s| s["id"].clone()).collect();
+        let ids = Value::Array(ids);
+        index.run(move |db, _| crate::index::save_archived(db, &ids, false));
+    }
     let mut started = launch(app, &options.id, folder, (options.cols, options.rows), resume, &options.group, &account, prompt, options.bypass == true, options.admin == true, output);
     if started["ok"] == true {
         started["frugal"] = json!(frugal);

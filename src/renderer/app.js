@@ -2348,6 +2348,54 @@ $('workspace-form').onsubmit = () => {
   if (movingGroup) placeGroup(movingGroup, $('workspace-name').value);
 };
 $('workspace-cancel').onclick = () => workspaceDialog.close();
+$('organize-archive').onclick = () => {
+  organize.close();
+  deck.setArchived(currentIndex.sessions.filter((s) => s.chatId === organizing.chatId).map((s) => s.id), true);
+};
+
+// Newest first. A session that is not the first of its chat names that chat; opening one brings its chat back.
+async function drawArchived() {
+  const all = await deck.getAllSessions();
+  const byId = new Map(all.map((s) => [s.id, s]));
+  const archived = all.filter((s) => s.archived).sort((a, b) => b.archivedAt.localeCompare(a.archivedAt));
+  $('archived-empty').hidden = archived.length > 0;
+  $('archived-list').replaceChildren(...archived.map((session) => {
+    const item = document.createElement('li');
+    item.className = 'archived__item';
+    const open = document.createElement('button');
+    open.type = 'button';
+    open.className = 'session';
+    open.dataset.tip = session.cwd;
+    const title = document.createElement('span');
+    title.className = 'session__title';
+    title.textContent = session.title;
+    const from = document.createElement('span');
+    from.className = 'session__folder';
+    const chat = byId.get(session.chatId);
+    from.textContent = session.chatId !== session.id && chat ? `from ${chat.title}` : folderName(session.cwd);
+    open.append(title, from);
+    open.onclick = () => {
+      $('archived-dialog').close();
+      resumeSession(session);
+    };
+    const restore = document.createElement('button');
+    restore.type = 'button';
+    restore.className = 'btn';
+    restore.textContent = 'Unarchive';
+    restore.dataset.tip = 'Back to the sidebar';
+    restore.onclick = () => {
+      deck.setArchived([session.id], false);
+      item.remove();
+      $('archived-empty').hidden = $('archived-list').childElementCount > 0;
+    };
+    item.append(open, restore);
+    return item;
+  }));
+}
+$('archived').onclick = async () => {
+  await drawArchived();
+  $('archived-dialog').showModal();
+};
 
 const menu = $('menu');
 

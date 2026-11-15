@@ -14,6 +14,7 @@ use notify::{RecursiveMode, Watcher};
 use tauri::{AppHandle, Emitter, Manager, State};
 use crate::chat::Chats;
 use crate::handoff;
+use crate::archive;
 
 type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 const CHUNK: usize = 1 << 20;
@@ -260,13 +261,12 @@ pub fn open_index(file: &str) -> Result<Connection> {
     db.execute_batch(r#"CREATE TABLE IF NOT EXISTS session_group (session_id TEXT PRIMARY KEY, name TEXT NOT NULL)"#)?;
     db.execute_batch(r#"CREATE TABLE IF NOT EXISTS group_workspace (name TEXT PRIMARY KEY COLLATE NOCASE, workspace TEXT NOT NULL, origin TEXT NOT NULL)"#)?;
     db.execute_batch(r#"CREATE TABLE IF NOT EXISTS workspace_parent (name TEXT PRIMARY KEY COLLATE NOCASE, parent TEXT NOT NULL)"#)?;
+    db.execute_batch(r#"CREATE TABLE IF NOT EXISTS session_archived (session_id TEXT PRIMARY KEY, at TEXT NOT NULL)"#)?;
     if stale { db.execute_batch("PRAGMA user_version = 2")?; }
     Ok(db)
 }
 
-fn read_lines(file: &str, start: u64, mut on_line: impl FnMut(&str)) -> std::io::Result<u64> {
-    let mut file = fs::File::open(file)?;
-    file.seek(SeekFrom::Start(start))?;
+fn read_lines(mut file: impl Read, start: u64, mut on_line: impl FnMut(&str)) -> std::io::Result<u64> {
     let mut chunk = vec![0; CHUNK];
     let mut pending = Vec::new();
     let mut offset = start;
@@ -287,7 +287,8 @@ fn read_lines(file: &str, start: u64, mut on_line: impl FnMut(&str)) -> std::io:
 
 fn session_id(file: &str) -> String {
     let name = Path::new(file).file_name().unwrap_or_default().to_string_lossy();
-    name.strip_suffix(".jsonl").unwrap_or(&name).to_owned()
+    let name = name.strip_suffix(".gz").unwrap_or(&name);
+    name.strip_suffix(".jsonl").unwrap_or(name).to_owned()
 }
 
 fn apply_record(row: &mut Value, record: &Value, emissions: &mut Vec<Value>, handoffs: &mut Option<&mut Vec<Value>>) {
@@ -339,18 +340,29 @@ pub fn sync_file(db: &Connection, file: &str, mut handoffs: Option<&mut Vec<Valu
     let size = fs::metadata(file)?.len();
     let mut row = all(db, "SELECT * FROM sessions WHERE id = ?", [&id])?.pop().unwrap_or(Value::Null);
     if row["size"].as_u64() == Some(size) { return Ok(false); }
-    if row.is_null() || size < row["offset"].as_u64().unwrap() {
+    // An archive copy is gzipped, so it is always read from the start.
+    let copy = archive::is_copy(file);
+    if row.is_null() || copy || size < row["offset"].as_u64().unwrap() {
         db.execute("DELETE FROM session_handoffs WHERE session_id = ?", [&id])?;
         row = json!({"id": id, "file": file, "size": size, "offset": 0, "cwd": null, "entrypoint": null, "custom_title": null,
             "ai_title": null, "first_prompt": null, "turns": 0, "last_at": null, "started_at": null, "handoff_hash": null, "handoff_goal": null});
     }
+    // A transcript restored from its copy holds the same bytes, so reading goes on from the copy's offset.
+    if archive::is_copy(row["file"].as_str().unwrap_or_default()) { row["file"] = json!(file); }
     row["size"] = json!(size);
     let mut emissions = Vec::new();
-    row["offset"] = json!(read_lines(file, row["offset"].as_u64().unwrap(), |line| {
+    let start = row["offset"].as_u64().unwrap();
+    let mut reader = fs::File::open(file)?;
+    let on_line = |line: &str| {
         if let Ok(record) = serde_json::from_str::<Value>(line) {
             if record.is_object() || record.is_array() { apply_record(&mut row, &record, &mut emissions, &mut handoffs); }
         }
-    })?);
+    };
+    let offset = if copy { read_lines(flate2::read::GzDecoder::new(reader), 0, on_line)? } else {
+        reader.seek(SeekFrom::Start(start))?;
+        read_lines(reader, start, on_line)?
+    };
+    row["offset"] = json!(offset);
     db.execute(r#"INSERT OR REPLACE INTO sessions (id, file, size, offset, cwd, entrypoint, custom_title, ai_title, first_prompt, turns, last_at, started_at, handoff_hash, handoff_goal)
     VALUES (:id, :file, :size, :offset, :cwd, :entrypoint, :custom_title, :ai_title, :first_prompt, :turns, :last_at, :started_at, :handoff_hash, :handoff_goal)"#, named_params! {
         ":id": row["id"].as_str(), ":file": row["file"].as_str(), ":size": row["size"].as_i64(), ":offset": row["offset"].as_i64(),
@@ -382,7 +394,7 @@ pub fn scan(db: &Connection, roots: &[String], mut on_batch: impl FnMut()) -> Re
             for entry in fs::read_dir(project.path())? {
                 let entry = entry?;
                 let file = entry.path().to_string_lossy().into_owned();
-                if !entry.file_type()?.is_file() || !file.ends_with(".jsonl") || !seen.insert(session_id(&file)) { continue; }
+                if !entry.file_type()?.is_file() || !(file.ends_with(".jsonl") || archive::is_copy(&file)) || !seen.insert(session_id(&file)) { continue; }
                 if !matches!(sync_file(&tx, &file, None), Ok(true)) { continue; }
                 changed += 1;
                 if changed.is_multiple_of(BATCH) {
@@ -446,14 +458,16 @@ pub fn list_index(db: &Connection) -> Result<Value> {
     let mut usable = HashMap::new();
     let mut sessions = Vec::new();
     for mut row in all(db, r#"SELECT id, file, cwd, COALESCE(NULLIF(custom_title, ''), NULLIF(a.title, ''), NULLIF(ai_title, ''), first_prompt, 'Untitled') AS title, last_at AS lastAt, started_at AS startedAt, turns, COALESCE(pinned, 0) AS pinned, space, COALESCE(tags, '[]') AS tags,
-      CASE WHEN g.name = '' THEN NULL ELSE COALESCE(g.name, a.topic) END AS topic, NULLIF(g.name, '') AS userGroup, COALESCE(g.name = '', 0) AS noGroup, a.title AS autoTitle, NULLIF(custom_title, '') AS customTitle, NULLIF(ai_title, '') AS aiTitle, first_prompt AS firstPrompt
-    FROM sessions LEFT JOIN session_org o ON o.session_id = id LEFT JOIN session_auto a ON a.session_id = id LEFT JOIN session_group g ON g.session_id = id
+      CASE WHEN g.name = '' THEN NULL ELSE COALESCE(g.name, a.topic) END AS topic, NULLIF(g.name, '') AS userGroup, COALESCE(g.name = '', 0) AS noGroup, a.title AS autoTitle, NULLIF(custom_title, '') AS customTitle, NULLIF(ai_title, '') AS aiTitle, first_prompt AS firstPrompt, ar.at AS archivedAt
+    FROM sessions LEFT JOIN session_org o ON o.session_id = id LEFT JOIN session_auto a ON a.session_id = id LEFT JOIN session_group g ON g.session_id = id LEFT JOIN session_archived ar ON ar.session_id = id
     WHERE turns > 0 AND cwd IS NOT NULL AND last_at IS NOT NULL AND COALESCE(entrypoint, '') <> 'sdk-cli'
     ORDER BY last_at DESC"#, [])? {
         let cwd = row["cwd"].as_str().unwrap();
         if !*usable.entry(cwd.to_owned()).or_insert_with(|| !folder_key(Path::new(cwd)).starts_with(&temp) && Path::new(cwd).exists()) { continue; }
         row["pinned"] = json!(row["pinned"] == 1);
         row["noGroup"] = json!(row["noGroup"] == 1);
+        row["archived"] = json!(!row["archivedAt"].is_null());
+        row["stored"] = json!(archive::is_copy(row["file"].as_str().unwrap()));
         row["tags"] = serde_json::from_str(row["tags"].as_str().unwrap())?;
         sessions.push(row);
     }
@@ -593,6 +607,17 @@ pub fn save_group(db: &Connection, id: &str, name: Option<&str>) -> Result<bool>
 
 fn valid_ids(ids: &Value) -> bool {
     ids.as_array().is_some_and(|a| !a.is_empty() && a.iter().all(|id| id.as_str().is_some_and(is_uuid)))
+}
+
+pub fn save_archived(db: &Connection, ids: &Value, archived: bool) -> Result<bool> {
+    if !valid_ids(ids) { return Ok(false); }
+    let tx = db.unchecked_transaction()?;
+    for id in ids.as_array().unwrap() {
+        if archived { tx.execute("INSERT OR IGNORE INTO session_archived (session_id, at) VALUES (?, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))", [id.as_str()])?; }
+        else { tx.execute("DELETE FROM session_archived WHERE session_id = ?", [id.as_str()])?; }
+    }
+    tx.commit()?;
+    Ok(true)
 }
 
 pub fn rename_workspace(db: &Connection, from: &str, to: &str) -> Result<bool> {
@@ -786,6 +811,8 @@ fn sidebar(index: &Value, live: impl Fn(&str) -> bool) -> Value {
         *n += 1;
         *n <= PER_GROUP
     };
+    // Archived sessions show in the Archived view, unless open.
+    let sessions: Vec<&Value> = sessions.iter().filter(|s| s["archived"] != true || live(s["id"].as_str().unwrap_or_default())).collect();
     let mut chats = HashSet::new();
     for (i, s) in sessions.iter().enumerate() {
         let topic = early(format!("t:{}", s["topic"].as_str().unwrap_or_default()));
@@ -812,7 +839,7 @@ pub fn changed(app: &AppHandle) {
     let _ = app.emit("sessions:changed", [sidebar_of(app)]);
 }
 
-fn publish(app: &AppHandle, next: Value) {
+pub(crate) fn publish(app: &AppHandle, next: Value) {
     {
         let index = app.state::<Index>();
         let mut state = index.state.lock().unwrap();
@@ -848,7 +875,9 @@ fn index_loop(app: &AppHandle, jobs: mpsc::Sender<Msg>, inbox: mpsc::Receiver<Ms
     let roots: Vec<PathBuf> = crate::accounts::Accounts::new(home.clone(), home.join(".codex")).claude_accounts()
         .iter().map(|a| Path::new(a["configDir"].as_str().unwrap()).join("projects")).collect();
     let file = home.join(".frugal-deck").join("deck.db").to_string_lossy().into_owned();
-    let names: Vec<String> = roots.iter().map(|root| root.to_string_lossy().into_owned()).collect();
+    // Archive copies come after the live roots, so a transcript still on disk wins.
+    let names: Vec<String> = roots.iter().cloned().chain(roots.iter().filter_map(|root| archive::mirror(&home, root)))
+        .map(|root| root.to_string_lossy().into_owned()).collect();
     let db = until_free(|| {
         let db = open_index(&file)?;
         publish(app, listed(&db, true)?);
@@ -898,7 +927,10 @@ fn index_loop(app: &AppHandle, jobs: mpsc::Sender<Msg>, inbox: mpsc::Receiver<Ms
                 let swept = pending.drain().try_for_each(|path| {
                     let file = path.to_string_lossy();
                     if sync_file(&db, &file, Some(&mut handoffs)).is_err() && !path.exists() {
-                        remove_session(&db, &file)?;
+                        match archive::copy_path(&home, &path).filter(|copy| copy.exists()) {
+                            Some(copy) => { sync_file(&db, &copy.to_string_lossy(), None)?; }
+                            None => remove_session(&db, &file)?,
+                        }
                     }
                     Ok(())
                 });
@@ -993,6 +1025,20 @@ pub fn groups_rename(app: AppHandle, accounts: State<Mutex<crate::accounts::Acco
 #[tauri::command]
 pub fn groups_delete(index: State<Index>, ids: Value, group: String) {
     index.run(move |db, _| delete_group(db, &ids, &group));
+}
+
+#[tauri::command]
+pub fn sessions_set_archived(app: AppHandle, index: State<Index>, ids: Value, archived: bool) {
+    if archived && valid_ids(&ids) {
+        let wanted: HashSet<&str> = ids.as_array().unwrap().iter().filter_map(Value::as_str).collect();
+        let sessions: Vec<Value> = index.state.lock().unwrap()["sessions"].as_array().into_iter().flatten()
+            .filter(|s| s["id"].as_str().is_some_and(|id| wanted.contains(id))).cloned().collect();
+        if let Some(home) = std::env::var_os("USERPROFILE").map(PathBuf::from) {
+            let app = app.clone();
+            thread::spawn(move || archive::copy_all(&app, &home, &sessions, Duration::ZERO));
+        }
+    }
+    index.run(move |db, _| save_archived(db, &ids, archived));
 }
 
 #[tauri::command]
@@ -1741,7 +1787,7 @@ mod tests {
             "sessions": [{"id": id(1), "file": f.file(1), "cwd": f.cwd, "title": "original", "lastAt": "2026-01-01T00:00:00Z",
                 "startedAt": "2026-01-01T00:00:00Z", "turns": 1, "pinned": false, "space": null, "tags": [], "topic": null,
                 "userGroup": null, "noGroup": false, "autoTitle": null, "customTitle": null, "aiTitle": null, "firstPrompt": "original",
-                "parentId": null, "chatId": id(1)}]}));
+                "archivedAt": null, "archived": false, "stored": false, "parentId": null, "chatId": id(1)}]}));
         for value in [Value::Null, json!(false), json!(0), json!("")] {
             f.append(1, &f.user_extra("count", "2026-01-02T00:00:00Z", json!({"toolUseResult": value, "isMeta": value, "isSidechain": value})));
         }
@@ -1801,12 +1847,13 @@ mod tests {
         let file = f.dir.0.join("chunks");
         fs::write(&file, "x".repeat(CHUNK - 1) + "\u{e9}\npartial").unwrap();
         let mut lines = Vec::new();
-        let offset = read_lines(file.to_str().unwrap(), 0, |line| lines.push(line.to_owned())).unwrap();
+        let open = |at| { let mut reader = fs::File::open(&file).unwrap(); reader.seek(SeekFrom::Start(at)).unwrap(); reader };
+        let offset = read_lines(open(0), 0, |line| lines.push(line.to_owned())).unwrap();
         assert_eq!(offset, CHUNK as u64 + 2);
         assert_eq!(lines, vec!["x".repeat(CHUNK - 1) + "\u{e9}"]);
         fs::OpenOptions::new().append(true).open(&file).unwrap().write_all(b" done\n").unwrap();
         lines.clear();
-        assert_eq!(read_lines(file.to_str().unwrap(), offset, |line| lines.push(line.to_owned())).unwrap(), fs::metadata(&file).unwrap().len());
+        assert_eq!(read_lines(open(offset), offset, |line| lines.push(line.to_owned())).unwrap(), fs::metadata(&file).unwrap().len());
         assert_eq!(lines, vec!["partial done"]);
         for n in 0..=BATCH { f.write(n, &f.user("batch", "2026-01-01T00:00:00Z")); }
         let root = f.dir.0.join("projects").to_string_lossy().into_owned();
@@ -1886,6 +1933,35 @@ mod tests {
         assert_eq!(ids.len(), 525);
         assert!(dropped.iter().all(|id| !ids.contains(id)));
         assert_eq!(out["indexing"], false);
+    }
+
+    #[test]
+    fn archive_copy_keeps_deleted_transcripts_and_archived_leave_the_sidebar() {
+        let f = Fixture::new();
+        let home = &f.dir.0;
+        let roots = [home.join("projects"), archive::mirror(home, &home.join("projects")).unwrap()].map(|r| r.to_string_lossy().into_owned());
+        f.write(1, &f.user("hello", "2026-01-01T00:00:00Z"));
+        scan(&f.db, &roots, || {}).unwrap();
+        let live = f.session(1);
+        assert_eq!(live["stored"], false);
+        assert!(archive::copy(home, Path::new(&f.file(1)), Duration::ZERO).unwrap());
+        fs::remove_file(f.file(1)).unwrap();
+        scan(&f.db, &roots, || {}).unwrap();
+        let stored = f.session(1);
+        assert_eq!((&stored["stored"], &stored["title"], &stored["lastAt"]), (&json!(true), &live["title"], &live["lastAt"]));
+        archive::restore(home, Path::new(stored["file"].as_str().unwrap())).unwrap();
+        f.append(1, &f.user("again", "2026-01-02T00:00:00Z"));
+        scan(&f.db, &roots, || {}).unwrap();
+        let back = f.session(1);
+        assert_eq!((&back["stored"], &back["lastAt"]), (&json!(false), &json!("2026-01-02T00:00:00Z")));
+        assert_eq!(Path::new(back["file"].as_str().unwrap()), Path::new(&f.file(1)));
+        assert!(save_archived(&f.db, &json!([id(1)]), true).unwrap());
+        assert_eq!(f.session(1)["archived"], true);
+        assert!(sidebar(&f.index(), |_| false)["sessions"].as_array().unwrap().is_empty());
+        assert_eq!(sidebar(&f.index(), |s| s == id(1))["sessions"].as_array().unwrap().len(), 1, "open stays");
+        assert!(save_archived(&f.db, &json!([id(1)]), false).unwrap());
+        assert_eq!(f.session(1)["archived"], false);
+        assert!(!save_archived(&f.db, &json!(["x"]), true).unwrap());
     }
 
     #[test]
