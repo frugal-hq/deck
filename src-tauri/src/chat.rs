@@ -152,14 +152,18 @@ pub fn find_claude() -> Option<PathBuf> {
     let mut command = Command::new("where.exe");
     #[cfg(windows)]
     { use std::os::windows::process::CommandExt; command.creation_flags(0x0800_0000); }
-    let out = command.arg("claude").output().ok()?;
-    String::from_utf8_lossy(&out.stdout).lines().filter(|line| !line.is_empty()).find_map(|entry| {
+    let out = command.arg("claude").output().map(|out| out.stdout).unwrap_or_default();
+    String::from_utf8_lossy(&out).lines().filter(|line| !line.is_empty()).find_map(|entry| {
         let entry = Path::new(entry);
         if entry.extension().is_some_and(|ext| ext.eq_ignore_ascii_case("exe")) {
             return Some(entry.to_path_buf());
         }
         let packaged = entry.parent()?.join("node_modules/@anthropic-ai/claude-code/bin/claude.exe");
         packaged.exists().then_some(packaged)
+    }).or_else(|| {
+        // The native installer puts claude.exe here and leaves PATH alone (code.claude.com/docs/en/troubleshoot-install).
+        let native = PathBuf::from(std::env::var_os("USERPROFILE")?).join(".local").join("bin").join("claude.exe");
+        native.exists().then_some(native)
     })
 }
 
