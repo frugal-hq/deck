@@ -465,10 +465,10 @@ mod tests {
             assert_eq!(seen.lock().unwrap()[0], ("a".to_owned(), read_meters(&full)));
             // A cold PowerShell on a busy CI runner can take longer than CHAIN_TIMEOUT, so this one runs without it.
             let mut powershell = Command::new("powershell.exe").args(["-NoProfile", "-Command", command]).current_dir(&dir.0)
-                .stdin(Stdio::piped()).stdout(Stdio::null()).spawn().unwrap();
+                .stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped()).spawn().unwrap();
             powershell.stdin.take().unwrap().write_all(body.as_bytes()).unwrap();
-            powershell.wait().unwrap();
-            assert_eq!(seen.lock().unwrap().len(), 2);
+            let out = powershell.wait_with_output().unwrap();
+            assert_eq!(seen.lock().unwrap().len(), 2, "{:?} {} {}", out.status, String::from_utf8_lossy(&out.stdout), String::from_utf8_lossy(&out.stderr));
 
             let chained = bridge.register("b", &dir.0, &env, Some(&json!({ "type": "command", "command": "read -r line; echo \"USER:${#line}\"", "padding": 3 })));
             assert_eq!(chained["statusLine"]["padding"], 3);
