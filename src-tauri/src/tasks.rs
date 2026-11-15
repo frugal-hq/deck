@@ -145,7 +145,8 @@ fn read_agent(file: &Path, name: &str, updated_at: f64) -> std::io::Result<Value
         if message["model"].is_string() {
             model = message["model"].clone();
         }
-        for key in ["input_tokens", "output_tokens", "cache_creation_input_tokens"] {
+        // Cache reads count, as in the totals Grok and OpenCode report for delegate jobs.
+        for key in ["input_tokens", "output_tokens", "cache_creation_input_tokens", "cache_read_input_tokens"] {
             tokens += message["usage"][key].as_f64().unwrap_or_default();
         }
         if prompt.is_empty() && record["type"] == "user" {
@@ -188,7 +189,7 @@ fn job_task(job: &Value, now: f64) -> Value {
     let mut task = Map::new();
     task.insert("name".into(), job["id"].clone());
     // JSON.stringify drops undefined fields, so a field the job never logged stays out.
-    for (key, from) in [("description", "brief"), ("model", "model"), ("account", "account"), ("cost", "cost"), ("kind", "kind")] {
+    for (key, from) in [("description", "brief"), ("model", "model"), ("account", "account"), ("cost", "cost"), ("kind", "kind"), ("level", "level"), ("tokens", "tokens")] {
         if let Some(value) = job.get(from) {
             task.insert(key.into(), value.clone());
         }
@@ -265,7 +266,7 @@ mod tests {
         let dir = root.join("project").join(ID).join("subagents");
         fs::create_dir_all(&dir).unwrap();
         fs::write(dir.join("agent-x.jsonl"), [
-            r#"{"agentName":"scout","message":{"model":"claude-haiku","usage":{"input_tokens":10,"output_tokens":5,"cache_creation_input_tokens":1}}}"#,
+            r#"{"agentName":"scout","message":{"model":"claude-haiku","usage":{"input_tokens":10,"output_tokens":5,"cache_creation_input_tokens":1,"cache_read_input_tokens":100}}}"#,
             r#"{"type":"user","message":{"content":[{"type":"text","text":"  Find the bug\r\nmore"}],"usage":{"input_tokens":4}}}"#,
             "not json",
         ].join("\n")).unwrap();
@@ -286,7 +287,7 @@ mod tests {
         let keys: Vec<_> = tasks.iter().map(|task| task["key"].as_str().unwrap().to_owned()).collect();
         assert_eq!(keys, [format!("{ID}:agent-x.jsonl"), format!("{ID}:agent-y.jsonl"), format!("{ID}:j1")]);
         let x = &tasks[0];
-        assert_eq!((&x["name"], &x["description"], &x["model"], &x["tokens"]), (&json!("scout"), &json!("Find the bug"), &json!("claude-haiku"), &json!(20)));
+        assert_eq!((&x["name"], &x["description"], &x["model"], &x["tokens"]), (&json!("scout"), &json!("Find the bug"), &json!("claude-haiku"), &json!(120)));
         assert_eq!((&x["running"], &x["status"]), (&json!(true), &json!("running")));
         assert_eq!(tasks[1]["description"], "😀".repeat(40));
         assert_eq!((&tasks[1]["name"], &tasks[1]["status"], &tasks[1]["updatedAt"]), (&json!("y"), &json!("done"), &json!(60_000)));
@@ -309,8 +310,8 @@ mod tests {
         assert_eq!(utf16_prefix("ab😀c", 3), "ab");
         assert_eq!(num(5.0).to_string(), "5");
         assert_eq!(num(1.5).to_string(), "1.5");
-        let run = job_task(&json!({"id": "r", "kind": "run", "status": "done", "start": 10.0, "end": 72.4, "result": "frugal: check `cargo test` exited 0, passed:
+        let run = job_task(&json!({"id": "r", "kind": "run", "level": "light", "tokens": 9, "status": "done", "start": 10.0, "end": 72.4, "result": "frugal: check `cargo test` exited 0, passed:
 ok"}), 0.0);
-        assert_eq!((&run["check"], &run["seconds"], &run["kind"]), (&json!("cargo test"), &json!(62), &json!("run")));
+        assert_eq!((&run["check"], &run["seconds"], &run["kind"], &run["level"], &run["tokens"]), (&json!("cargo test"), &json!(62), &json!("run"), &json!("light"), &json!(9)));
     }
 }

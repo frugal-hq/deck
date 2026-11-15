@@ -747,16 +747,21 @@ function taskRow(task) {
   row.append(head);
   const cost = task.cost != null && `$${task.cost.toFixed(2)}`;
   const tokens = task.tokens && `${compact.format(task.tokens)} tokens`;
-  const meta = [taskAccount(task), taskSpan(task.seconds), tokens, cost].filter(Boolean).join(' · ');
+  const meta = [taskAccount(task), task.level, taskSpan(task.seconds), tokens, cost].filter(Boolean).join(' · ');
   if (meta) row.append(node('p', 'info-panel__muted', meta));
   const chat = task.chat && currentIndex?.sessions?.find((s) => s.id === task.chat)?.title;
+  const label = (name, value) => (value ? `${name}: ${value}` : '');
   row.dataset.tip = [
-    task.check ? `Command: ${task.check}` : task.description,
-    task.kind === 'run' && !task.account ? 'Ran here, with no model' : '',
-    [task.account, task.model].filter(Boolean).join(': '),
-    [task.kind, TASK_STATUS[task.status] ?? task.status, taskSpan(task.seconds), tokens, cost].filter(Boolean).join(' · '),
-    chat ? `Chat: ${chat}` : '',
-    task.updatedAt ? new Date(task.updatedAt).toLocaleString() : '',
+    task.check ? label('Command', task.check) : label('Task', task.description),
+    label('Status', TASK_STATUS[task.status] ?? task.status),
+    label('Type', task.kind),
+    label('Level', task.level),
+    label('Account', task.kind === 'run' && !task.account ? 'ran here, with no model' : taskAccount(task)),
+    label('Model', task.model),
+    label('Time', taskSpan(task.seconds)),
+    label('Spend', [tokens, cost].filter(Boolean).join(', ')),
+    label('Chat', chat),
+    label('When', task.updatedAt && new Date(task.updatedAt).toLocaleString()),
     task.result ? `\n${task.result}` : '',
   ].filter(Boolean).join('\n');
   return row;
