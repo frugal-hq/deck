@@ -15,6 +15,7 @@ use crate::index::{trim, truthy};
 type Result<T> = std::result::Result<T, Box<dyn std::error::Error>>;
 pub const MAIN: &str = "main";
 const FRESH_MS: f64 = 5.0 * 60.0 * 1000.0;
+const KEEP_DAYS: i64 = 3650;
 
 fn now() -> f64 { SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs_f64() * 1000.0 }
 
@@ -115,6 +116,31 @@ impl Accounts {
     pub fn set_roles(&self, on: bool) -> Result<()> { let mut s = self.load(); object(&mut s).insert("roles".into(), json!(on)); self.save(&s) }
     pub fn mouse(&self) -> bool { self.load()["mouse"] != false }
     pub fn set_mouse(&self, on: bool) -> Result<()> { let mut s = self.load(); object(&mut s).insert("mouse".into(), json!(on)); self.save(&s) }
+    pub fn keep_transcripts(&self) -> bool { self.load()["keepTranscripts"] == true }
+    pub fn set_keep_transcripts(&self, on: bool) -> Result<()> {
+        let mut s = self.load();
+        object(&mut s).insert("keepTranscripts".into(), json!(on));
+        self.save(&s)?;
+        self.apply_keep_transcripts()
+    }
+    // Claude Code deletes transcripts idle cleanupPeriodDays (30 by default) whenever it starts, in or out of the Deck,
+    // so the value goes in each account's own settings. Off removes only the Deck's value; one bad file does not stop the rest.
+    pub fn apply_keep_transcripts(&self) -> Result<()> {
+        let on = self.keep_transcripts();
+        let mut failed = None;
+        for a in self.claude_accounts() {
+            let file = Path::new(string(&a["configDir"])).join("settings.json");
+            let applied = read_strict(&file, json!({})).and_then(|mut config| {
+                let days = config["cleanupPeriodDays"].as_i64();
+                if on && days.is_none_or(|d| d < KEEP_DAYS) { object(&mut config).insert("cleanupPeriodDays".into(), json!(KEEP_DAYS)); }
+                else if !on && days == Some(KEEP_DAYS) { object(&mut config).remove("cleanupPeriodDays"); }
+                else { return Ok(()); }
+                write_json(&file, &config)
+            });
+            if let Err(e) = applied { failed.get_or_insert(format!("{}: {e}", file.display())); }
+        }
+        failed.map_or(Ok(()), |e| Err(e.into()))
+    }
 
     fn mcp_key(scope: &Value) -> Result<String> {
         for kind in ["workspace", "group"] {
@@ -281,6 +307,7 @@ impl Accounts {
         object(&mut s).insert("accounts".into(), json!(list));
         self.save(&s)?;
         let _ = join_frugal_pool(account, &self.frugal_file());
+        let _ = self.apply_keep_transcripts();
         Ok(true)
     }
     pub fn remove_account(&mut self, id: &str) -> Result<bool> {
@@ -666,6 +693,13 @@ pub fn settings_set_mouse(accounts: State<Mutex<Accounts>>, on: Value) -> std::r
     accounts.lock().unwrap().set_mouse(on).map_err(|e| e.to_string())
 }
 #[tauri::command]
+pub fn settings_keep_transcripts(accounts: State<Mutex<Accounts>>) -> bool { accounts.lock().unwrap().keep_transcripts() }
+#[tauri::command]
+pub fn settings_set_keep_transcripts(accounts: State<Mutex<Accounts>>, on: Value) -> std::result::Result<(), String> {
+    let Some(on) = on.as_bool() else { return Ok(()); };
+    accounts.lock().unwrap().set_keep_transcripts(on).map_err(|e| e.to_string())
+}
+#[tauri::command]
 pub fn accounts_get(accounts: State<Mutex<Accounts>>) -> Value { accounts.lock().unwrap().snapshot(now()) }
 #[tauri::command]
 pub fn settings_roles(accounts: State<Mutex<Accounts>>) -> bool { accounts.lock().unwrap().roles() }
@@ -819,6 +853,28 @@ mod tests {
             assert_eq!(resolved.parent().unwrap(), std::env::temp_dir().canonicalize().unwrap());
             remove_tree(&resolved).unwrap();
         }
+    }
+
+    #[test]
+    fn keep_transcripts_in_every_account() {
+        let t = TempDir::new();
+        let a = t.accounts();
+        let main = t.0.join(".claude/settings.json");
+        write_json(&main, &json!({"model": "opus", "cleanupPeriodDays": 7})).unwrap();
+        let other = a.prepare_account(&json!("Side")).unwrap();
+        fs::write(Path::new(string(&other["configDir"])).join(".credentials.json"), "{}").unwrap();
+        assert!(a.finish_account(&other).unwrap());
+        let side = Path::new(string(&other["configDir"])).join("settings.json");
+        a.set_keep_transcripts(true).unwrap();
+        assert_eq!(read_json(&main, Value::Null), json!({"model": "opus", "cleanupPeriodDays": KEEP_DAYS}));
+        assert_eq!(read_json(&side, Value::Null), json!({"cleanupPeriodDays": KEEP_DAYS}));
+        write_json(&side, &json!({"cleanupPeriodDays": 60})).unwrap();
+        a.set_keep_transcripts(false).unwrap();
+        assert_eq!(read_json(&main, Value::Null), json!({"model": "opus"}));
+        assert_eq!(read_json(&side, Value::Null), json!({"cleanupPeriodDays": 60}));
+        fs::write(&main, "{").unwrap();
+        assert!(a.set_keep_transcripts(true).is_err());
+        assert_eq!(read_json(&side, Value::Null), json!({"cleanupPeriodDays": KEEP_DAYS}));
     }
 
     // accounts.js:469-476: all 3 inline usage assertions.

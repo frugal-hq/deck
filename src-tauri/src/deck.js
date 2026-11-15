@@ -100,6 +100,8 @@
     setRoles: (on) => send('settings:set-roles', { on }),
     getMouse: () => invoke('settings:mouse'),
     setMouse: (on) => send('settings:set-mouse', { on }),
+    getKeepTranscripts: () => invoke('settings:keep-transcripts'),
+    setKeepTranscripts: (on) => invoke('settings:set-keep-transcripts', { on }),
     renameAccount: (id, name) => invoke('accounts:rename', { id, name }),
     setAccountCap: (id, field, value) => invoke('accounts:set-cap', { id, field, value }),
     refreshAccounts: () => invoke('accounts:refresh'),

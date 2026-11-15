@@ -61,7 +61,10 @@ fn main() {
             statusline::write_editor(&app.path().app_data_dir()?)?;
             let home = std::path::PathBuf::from(std::env::var_os("USERPROFILE").ok_or("No user folder.")?);
             let codex_home = std::env::var_os("CODEX_HOME").filter(|s| !s.is_empty()).map(std::path::PathBuf::from).unwrap_or_else(|| home.join(".codex"));
-            app.manage(Mutex::new(accounts::Accounts::new(home, codex_home)));
+            let accounts = accounts::Accounts::new(home, codex_home);
+            // Also covers accounts added to the Frugal pool outside the Deck.
+            let _ = accounts.apply_keep_transcripts();
+            app.manage(Mutex::new(accounts));
             let bounds_file = app.path().app_data_dir()?.join("window.json");
             // Missing or malformed file: the defaults. A rect no longer on any display keeps its size but is recentered.
             let saved = std::fs::read_to_string(&bounds_file).ok().and_then(|text| serde_json::from_str::<Bounds>(&text).ok()).filter(|b| b.width >= 400 && b.height >= 300);
@@ -182,6 +185,8 @@ fn main() {
             accounts::settings_set_roles,
             accounts::settings_mouse,
             accounts::settings_set_mouse,
+            accounts::settings_keep_transcripts,
+            accounts::settings_set_keep_transcripts,
             accounts::accounts_rename,
             accounts::accounts_set_cap,
             accounts::accounts_set_primary,

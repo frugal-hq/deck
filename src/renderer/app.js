@@ -2696,6 +2696,7 @@ async function openSettings() {
   showVoiceOptions();
   $('settings-roles').checked = await deck.getRoles();
   $('settings-mouse').checked = await deck.getMouse();
+  $('settings-keep-transcripts').checked = await deck.getKeepTranscripts();
   $('settings-frugal').checked = startsWithFrugal();
   $('settings-tooltips').value = tooltipPlacement();
   $('settings-reopen').checked = reopensChats();
@@ -2815,6 +2816,7 @@ $('settings-admin').onchange = async (event) => {
   for (const chat of chats.values()) drawBadge(chat);
 };
 $('settings-roles').onchange = (event) => deck.setRoles(event.target.checked);
+$('settings-keep-transcripts').onchange = (event) => deck.setKeepTranscripts(event.target.checked).catch((error) => askConfirm('Could not change every account', String(error), 'OK'));
 $('settings-mouse').onchange = async (event) => {
   if (event.target.checked) {
     event.target.checked = false; // Stays off until the warning is accepted.
