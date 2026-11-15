@@ -245,6 +245,21 @@ Not verified: multiple voices, other microphones, and `/voice` inside the PTY, w
 - Compressed copy of each session in `~/.frugal-deck/archive/` and restore on reopen.
 - System notification when Claude finishes or asks for permission.
 
+**Archive design (2026-11-14)**
+
+Claude Code deletes transcripts whose file has not changed in `cleanupPeriodDays` (30 by default) at startup. The Deck keeps its own copy, so a deleted transcript stays listed and can be resumed.
+
+- **Copy.** Every session the index lists (turns, a `cwd`, not `sdk-cli`) is gzipped to `~/.frugal-deck/archive/<path relative to %USERPROFILE%>.gz`, for example `archive/.claude/projects/<project>/<id>.jsonl.gz`, so the original path is known without the database. `flate2`, already in `Cargo.lock` through `png`, so it adds no crate. Written to a `.tmp` file and renamed. A copy is fresh while its mtime is not older than the transcript's.
+- **When.** An archiver thread runs after the startup scan and then every hour, and copies transcripts idle for 10 minutes or more whose copy is missing or stale. Archiving a chat copies its sessions at once. The Deck never deletes a transcript or a copy.
+- **Transcript gone.** `scan` reads the archive folder after the account roots, keeping the live file when both exist, and the watcher re-reads the copy instead of dropping the row. `sync_file` reads a `.gz` through `GzDecoder` and always from the start. If `deck.db` is rebuilt, rows come back from the copies.
+- **Archived flag.** A new table `session_archived (session_id PRIMARY KEY, at)`. `list_index` adds `archived` and `stored` (only the copy exists). The sidebar leaves out archived sessions that are not open; the Archived view lists them with the title of the chat they came from, newest first, with Unarchive in their menu. The chat menu's Archive flags every session of the chat; a single session is archived from the chain view.
+- **Reopen.** Opening an archived session clears its flag. Before `--resume`, a session that exists only as a copy is decompressed back to its original path (`.tmp` and rename, never over an existing file), and the watcher points the row at it again.
+- **Not copied:** subagent transcripts and the `<id>/` folder beside each transcript; config folders outside `%USERPROFILE%`; sessions whose folder no longer exists, since the index does not list them.
+- **Tests:** a `.gz` parses like its `.jsonl`; a deleted transcript with a copy stays listed; copy freshness; restore path; archived sessions leave the sidebar unless open.
+- **Keep transcripts** (the user's choice on 2026-11-14): a Deck setting, off by default, that writes `cleanupPeriodDays: 3650` to the `settings.json` of every Claude account, at start, when an account is added, and when it is turned on, so Claude Code also stops deleting when started outside the Deck. Turning it off removes only that value.
+
+**Status (2026-11-14): archive built, not yet checked by hand.** `src-tauri/src/archive.rs`, the index changes and the Archived dialog (sidebar button, Archive in the chat's organize dialog); 95 `cargo test`s. Reopening an archived session unarchives its whole chat.
+
 ## Phase 7: 0.1.0 release
 
 - Installer and CI.
