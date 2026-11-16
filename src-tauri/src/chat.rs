@@ -305,7 +305,8 @@ fn spawn(app: &AppHandle, id: &str, command: CommandBuilder, (cols, rows): (u16,
 
 // main.js launchChat.
 #[allow(clippy::too_many_arguments)]
-fn launch(app: &AppHandle, id: &str, folder: PathBuf, size: (u16, u16), resume: bool, group: &Value, account: &Value, prompt: Option<&str>, bypass: bool, admin: bool, output: Channel<Value>) -> Value {
+// place: the session whose chat sets the group and workspace, the source chat's for a handoff.
+fn launch(app: &AppHandle, id: &str, place: &str, folder: PathBuf, size: (u16, u16), resume: bool, group: &Value, account: &Value, prompt: Option<&str>, bypass: bool, admin: bool, output: Channel<Value>) -> Value {
     let Some(claude) = find_claude() else {
         return json!({ "error": NO_CLAUDE });
     };
@@ -319,7 +320,7 @@ fn launch(app: &AppHandle, id: &str, folder: PathBuf, size: (u16, u16), resume: 
     let session = index.session(id).unwrap_or_default();
     let dir = Path::new(account["configDir"].as_str().unwrap_or_default());
     let group = group.as_str().filter(|group| !group.is_empty());
-    let prepared = (|| -> Result<Vec<Value>, Box<dyn std::error::Error>> {
+    let prepared = (|| -> Result<(Vec<Value>, Vec<Value>, Option<Value>), Box<dyn std::error::Error>> {
         if account["id"] != MAIN {
             accounts::ensure_onboarded(dir)?;
         }
@@ -331,12 +332,14 @@ fn launch(app: &AppHandle, id: &str, folder: PathBuf, size: (u16, u16), resume: 
             }
             accounts::share_transcript(&file, dir)?;
         }
-        let topic = group.or(session["topic"].as_str().filter(|topic| !topic.is_empty()));
-        let workspaces = index.workspaces_of(&session["space"], topic, &folder.to_string_lossy());
-        accounts.lock().unwrap().denied_servers(&folder, topic, &workspaces)
+        let (chat_topic, space) = index.chat_place(place);
+        let topic = group.or(chat_topic.as_deref());
+        let workspaces = index.workspaces_of(&space, topic, &folder.to_string_lossy());
+        let accounts = accounts.lock().unwrap();
+        accounts.chat_mcp(&folder, topic, &workspaces)
     })();
-    let denied = match prepared {
-        Ok(denied) => denied,
+    let (allowed, denied, deck_mcp) = match prepared {
+        Ok(prepared) => prepared,
         Err(error) => return json!({ "error": format!("Failed to start Claude: {error}") }),
     };
     let bridge = app.state::<crate::statusline::StatusBridge>();
@@ -351,7 +354,8 @@ fn launch(app: &AppHandle, id: &str, folder: PathBuf, size: (u16, u16), resume: 
     let voice = crate::voice::anthropic_voice();
     // The Deck's own warning took the consent, so Claude Code's disclaimer is skipped (it reads this key from flag settings too).
     // Claude Code reads voice.enabled before voiceEnabled, and /voice off writes it to user settings. The mic button holds Space, so the mode is hold.
-    let mut settings = json!({ "statusLine": status["statusLine"] });
+    // Always set: an empty allowlist turns every server off.
+    let mut settings = json!({ "statusLine": status["statusLine"], "allowedMcpServers": allowed });
     if voice {
         settings["voice"] = json!({ "enabled": true, "mode": "hold" });
     }
@@ -362,6 +366,10 @@ fn launch(app: &AppHandle, id: &str, folder: PathBuf, size: (u16, u16), resume: 
         settings["deniedMcpServers"] = json!(denied);
     }
     let mut command = command(claude, env, &folder);
+    // --mcp-config takes several values, so it goes before the other flags and never next to the prompt.
+    if let Some(config) = deck_mcp {
+        command.args(["--mcp-config", &config.to_string()]);
+    }
     command.args([if resume { "--resume" } else { "--session-id" }, id, "--settings", &settings.to_string()]);
     if let Some(prompt) = prompt {
         command.arg(prompt);
@@ -414,7 +422,7 @@ fn start(app: &AppHandle, options: StartOptions, output: Channel<Value>) -> Valu
         let ids = Value::Array(ids);
         index.run(move |db, _| crate::index::save_archived(db, &ids, false));
     }
-    let mut started = launch(app, &options.id, folder, (options.cols, options.rows), resume, &options.group, &account, prompt, options.bypass == true, options.admin == true, output);
+    let mut started = launch(app, &options.id, &options.id, folder, (options.cols, options.rows), resume, &options.group, &account, prompt, options.bypass == true, options.admin == true, output);
     if started["ok"] == true {
         started["frugal"] = json!(frugal);
     }
@@ -438,7 +446,7 @@ fn continue_chat(app: &AppHandle, o: ContinueOptions, output: Channel<Value>) ->
         (folder, account, is_uuid(&o.id), chats.is_live(&o.id), text.is_empty(), text.starts_with('-'), is_size(o.cols), is_size(o.rows)) else {
         return invalid();
     };
-    launch(app, &o.id, folder, (o.cols, o.rows), false, &Value::Null, &account, Some(text), o.bypass == true, o.admin == true, output)
+    launch(app, &o.id, &o.from, folder, (o.cols, o.rows), false, &Value::Null, &account, Some(text), o.bypass == true, o.admin == true, output)
 }
 
 // Waits for the old claude.exe to exit, so it runs off the main thread.
@@ -490,7 +498,7 @@ fn switch_account(app: &AppHandle, o: SwitchOptions, output: Channel<Value>) -> 
     drop(chat);
     let _ = app.emit("chat:restarting", [&o.id]);
     let folder = session["cwd"].as_str().map(PathBuf::from).unwrap_or_default();
-    let mut started = launch(app, &o.id, folder, (o.cols, o.rows), true, &Value::Null, &account, None, bypass, admin, output);
+    let mut started = launch(app, &o.id, &o.id, folder, (o.cols, o.rows), true, &Value::Null, &account, None, bypass, admin, output);
     if started["error"].is_string() {
         started["stopped"] = json!(true);
     }

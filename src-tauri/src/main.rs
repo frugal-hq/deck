@@ -157,6 +157,7 @@ fn main() {
             )?;
             app.manage(bridge);
             index::start(app.handle().clone());
+            mcp::learn_frugal(app.handle().clone());
             archive::start(app.handle().clone(), std::path::PathBuf::from(std::env::var_os("USERPROFILE").ok_or("No user folder.")?));
             Ok(())
         })
@@ -220,6 +221,7 @@ fn main() {
             tasks::chat_subagents,
             tasks::tasks_all,
             mcp::mcp_list,
+            mcp::mcp_add,
             organizer::topics_estimate,
             organizer::topics_run,
             organizer::search_ai,

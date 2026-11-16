@@ -22,6 +22,7 @@
   <symbol id="i-folder" viewBox="0 0 16 16"><path d="M2 5.2c0-.9.7-1.6 1.6-1.6h2.6l1.5 1.7h4.7c.9 0 1.6.7 1.6 1.6v4.9c0 .9-.7 1.6-1.6 1.6H3.6c-.9 0-1.6-.7-1.6-1.6z"/></symbol>
   <symbol id="i-archive" viewBox="0 0 16 16"><rect x="1.75" y="2.75" width="12.5" height="3" rx="1"/><path d="M2.75 5.75v6c0 .9.7 1.5 1.5 1.5h7.5c.9 0 1.5-.6 1.5-1.5v-6M6.5 8.5h3"/></symbol>
   <symbol id="i-settings" viewBox="0 0 16 16"><path d="M2.5 5h6m3 0h2M2.5 11h2m3 0h6"/><circle cx="10" cy="5" r="1.5"/><circle cx="6" cy="11" r="1.5"/></symbol>
+  <symbol id="i-plug" viewBox="0 0 16 16"><path d="M6 1.75v3m4-3v3M4.25 4.75h7.5V7a3.75 3.75 0 0 1-7.5 0zM8 10.75v3.5"/></symbol>
   <symbol id="i-user" viewBox="0 0 16 16"><circle cx="8" cy="5.5" r="2.75"/><path d="M2.75 13.5a5.25 5.25 0 0 1 10.5 0"/></symbol>
   <symbol id="i-tasks" viewBox="0 0 16 16"><path d="m2.5 4.5 1.25 1.25L6 3.5m-3.5 7 1.25 1.25L6 9.5M8.5 4.75h5M8.5 10.75h5"/></symbol>
   <symbol id="i-update" viewBox="0 0 16 16"><path d="M8 2.5v7.5m-3-3 3 3 3-3M3 13.5h10"/></symbol>
@@ -103,7 +104,7 @@
   <button id="link-chat" class="btn btn--bar" type="button" hidden><svg class="icon" aria-hidden="true"><use href="#i-link"/></svg><span></span></button>
   <button id="usage-open" class="btn" type="button" popovertarget="usage" hidden>Usage</button>
   <button id="info-toggle" class="btn btn--bar btn--icon" type="button" aria-label="Show details" aria-controls="info-panel" aria-expanded="false" data-tip="Show details"><svg class="icon" aria-hidden="true"><use href="#i-more"/></svg></button>
-  <button id="mcp-servers" class="btn btn--bar btn--icon" type="button" aria-label="MCP servers for this folder" data-tip="MCP servers for this folder"><svg class="icon" aria-hidden="true"><use href="#i-settings"/></svg></button>
+  <button id="mcp-servers" class="btn btn--bar btn--icon" type="button" aria-label="MCP servers for this folder" data-tip="MCP servers for this folder"><svg class="icon" aria-hidden="true"><use href="#i-plug"/></svg></button>
 </footer>
 <div id="usage" class="usage" popover="auto" aria-label="Usage">
   <div id="meter-context" class="meter" hidden>Context <meter aria-label="Context used" min="0" max="100" low="60" high="80" optimum="0"></meter><span class="measured"></span></div>
@@ -296,16 +297,28 @@
     </div>
   </form>
 </dialog>
-<dialog id="mcp-dialog" class="organize" closedby="any" aria-labelledby="mcp-title">
-  <h2 id="mcp-title">MCP servers</h2>
-  <p id="mcp-folder" style="color: var(--color-muted); font-size: var(--text-xs); word-break: break-all;"></p>
-  <div id="mcp-list"></div>
-  <p id="mcp-error" style="color: var(--color-muted);" hidden></p>
-  <p id="mcp-note" style="color: var(--color-muted); font-size: var(--text-xs);"></p>
-  <div style="display: flex; gap: 8px; justify-content: flex-end;">
-    <select id="mcp-add" aria-label="Add a server that is not connected" style="margin-inline-end: auto;" hidden></select>
+<dialog id="mcp-dialog" class="organize mcp" closedby="any" aria-labelledby="mcp-title">
+  <h2 id="mcp-title" class="organize__title">MCP servers</h2>
+  <p id="mcp-folder" class="mcp__folder"></p>
+  <p id="mcp-error" class="mcp__message" role="status" hidden></p>
+  <div id="mcp-list" class="mcp__list"></div>
+  <section id="mcp-add-section" class="mcp__section" hidden>
+    <h3 class="mcp__title">Add to the Deck</h3>
+    <div id="mcp-suggest" class="mcp__chips"></div>
+  </section>
+  <div id="mcp-new" class="mcp__form" hidden>
+    <label class="organize__field">Name <input id="mcp-new-name" type="text" maxlength="64" autocomplete="off" spellcheck="false" placeholder="Letters, digits, - and _"></label>
+    <label class="organize__field">Type <select id="mcp-new-transport"><option value="http">Remote (HTTP)</option><option value="sse">Remote (SSE)</option><option value="stdio">Local command (stdio)</option></select></label>
+    <label class="organize__field"><span id="mcp-new-target-label">URL</span> <input id="mcp-new-target" type="text" maxlength="2000" autocomplete="off" spellcheck="false"></label>
+    <div class="organize__actions">
+      <button id="mcp-new-cancel" class="btn" type="button">Cancel</button>
+      <button id="mcp-new-add" class="btn" type="button">Add</button>
+    </div>
+  </div>
+  <p id="mcp-note" class="mcp__folder mcp__note"></p>
+  <div class="organize__actions">
     <button id="mcp-cancel" class="btn" type="button">Cancel</button>
-    <button id="mcp-save" class="btn" type="button">Save</button>
+    <button id="mcp-save" class="btn btn--primary" type="button">Save</button>
   </div>
 </dialog>
 <dialog id="confirm-dialog" class="organize" closedby="any" aria-labelledby="confirm-title" aria-describedby="confirm-message">

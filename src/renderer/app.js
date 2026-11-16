@@ -2841,80 +2841,224 @@ $('settings-bypass').onchange = async (event) => {
 // A folder ({ folder }), or a sidebar group or workspace ({ group | workspace, folder }) whose servers go off on top of each chat's folder.
 // Only connected servers and the ones turned off are listed; the rest wait in the Add menu.
 let mcpScope = null;
-let mcpHidden = new Map();
+let mcpTouched = false;
+let mcpShown = null;
+// `claude mcp list` health-checks every server, so a list stays cached and shows at once; a fresh one replaces it while untouched.
+const mcpCache = new Map();
+const mcpKey = (scope) => JSON.stringify([scope.global, scope.folder, scope.group, scope.workspace]);
+// From Claude Code's MCP docs and `claude mcp add --help` (2026-11-15). A server whose name already appears is left out.
+const MCP_RECOMMENDED = [
+  { name: 'notion', transport: 'http', target: 'https://mcp.notion.com/mcp' },
+  { name: 'linear', transport: 'http', target: 'https://mcp.linear.app/mcp' },
+  { name: 'sentry', transport: 'http', target: 'https://mcp.sentry.dev/mcp' },
+  { name: 'asana', transport: 'sse', target: 'https://mcp.asana.com/sse' },
+];
 
+function fetchMcp(scope, maxAge) {
+  const key = mcpKey(scope);
+  const known = mcpCache.get(key);
+  if (known && Date.now() - known.at < maxAge) return known.pending;
+  const pending = deck.mcpList(scope).catch((error) => ({ error: String(error) }));
+  mcpCache.set(key, { pending, at: Date.now() });
+  pending.then((result) => { if (result?.error && mcpCache.get(key)?.pending === pending) mcpCache.delete(key); });
+  return pending;
+}
+
+// "√ Connected" or "✗ Failed to connect - ECONNREFUSED…": the words without the mark, and their first part.
+function mcpStatus(status) {
+  const full = status.replace(/^[^\p{L}]+/u, '');
+  return { full, short: full.split(/ [—-] |: /)[0] };
+}
+
+// Checked means on in the chats this dialog applies to.
 function mcpRow(row) {
-  const label = node('label', 'organize__check');
+  const label = node('label', 'organize__check mcp__row');
   const input = document.createElement('input');
   input.type = 'checkbox';
-  input.checked = !row.off;
+  input.checked = row.checked;
   input.dataset.name = row.name;
-  label.append(input, document.createTextNode(' ' + row.name));
+  // Frugal's own servers are always on: the Deck delegates through them.
+  if (row.name.startsWith('plugin:frugal:')) {
+    input.checked = input.disabled = true;
+    label.dataset.tip = 'Always on: Frugal Deck delegates through it';
+  }
+  if (row.deck) input.dataset.deck = '1';
+  label.append(input, node('span', 'mcp__name', row.name));
   if (row.status) {
-    const status = node('span', '', ' ' + row.status);
-    status.style.color = 'var(--color-muted)';
-    status.style.fontSize = 'var(--text-xs)';
+    const status = node('span', 'mcp__status', row.status);
+    status.title = row.title ?? row.status;
     label.append(status);
+  }
+  if (row.import) {
+    const button = node('button', 'btn btn--bar', 'Add to Deck');
+    button.type = 'button';
+    button.dataset.tip = `Only in ${row.accounts.join(', ')}. As a Deck server it runs on any account`;
+    button.onclick = () => showMcpForm(row.import);
+    label.append(button);
   }
   return label;
 }
 
-async function openMcpDialog(scope) {
-  mcpScope = scope;
-  const kind = scope.workspace ? 'workspace' : scope.group ? 'group' : 'folder';
-  $('mcp-folder').textContent = scope.workspace ?? scope.group ?? scope.folder;
-  $('mcp-note').textContent = `Applies to chats started or restarted in this ${kind}${kind === 'workspace' ? ' and the ones inside it' : ''}${kind === 'folder' ? '' : ', on top of their folder'}.`;
+function mcpSection(title, rows, empty, collapsed) {
+  const section = node(collapsed ? 'details' : 'section', 'mcp__section');
+  section.append(node(collapsed ? 'summary' : 'h3', 'mcp__title', collapsed ? `${title} (${rows.length})` : title));
+  if (rows.length) section.append(...rows.map(mcpRow));
+  else section.append(node('p', 'mcp__empty', empty));
+  return section;
+}
+
+function deckRow(name, config, checked) {
+  return { name, deck: true, checked, status: config.type === 'stdio' ? 'Local command' : config.url };
+}
+
+function drawMcp(result) {
   const list = $('mcp-list');
-  const add = $('mcp-add');
-  add.hidden = true;
-  list.textContent = 'Loading…';
-  list.style.color = '';
-  $('mcp-error').hidden = true;
-  $('mcp-dialog').showModal();
-  const result = await deck.mcpList(scope, scope.account);
-  if (mcpScope !== scope) return;
   if (result?.error) {
     list.textContent = '';
-    const err = $('mcp-error');
-    err.textContent = result.error;
-    err.hidden = false;
+    $('mcp-error').textContent = result.error;
+    $('mcp-error').hidden = false;
     return;
   }
+  mcpShown = result;
+  const global = new Set(result.global ?? []);
   const off = new Set(result.off ?? []);
-  const rows = (result.servers ?? []).map(({ name, status }) => ({ name, status, off: off.has(name) }));
-  for (const name of off) if (!rows.some((row) => row.name === name)) rows.push({ name, status: '', off: true });
-  const shown = rows.filter((row) => row.off || row.status.startsWith('✓'));
-  mcpHidden = new Map(rows.filter((row) => !shown.includes(row)).map((row) => [row.name, row]));
-  list.replaceChildren(...shown.map(mcpRow));
-  if (!shown.length) { list.textContent = 'No connected servers.'; list.style.color = 'var(--color-muted)'; }
-  add.replaceChildren(new Option('Add server…', ''), ...[...mcpHidden.values()].map((row) => new Option(`${row.name} (${row.status})`, row.name)));
-  add.hidden = !mcpHidden.size;
+  const on = new Set(result.on ?? []);
+  const checked = (name) => (mcpScope?.global ? global.has(name) : (global.has(name) || on.has(name)) && !off.has(name));
+  const deckServers = Object.entries(result.deck ?? {});
+  // A server imported into the Deck shows once, as the Deck's: same name, same on and off, and it runs on any account.
+  const rows = (result.servers ?? []).filter(({ name }) => !result.deck?.[name]).map(({ name, status, target, transport, accounts }) => {
+    const { full, short } = mcpStatus(status);
+    // A plain account server missing from some account can become a Deck server; claude.ai connectors and plugin servers cannot.
+    const portable = !/^(claude\.ai |plugin:)/.test(name) && /^[A-Za-z0-9][\w-]{0,63}$/.test(name) && accounts.length < result.accounts;
+    return { name, accounts, status: short, title: `${full}\n${target}\nIn ${accounts.join(', ')}`, checked: checked(name),
+      connected: /^connected$/i.test(short), import: portable ? { name, transport, target } : null };
+  });
+  const listed = new Set([...rows.map((row) => row.name), ...deckServers.map(([name]) => name)]);
+  for (const name of new Set([...global, ...on, ...off])) if (!listed.has(name)) rows.push({ name, status: 'Not listed', checked: checked(name), connected: true });
+  const frugal = (row) => row.name.startsWith('plugin:frugal:');
+  const sections = [
+    ...(rows.some(frugal) ? [mcpSection('Frugal, always on', rows.filter(frugal), '')] : []),
+    mcpSection('Account servers', rows.filter((row) => row.connected && !frugal(row)), 'None connected.'),
+    Object.assign(mcpSection('Deck servers, any account', deckServers.map(([name, config]) => deckRow(name, config, checked(name))), 'None yet. Add one below.'), { id: 'mcp-deck' }),
+  ];
+  const failing = rows.filter((row) => !row.connected && !frugal(row));
+  if (failing.length) sections.push(mcpSection('Not connected', failing, '', true));
+  list.replaceChildren(...sections);
+  const names = [...rows.map((row) => row.name), ...deckServers.map(([name]) => name)].map((name) => name.toLowerCase());
+  drawMcpSuggestions(MCP_RECOMMENDED.filter((server) => !names.some((name) => name.includes(server.name))));
 }
-$('mcp-add').onchange = (event) => {
-  const row = mcpHidden.get(event.target.value);
-  if (!row) return;
-  mcpHidden.delete(row.name);
-  const list = $('mcp-list');
-  if (!list.querySelector('label')) { list.textContent = ''; list.style.color = ''; }
-  list.append(mcpRow(row));
-  event.target.selectedOptions[0].remove();
-  event.target.value = '';
-  event.target.hidden = !mcpHidden.size;
+
+function drawMcpSuggestions(servers) {
+  const chip = (label, onclick) => {
+    const button = node('button', 'btn btn--bar');
+    button.type = 'button';
+    button.innerHTML = '<svg class="icon" aria-hidden="true"><use href="#i-plus"/></svg>';
+    button.append(label);
+    button.onclick = onclick;
+    return button;
+  };
+  $('mcp-suggest').replaceChildren(...servers.map((server) => {
+    const button = chip(server.name, () => showMcpForm(server));
+    button.dataset.tip = server.target;
+    button.dataset.name = server.name;
+    return button;
+  }), chip('Custom server', () => showMcpForm({ name: '', transport: 'http', target: '' })));
+  $('mcp-add-section').hidden = false;
+}
+
+async function openMcpDialog(scope) {
+  mcpScope = scope;
+  mcpTouched = false;
+  mcpShown = null;
+  const kind = scope.workspace ? 'workspace' : scope.group ? 'group' : 'folder';
+  $('mcp-folder').textContent = scope.global ? 'All chats, every account' : scope.workspace ?? scope.group ?? scope.folder;
+  const signIn = 'Deck servers that sign in ask once per account, with /mcp in the chat.';
+  $('mcp-note').textContent = scope.global
+    ? `On in every chat unless a folder, group or workspace turns it off. Every other server stays off. Applies to chats started or restarted after saving. ${signIn}`
+    : `Applies to chats started or restarted in this ${kind}${kind === 'workspace' ? ' and the ones inside it' : ''}${kind === 'folder' ? '' : ', on top of their folder'}. Servers on in all chats (MCP servers in the menu) start checked. ${signIn}`;
+  $('mcp-add-section').hidden = true;
+  $('mcp-new').hidden = true;
+  $('mcp-list').replaceChildren(node('p', 'mcp__empty', 'Loading…'));
+  $('mcp-error').hidden = true;
+  $('mcp-dialog').showModal();
+  const known = mcpCache.get(mcpKey(scope));
+  const fresh = fetchMcp(scope, 30_000);
+  if (known && known.pending !== fresh) {
+    const cached = await known.pending;
+    if (mcpScope === scope && !mcpTouched && !cached?.error) drawMcp(cached);
+  }
+  const result = await fresh;
+  if (mcpScope === scope && !mcpTouched) drawMcp(result);
+}
+
+function syncMcpTarget() {
+  const stdio = $('mcp-new-transport').value === 'stdio';
+  $('mcp-new-target-label').textContent = stdio ? 'Command' : 'URL';
+  $('mcp-new-target').placeholder = stdio ? 'npx -y some-mcp-server' : 'https://example.com/mcp';
+}
+
+function showMcpForm(server) {
+  $('mcp-new-name').value = server.name;
+  $('mcp-new-transport').value = server.transport;
+  $('mcp-new-target').value = server.target;
+  syncMcpTarget();
+  $('mcp-new').hidden = false;
+  (server.name ? $('mcp-new-add') : $('mcp-new-name')).focus();
+}
+
+$('mcp-list').onchange = () => { mcpTouched = true; };
+$('mcp-new-transport').onchange = syncMcpTarget;
+$('mcp-new-cancel').onclick = () => { $('mcp-new').hidden = true; };
+$('mcp-new-add').onclick = async () => {
+  const scope = mcpScope;
+  if (!scope) return;
+  const server = { name: $('mcp-new-name').value.trim(), transport: $('mcp-new-transport').value, target: $('mcp-new-target').value.trim() };
+  const result = await deck.mcpAdd(server).catch((error) => ({ error: String(error) }));
+  if (mcpScope !== scope) return;
+  const message = $('mcp-error');
+  message.hidden = false;
+  if (result?.error) { message.textContent = result.error; return; }
+  mcpCache.clear();
+  mcpTouched = true;
+  message.textContent = `Added ${server.name}. Save to use it here.`;
+  $('mcp-new').hidden = true;
+  const section = $('mcp-deck');
+  section?.querySelector('.mcp__empty')?.remove();
+  for (const input of $('mcp-list').querySelectorAll(`input[data-name="${CSS.escape(server.name)}"]`)) input.closest('label').remove();
+  section?.append(mcpRow(deckRow(server.name, server.transport === 'stdio' ? { type: 'stdio' } : { url: server.target }, true)));
+  $('mcp-suggest').querySelector(`[data-name="${CSS.escape(server.name)}"]`)?.remove();
 };
 $('mcp-save').onclick = async () => {
-  if (!mcpScope) { $('mcp-dialog').close(); return; }
-  const off = [];
-  for (const input of $('mcp-list').querySelectorAll('input[type="checkbox"]')) {
-    if (!input.checked) off.push(input.dataset.name);
+  if (!mcpScope || !mcpShown) { $('mcp-dialog').close(); return; }
+  // Only the difference from the global list is kept, and names this list did not show stay as they were.
+  const inputs = [...$('mcp-list').querySelectorAll('input[type="checkbox"]')];
+  const shown = new Set(inputs.map((input) => input.dataset.name));
+  const kept = (names) => new Set((names ?? []).filter((name) => !shown.has(name)));
+  const global = new Set(mcpShown.global ?? []);
+  const on = kept(mcpScope.global ? mcpShown.global : mcpShown.on);
+  const off = kept(mcpShown.off);
+  for (const { checked, dataset: { name } } of inputs) {
+    if (mcpScope.global) { if (checked) on.add(name); }
+    else if (checked && !global.has(name)) on.add(name);
+    else if (!checked && global.has(name)) off.add(name);
   }
-  await deck.mcpSet({ folder: mcpScope.folder, group: mcpScope.group, workspace: mcpScope.workspace }, off);
+  const scope = mcpScope.global ? { global: true } : { folder: mcpScope.folder, group: mcpScope.group, workspace: mcpScope.workspace };
+  await deck.mcpSet(scope, [...off], [...on]);
+  mcpCache.clear();
   $('mcp-dialog').close();
 };
 $('mcp-cancel').onclick = () => $('mcp-dialog').close();
 
 $('mcp-servers').onclick = () => {
   const chat = chats.get(activeId);
-  if (chat) openMcpDialog({ folder: chat.cwd, account: chat.account });
+  if (!chat) return;
+  // The chat's group, else its workspace, else its folder: the most specific scope its launch reads.
+  const placed = chatsById.get(currentIndex?.sessions.find((s) => s.id === chat.id)?.chatId);
+  openMcpDialog(placed?.topic ? { group: placed.topic, folder: chat.cwd } : placed?.space ? { workspace: placed.space, folder: chat.cwd } : { folder: chat.cwd });
+};
+$('mcp-servers').onpointerenter = () => {
+  const chat = chats.get(activeId);
+  if (chat) fetchMcp({ folder: chat.cwd }, 30_000);
 };
 
 $('settings-admin').onchange = async (event) => {
@@ -3105,6 +3249,7 @@ $('app-menu').onclick = () => {
     { label: 'Accounts', run: openAccounts, icon: 'user' },
     { label: 'Tasks', run: openTasks, icon: 'tasks' },
     { label: 'Settings', run: openSettings, icon: 'settings' },
+    { label: 'MCP servers', run: () => openMcpDialog({ global: true }), icon: 'plug' },
     { label: 'Updates', run: openUpdates, icon: 'update' },
   ], $('app-menu'));
 };

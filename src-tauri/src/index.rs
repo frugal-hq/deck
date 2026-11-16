@@ -844,6 +844,19 @@ impl Index {
     pub fn workspaces_of(&self, space: &Value, topic: Option<&str>, folder: &str) -> Vec<String> {
         workspaces_of(&self.state.lock().unwrap(), space, topic, folder)
     }
+
+    // chats.mjs groupChats: a chat's group and workspace come from any of its sessions, so a session continued from it has them too.
+    pub fn chat_place(&self, id: &str) -> (Option<String>, Value) {
+        chat_place(&self.state.lock().unwrap(), id)
+    }
+}
+
+fn chat_place(index: &Value, id: &str) -> (Option<String>, Value) {
+    let all = index["sessions"].as_array().map(Vec::as_slice).unwrap_or_default();
+    let Some(chat) = all.iter().find(|s| s["id"] == id).map(|s| &s["chatId"]) else { return (None, Value::Null) };
+    let first = |field: &str| all.iter().filter(|s| &s["chatId"] == chat).map(|s| &s[field]).find(|v| !v.is_null()).cloned();
+    let topic = first("userGroup").or_else(|| first("topic")).and_then(|t| t.as_str().map(str::to_owned)).filter(|t| !t.is_empty());
+    (topic, first("space").unwrap_or(Value::Null))
 }
 
 // main.js:293-301: the chat's workspace, then each workspace it is nested in, as the sidebar places it.
@@ -2045,6 +2058,19 @@ mod tests {
         assert_eq!(workspaces_of(&index, &json!("Own"), Some("plan"), r"C:\Work"), ["Own"]);
         assert!(workspaces_of(&index, &json!(""), Some("plan"), r"C:\Work").is_empty(), "an empty space is not null");
         assert_eq!(workspaces_of(&index, &json!("loop"), None, "x").len(), 50, "a parent cycle stops at 50");
+    }
+
+    #[test]
+    fn chat_place_reads_every_session_of_the_chat() {
+        let index = json!({"sessions": [
+            {"id": "new", "chatId": "c", "topic": null, "userGroup": null, "space": null},
+            {"id": "old", "chatId": "c", "topic": "Auto", "userGroup": null, "space": "Work"},
+            {"id": "first", "chatId": "c", "topic": "Auto", "userGroup": "Mine", "space": null},
+            {"id": "other", "chatId": "o", "topic": "Else", "userGroup": null, "space": null},
+        ]});
+        assert_eq!(chat_place(&index, "new"), (Some("Mine".into()), json!("Work")));
+        assert_eq!(chat_place(&index, "other"), (Some("Else".into()), Value::Null));
+        assert_eq!(chat_place(&index, "missing"), (None, Value::Null));
     }
 
     #[test]

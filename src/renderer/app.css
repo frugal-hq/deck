@@ -437,6 +437,22 @@ meter::-webkit-meter-even-less-good-value { background: var(--color-bad); border
 .archived__item { display: flex; align-items: center; gap: var(--space-xs); }
 .archived__item .session { flex: 1; min-width: 0; }
 .organize__actions { display: flex; justify-content: end; align-items: center; gap: var(--space-xs); }
+.mcp { display: grid; gap: var(--space-sm); width: min(30rem, 90vw); }
+.mcp[hidden], .mcp [hidden] { display: none; }
+.mcp p { margin: 0; }
+.mcp__folder { color: var(--color-muted); font-size: var(--text-xs); word-break: break-all; }
+.mcp__note { word-break: normal; }
+.mcp__message { color: var(--color-muted); font-size: var(--text-sm); }
+.mcp__list { display: grid; gap: var(--space-md); max-height: 50vh; overflow-y: auto; }
+.mcp__section { display: grid; gap: var(--space-xs); }
+.mcp__title { margin: 0; color: var(--color-muted); font-size: var(--text-xs); font-weight: 500; }
+details.mcp__section > summary { cursor: pointer; }
+.mcp__row { min-width: 0; }
+.mcp__name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.mcp__status { flex: none; max-width: 50%; margin-inline-start: auto; overflow: hidden; color: var(--color-muted); font-size: var(--text-xs); text-overflow: ellipsis; white-space: nowrap; }
+.mcp__empty { color: var(--color-muted); font-size: var(--text-sm); }
+.mcp__chips { display: flex; flex-wrap: wrap; gap: var(--space-2xs); }
+.mcp__form { display: grid; gap: var(--space-xs); padding: var(--space-sm); border-radius: 12px; background: var(--color-paper-2); }
 .update__list { display: grid; gap: var(--space-xs); }
 .update__list:empty { display: none; }
 .tasks { width: min(36rem, 90vw); margin-block-start: 10vh; }
@@ -447,6 +463,9 @@ meter::-webkit-meter-even-less-good-value { background: var(--color-bad); border
 .organize__check input:hover { background: var(--color-paper); }
 .organize__check input:checked { background: var(--color-accent); }
 .organize__check input:checked::before { scale: 1; opacity: 1; }
+.organize__check input:disabled { background: var(--color-paper-3); cursor: not-allowed; }
+.organize__check input:disabled::before { background: var(--color-muted); }
+.organize__check:has(input:disabled) { cursor: not-allowed; }
 .organize__check:has(input) { cursor: pointer; }
 .organize__check input.settings__range, .organize__check input.settings__range:hover { appearance: auto; display: block; width: 140px; height: auto; background: none; accent-color: var(--color-accent); }
 .organize__check input.settings__range::before { content: none; }
