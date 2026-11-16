@@ -510,7 +510,7 @@ fn folder_key(path: &Path) -> String {
 
 pub fn list_index(db: &Connection) -> Result<Value> {
     let temp = folder_key(&std::env::temp_dir());
-    let mut usable = HashMap::new();
+    let mut folders = HashMap::new();
     let mut sessions = Vec::new();
     for mut row in all(db, r#"SELECT id, file, cwd, COALESCE(NULLIF(custom_title, ''), NULLIF(a.title, ''), NULLIF(ai_title, ''), first_prompt, 'Untitled') AS title, last_at AS lastAt, started_at AS startedAt, turns, COALESCE(pinned, 0) AS pinned, space, COALESCE(tags, '[]') AS tags,
       CASE WHEN g.name = '' THEN NULL ELSE COALESCE(g.name, a.topic) END AS topic, NULLIF(g.name, '') AS userGroup, COALESCE(g.name = '', 0) AS noGroup, a.title AS autoTitle, NULLIF(custom_title, '') AS customTitle, NULLIF(ai_title, '') AS aiTitle, first_prompt AS firstPrompt, ar.at AS archivedAt
@@ -518,7 +518,10 @@ pub fn list_index(db: &Connection) -> Result<Value> {
     WHERE turns > 0 AND cwd IS NOT NULL AND last_at IS NOT NULL AND COALESCE(entrypoint, '') <> 'sdk-cli'
     ORDER BY last_at DESC"#, [])? {
         let cwd = row["cwd"].as_str().unwrap();
-        if !*usable.entry(cwd.to_owned()).or_insert_with(|| !folder_key(Path::new(cwd)).starts_with(&temp) && Path::new(cwd).exists()) { continue; }
+        // Temp folders hold scripted runs. A removed folder still lists: chat::launch makes it again, empty.
+        let (temporary, missing) = *folders.entry(cwd.to_owned()).or_insert_with(|| (folder_key(Path::new(cwd)).starts_with(&temp), !Path::new(cwd).exists()));
+        if temporary { continue; }
+        row["missing"] = json!(missing);
         row["pinned"] = json!(row["pinned"] == 1);
         row["noGroup"] = json!(row["noGroup"] == 1);
         row["archived"] = json!(!row["archivedAt"].is_null());
@@ -558,7 +561,7 @@ pub fn list_index(db: &Connection) -> Result<Value> {
         "sessions": sessions, "ambiguous": unresolved, "modelJoins": model_joins}))
 }
 
-// What list_index shows, plus sessions whose folder is gone.
+// What list_index shows, plus sessions run in the temp folder.
 pub fn archivable(db: &Connection) -> Result<Vec<String>> {
     let mut query = db.prepare("SELECT file FROM sessions WHERE turns > 0 AND cwd IS NOT NULL AND last_at IS NOT NULL AND COALESCE(entrypoint, '') <> 'sdk-cli'")?;
     let files = query.query_map([], |r| r.get(0))?.collect::<rusqlite::Result<_>>()?;
@@ -1866,7 +1869,7 @@ mod tests {
         f.sync(1);
         assert_eq!(f.index(), json!({"workspaces": {}, "workspaceParents": {}, "modelWorkspaces": 0, "ambiguous": [], "modelJoins": 0,
             "sessions": [{"id": id(1), "file": f.file(1), "cwd": f.cwd, "title": "original", "lastAt": "2026-01-01T00:00:00Z",
-                "startedAt": "2026-01-01T00:00:00Z", "turns": 1, "pinned": false, "space": null, "tags": [], "topic": null,
+                "startedAt": "2026-01-01T00:00:00Z", "turns": 1, "missing": false, "pinned": false, "space": null, "tags": [], "topic": null,
                 "userGroup": null, "noGroup": false, "autoTitle": null, "customTitle": null, "aiTitle": null, "firstPrompt": "original",
                 "archivedAt": null, "archived": false, "stored": false, "parentId": null, "chatId": id(1)}]}));
         for value in [Value::Null, json!(false), json!(0), json!("")] {
@@ -2043,9 +2046,11 @@ mod tests {
         assert!(save_archived(&f.db, &json!([id(1)]), false).unwrap());
         assert_eq!(f.session(1)["archived"], false);
         assert!(!save_archived(&f.db, &json!(["x"]), true).unwrap());
-        f.write(2, &f.user_extra("gone", "2026-01-03T00:00:00Z", json!({"cwd": home.join("removed-worktree")})));
+        f.write(2, &f.user_extra("gone", "2026-01-03T00:00:00Z", json!({"cwd": Path::new(&f.cwd).join("deck-test-removed-worktree")})));
         f.sync(2);
-        assert!(!f.listed().contains(&json!(id(2))), "hidden from the sidebar");
+        assert!(f.listed().contains(&json!(id(2))), "a removed folder still lists");
+        assert_eq!(f.session(2)["missing"], true);
+        assert_eq!(f.session(1)["missing"], false);
         assert!(archivable(&f.db).unwrap().contains(&f.file(2)), "still copied");
     }
 

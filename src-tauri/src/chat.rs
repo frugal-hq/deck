@@ -321,6 +321,8 @@ fn launch(app: &AppHandle, id: &str, place: &str, folder: PathBuf, size: (u16, u
     let dir = Path::new(account["configDir"].as_str().unwrap_or_default());
     let group = group.as_str().filter(|group| !group.is_empty());
     let prepared = (|| -> Result<(Vec<Value>, Vec<Value>, Option<Value>), Box<dyn std::error::Error>> {
+        // A folder removed since its sessions ran comes back empty, so they resume and new chats start there.
+        std::fs::create_dir_all(&folder)?;
         if account["id"] != MAIN {
             accounts::ensure_onboarded(dir)?;
         }

@@ -1905,7 +1905,7 @@ function configureGroupDrag(summary, group, key) {
 // sessions: how many a chat holds, shown only past one.
 function sessionTip(session, sessions) {
   const rows = [
-    ['Folder', session.cwd],
+    ['Folder', session.missing ? `${session.cwd} (removed; opening the chat makes it again, empty)` : session.cwd],
     ['Last active', resetExact.format(new Date(session.lastAt))],
     session.startedAt && session.startedAt !== session.lastAt && ['Started', resetExact.format(new Date(session.startedAt))],
     session.turns && ['Prompts', String(session.turns)],
