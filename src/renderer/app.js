@@ -1225,12 +1225,37 @@ async function openChat({ id, cwd, name, resume, group, login, accountId, handof
 
 // From this context size on, every turn re-sends enough that a fresh session is worth starting unasked.
 const HANDOFF_AUTO_TOKENS = 150000;
-const HANDOFF_COUNTDOWN_S = 10;
+const handoffAuto = () => localStorage.getItem('handoffAuto') !== 'false';
+const handoffDelay = () => {
+  const seconds = Number(localStorage.getItem('handoffDelay') ?? 10);
+  return Number.isInteger(seconds) && seconds >= 0 && seconds <= 600 ? seconds : 10;
+};
+const handoffNotes = () => localStorage.getItem('handoffNote') !== 'false';
 
 function stopCountdown(chat) {
   if (!chat.handoff?.timer) return;
   clearInterval(chat.handoff.timer);
   chat.handoff.timer = null;
+}
+
+// Counts down only while its chat is on screen, so it never opens a tab over another chat.
+function startCountdown(chat) {
+  chat.handoff.paused = false;
+  chat.handoff.timer = setInterval(() => {
+    if (activeId !== chat.id) return;
+    chat.handoff.left -= 1;
+    if (chat.handoff.left > 0) drawHandoff();
+    else continueHandoff(chat);
+  }, 1000);
+}
+
+// Typing in the handoff pauses its countdown; Save and wait resumes it.
+function pauseCountdown() {
+  const chat = chats.get(activeId);
+  if (!chat?.handoff?.timer) return;
+  stopCountdown(chat);
+  chat.handoff.paused = true;
+  drawHandoff();
 }
 
 function drawHandoff() {
@@ -1239,54 +1264,73 @@ function drawHandoff() {
   if (!handoff) return;
   const text = $('handoff-text');
   if (document.activeElement !== text) text.value = handoff.prompt;
+  const note = $('handoff-note');
+  note.hidden = !handoffNotes();
+  if (document.activeElement !== note) note.value = handoff.note;
   const size = `Context is ${compact.format(handoff.tokens)} tokens.`;
-  $('handoff-status').textContent = handoff.timer ? `${size} A new session starts in ${handoff.left} s.` : size;
+  const counting = handoff.timer || handoff.paused;
+  $('handoff-status').textContent = handoff.timer ? `${size} A new session starts in ${Math.max(handoff.left, 0)} s.` : handoff.paused ? `${size} Countdown paused while you write.` : size;
   const stop = $('handoff-stop');
-  stop.textContent = handoff.timer ? 'Cancel' : 'Dismiss';
-  stop.dataset.tip = handoff.timer ? 'Stop the countdown and keep this prompt' : 'Keep working in this session';
+  stop.textContent = counting ? 'Cancel' : 'Dismiss';
+  stop.dataset.tip = counting ? 'Stop the countdown and keep this prompt' : 'Keep working in this session';
+  $('handoff-save').hidden = !handoff.paused;
 }
 
 async function continueHandoff(chat) {
   stopCountdown(chat);
   if (chat.handoff.starting) return;
   chat.handoff.starting = true;
-  const { prompt } = chat.handoff;
+  const { note, instant } = chat.handoff;
+  const prompt = note.trim() ? `${chat.handoff.prompt.trimEnd()}\nUser note: ${note.trim()}` : chat.handoff.prompt;
   const result = await openChat({ id: crypto.randomUUID(), cwd: chat.cwd, name: 'New chat', handoff: { from: chat.id, accountId: chat.account, prompt } });
   // A failed start keeps the prompt, so nothing typed into it is lost.
   if (!result.error) chat.handoff = null;
   else if (chat.handoff) chat.handoff.starting = false;
   render();
+  if (!result.error && instant && localStorage.getItem('handoffInstantShown') !== 'true') {
+    localStorage.setItem('handoffInstantShown', 'true');
+    if (await askConfirm('Handoff started at once', 'The handoff delay in Settings is 0 seconds, so new sessions start as soon as a handoff is ready, with no countdown. This notice shows once.', 'Open settings')) openSettings();
+  }
 }
 
 deck.onHandoff((id, { prompt, tokens }) => {
   const chat = chats.get(id);
   if (!chat) return;
   if (chat.handoff) stopCountdown(chat);
-  chat.handoff = { prompt, tokens, left: HANDOFF_COUNTDOWN_S, timer: null };
-  // Counts down only while its chat is on screen, so it never opens a tab over another chat.
-  if (tokens >= HANDOFF_AUTO_TOKENS) chat.handoff.timer = setInterval(() => {
-    if (activeId !== id) return;
-    chat.handoff.left -= 1;
-    if (chat.handoff.left > 0) drawHandoff();
-    else continueHandoff(chat);
-  }, 1000);
+  const delay = handoffDelay();
+  const auto = handoffAuto() && tokens >= HANDOFF_AUTO_TOKENS;
+  chat.handoff = { prompt, note: '', tokens, left: delay, timer: null, paused: false, instant: auto && delay === 0 };
+  if (auto && delay === 0 && activeId === id) {
+    continueHandoff(chat);
+    return;
+  }
+  if (auto) startCountdown(chat);
   drawHandoff();
 });
 
-$('handoff-text').addEventListener('focus', () => {
-  const chat = chats.get(activeId);
-  if (chat?.handoff) stopCountdown(chat);
-  drawHandoff();
-});
+$('handoff-text').addEventListener('focus', pauseCountdown);
+$('handoff-note').addEventListener('focus', pauseCountdown);
 $('handoff-text').addEventListener('input', (event) => {
   const chat = chats.get(activeId);
   if (chat?.handoff) chat.handoff.prompt = event.target.value;
 });
+$('handoff-note').addEventListener('input', (event) => {
+  const chat = chats.get(activeId);
+  if (chat?.handoff) chat.handoff.note = event.target.value;
+});
 $('handoff-stop').onclick = () => {
   const chat = chats.get(activeId);
   if (!chat?.handoff) return;
-  if (chat.handoff.timer) stopCountdown(chat);
-  else chat.handoff = null;
+  if (chat.handoff.timer || chat.handoff.paused) {
+    stopCountdown(chat);
+    chat.handoff.paused = false;
+  } else chat.handoff = null;
+  drawHandoff();
+};
+$('handoff-save').onclick = () => {
+  const chat = chats.get(activeId);
+  if (!chat?.handoff?.paused) return;
+  startCountdown(chat);
   drawHandoff();
 };
 $('handoff-continue').onclick = () => {
@@ -2825,6 +2869,10 @@ async function openSettings() {
   $('settings-ai-excerpts').checked = sendsExcerpts();
   $('settings-mic').checked = allowsMic();
   $('settings-clipboard').checked = allowsClipboard();
+  $('settings-handoff-auto').checked = handoffAuto();
+  $('settings-handoff-delay').value = handoffDelay();
+  $('settings-handoff-delay').disabled = !handoffAuto();
+  $('settings-handoff-note').checked = handoffNotes();
   $('settings-accent').querySelector(`[value="${accentHue()}"]`).checked = true;
   $('settings-tooltips').value = tooltipPlacement();
   $('settings-reopen').checked = reopensChats();
@@ -2842,6 +2890,22 @@ $('settings-group-limit').onchange = (event) => {
   localStorage.setItem('groupLimit', value);
   drawnSignature = '';
   if (currentIndex) renderSessions(currentIndex);
+};
+$('settings-handoff-auto').onchange = (event) => {
+  localStorage.setItem('handoffAuto', event.target.checked);
+  $('settings-handoff-delay').disabled = !event.target.checked;
+};
+$('settings-handoff-delay').onchange = (event) => {
+  const value = Number(event.target.value);
+  if (event.target.value === '' || !Number.isInteger(value) || value < 0 || value > 600) {
+    event.target.value = handoffDelay();
+    return;
+  }
+  localStorage.setItem('handoffDelay', value);
+};
+$('settings-handoff-note').onchange = (event) => {
+  localStorage.setItem('handoffNote', event.target.checked);
+  drawHandoff();
 };
 $('settings-confirm-close').onchange = (event) => setConfirmsClose(event.target.checked);
 $('settings-bypass').onchange = async (event) => {
