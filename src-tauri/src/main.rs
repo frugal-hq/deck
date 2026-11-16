@@ -169,6 +169,7 @@ fn main() {
         .invoke_handler(tauri::generate_handler![
             index::sessions_get,
             index::sessions_all,
+            index::sessions_search,
             index::sessions_organize,
             index::sessions_set_group,
             index::sessions_set_workspace,

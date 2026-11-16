@@ -219,8 +219,9 @@ pub fn open_index(file: &str) -> Result<Connection> {
     let db = Connection::open(file)?;
     // Another instance may hold deck.db: rusqlite already waits 5 s for its lock; WAL lets readers run beside a writer.
     db.query_row("PRAGMA journal_mode = WAL", [], |r| r.get::<_, String>(0))?;
-    let stale = db.query_row("PRAGMA user_version", [], |r| r.get::<_, i64>(0))? < 2;
-    if stale { db.execute_batch("DROP TABLE IF EXISTS sessions")?; }
+    // Version 3 added session_text, so every transcript is read again to fill it.
+    let stale = db.query_row("PRAGMA user_version", [], |r| r.get::<_, i64>(0))? < 3;
+    if stale { db.execute_batch("DROP TABLE IF EXISTS sessions; DROP TABLE IF EXISTS session_text")?; }
     db.execute_batch(r#"CREATE TABLE IF NOT EXISTS sessions (
     id TEXT PRIMARY KEY,
     file TEXT NOT NULL,
@@ -262,7 +263,9 @@ pub fn open_index(file: &str) -> Result<Connection> {
     db.execute_batch(r#"CREATE TABLE IF NOT EXISTS group_workspace (name TEXT PRIMARY KEY COLLATE NOCASE, workspace TEXT NOT NULL, origin TEXT NOT NULL)"#)?;
     db.execute_batch(r#"CREATE TABLE IF NOT EXISTS workspace_parent (name TEXT PRIMARY KEY COLLATE NOCASE, parent TEXT NOT NULL)"#)?;
     db.execute_batch(r#"CREATE TABLE IF NOT EXISTS session_archived (session_id TEXT PRIMARY KEY, at TEXT NOT NULL)"#)?;
-    if stale { db.execute_batch("PRAGMA user_version = 2")?; }
+    // Message search: a session's prompts and replies, one row per message. Folds case and accents.
+    db.execute_batch(r#"CREATE VIRTUAL TABLE IF NOT EXISTS session_text USING fts5(session_id UNINDEXED, body, tokenize = 'unicode61 remove_diacritics 2')"#)?;
+    if stale { db.execute_batch("PRAGMA user_version = 3")?; }
     Ok(db)
 }
 
@@ -289,6 +292,19 @@ fn session_id(file: &str) -> String {
     let name = Path::new(file).file_name().unwrap_or_default().to_string_lossy();
     let name = name.strip_suffix(".gz").unwrap_or(&name);
     name.strip_suffix(".jsonl").unwrap_or(name).to_owned()
+}
+
+// What message search reads: the person's prompts and Claude's replies, without tool calls, their results or meta lines.
+fn message_text(record: &Value) -> Option<String> {
+    let kind = record["type"].as_str()?;
+    if !(kind == "user" || kind == "assistant") || truthy(&record["isSidechain"]) || truthy(&record["isMeta"]) || truthy(&record["toolUseResult"]) { return None; }
+    let content = &record["message"]["content"];
+    let text = match content.as_str() {
+        Some(text) => text.to_owned(),
+        None => content.as_array()?.iter().filter(|b| b["type"] == "text").filter_map(|b| b["text"].as_str()).collect::<Vec<_>>().join("
+"),
+    };
+    (!text.trim().is_empty()).then_some(text)
 }
 
 fn apply_record(row: &mut Value, record: &Value, emissions: &mut Vec<Value>, handoffs: &mut Option<&mut Vec<Value>>) {
@@ -345,6 +361,7 @@ pub fn sync_file(db: &Connection, file: &str, mut handoffs: Option<&mut Vec<Valu
     let copy = archive::is_copy(file);
     if row.is_null() || copy || size < row["offset"].as_u64().unwrap() {
         db.execute("DELETE FROM session_handoffs WHERE session_id = ?", [&id])?;
+        if !row.is_null() { db.execute("DELETE FROM session_text WHERE session_id = ?", [&id])?; }
         row = json!({"id": id, "file": file, "size": size, "offset": 0, "cwd": null, "entrypoint": null, "custom_title": null,
             "ai_title": null, "first_prompt": null, "turns": 0, "last_at": null, "started_at": null, "handoff_hash": null, "handoff_goal": null});
     }
@@ -352,11 +369,13 @@ pub fn sync_file(db: &Connection, file: &str, mut handoffs: Option<&mut Vec<Valu
     if archive::is_copy(row["file"].as_str().unwrap_or_default()) { row["file"] = json!(file); }
     row["size"] = json!(size);
     let mut emissions = Vec::new();
+    let mut texts = Vec::new();
     let start = row["offset"].as_u64().unwrap();
     let mut reader = fs::File::open(file)?;
     let on_line = |line: &str| {
         if let Ok(record) = serde_json::from_str::<Value>(line) {
             if record.is_object() || record.is_array() { apply_record(&mut row, &record, &mut emissions, &mut handoffs); }
+            if let Some(text) = message_text(&record) { texts.push(text); }
         }
     };
     let offset = if copy { read_lines(flate2::read::GzDecoder::new(reader), 0, on_line)? } else {
@@ -374,12 +393,15 @@ pub fn sync_file(db: &Connection, file: &str, mut handoffs: Option<&mut Vec<Valu
     })?;
     let mut save = db.prepare("INSERT OR IGNORE INTO session_handoffs (session_id, hash, goal, at) VALUES (?, ?, ?, ?)")?;
     for e in emissions { save.execute(params![id, e["hash"].as_str(), e["goal"].as_str(), e["at"].as_str()])?; }
+    let mut add = db.prepare_cached("INSERT INTO session_text (session_id, body) VALUES (?, ?)")?;
+    for text in texts { add.execute(params![id, text])?; }
     Ok(true)
 }
 
 pub fn remove_session(db: &Connection, file: &str) -> Result<()> {
     let id = session_id(file);
     db.execute("DELETE FROM session_handoffs WHERE session_id = ?", [&id])?;
+    db.execute("DELETE FROM session_text WHERE session_id = ?", [&id])?;
     db.execute("DELETE FROM sessions WHERE id = ?", [&id])?;
     Ok(())
 }
@@ -411,6 +433,30 @@ pub fn scan(db: &Connection, roots: &[String], mut on_batch: impl FnMut()) -> Re
     }
     tx.commit()?;
     Ok(())
+}
+
+// Sessions whose messages hold every word, each word anywhere in the session and matched as a prefix.
+// frugal: words under 2 characters are left out; add a prefix index (fts5 prefix='2 3') if short prefixes get slow.
+fn fts_terms(query: &str) -> impl Iterator<Item = String> + '_ {
+    query.split_whitespace().filter(|w| w.chars().filter(|c| c.is_alphanumeric()).count() >= 2).take(8)
+        .map(|word| format!("\"{}\"*", word.replace('"', "\"\"")))
+}
+
+pub fn search_text(db: &Connection, query: &str) -> Result<Vec<String>> {
+    let mut found: Option<HashSet<String>> = None;
+    for term in fts_terms(query) {
+        let ids: HashSet<String> = db.prepare_cached("SELECT DISTINCT session_id FROM session_text WHERE session_text MATCH ?")?
+            .query_map([term], |r| r.get(0))?.collect::<rusqlite::Result<_>>()?;
+        let ids = match found { Some(before) => before.intersection(&ids).cloned().collect(), None => ids };
+        if ids.is_empty() { return Ok(Vec::new()); }
+        found = Some(ids);
+    }
+    Ok(found.into_iter().flatten().collect())
+}
+
+pub fn open_read() -> Result<Connection> {
+    let home = PathBuf::from(std::env::var_os("USERPROFILE").ok_or("No user folder.")?);
+    Ok(Connection::open_with_flags(home.join(".frugal-deck").join("deck.db"), rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY)?)
 }
 
 pub struct ChatLinks {
@@ -986,6 +1032,12 @@ pub fn sessions_all(index: State<Index>) -> Value {
 }
 
 #[tauri::command]
+pub async fn sessions_search(query: String) -> std::result::Result<Vec<String>, String> {
+    tauri::async_runtime::spawn_blocking(move || open_read().and_then(|db| search_text(&db, &query)).map_err(|e| e.to_string()))
+        .await.map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
 pub fn sessions_organize(index: State<Index>, id: String, organization: Value) {
     index.run(move |db, _| save_organization(db, &id, &organization));
 }
@@ -1486,7 +1538,7 @@ mod tests {
         assert_eq!(f.index()["modelWorkspaces"], 0);
         assert!(save_workspace(&f.db, Some("SUPPORT"), Some("  ")).unwrap());
         assert_eq!(f.index()["workspaces"], json!({"plan": "User"}));
-        assert_eq!(all(&f.db, "PRAGMA user_version", []).unwrap()[0]["user_version"], 2);
+        assert_eq!(all(&f.db, "PRAGMA user_version", []).unwrap()[0]["user_version"], 3);
         f.write("a", &f.user("alpha", "2026-05-01T00:00:00Z"));
         f.write("b", &f.user("beta", "2026-05-02T00:00:00Z"));
         f.write("c", &f.user("gamma", "2026-05-03T00:00:00Z"));
@@ -1893,7 +1945,7 @@ mod tests {
         f.db.close().unwrap();
         let db = open_index(file.to_str().unwrap()).unwrap();
         assert!(all(&db, "SELECT id, file FROM sessions", []).unwrap().is_empty());
-        assert_eq!(all(&db, "PRAGMA user_version", []).unwrap()[0]["user_version"], 2);
+        assert_eq!(all(&db, "PRAGMA user_version", []).unwrap()[0]["user_version"], 3);
         assert_eq!(all(&db, "SELECT session_id, pinned, space, tags FROM session_org", []).unwrap(),
             vec![json!({"session_id": id(1), "pinned": 1, "space": "Work", "tags": "[\"keep\"]"})]);
         assert_eq!(all(&db, "SELECT session_id, name FROM session_group", []).unwrap(), vec![json!({"session_id": id(1), "name": "Manual"})]);
@@ -1985,5 +2037,29 @@ mod tests {
         assert_eq!(workspaces_of(&index, &json!("Own"), Some("plan"), r"C:\Work"), ["Own"]);
         assert!(workspaces_of(&index, &json!(""), Some("plan"), r"C:\Work").is_empty(), "an empty space is not null");
         assert_eq!(workspaces_of(&index, &json!("loop"), None, "x").len(), 50, "a parent cycle stops at 50");
+    }
+
+    #[test]
+    fn message_search_needs_every_word_and_forgets_removed_sessions() {
+        let f = Fixture::new();
+        let root = f.dir.0.join("projects").to_string_lossy().into_owned();
+        let reply = line(json!({"type": "assistant", "timestamp": "2026-01-01T00:00:01Z", "message": {"content": [{"type": "text", "text": "Refreshed the Windows icon cache"}, {"type": "tool_use", "name": "secretword"}]}}));
+        f.write(1, &format!("{}{reply}", f.user("El ícono de la barra está mal", "2026-01-01T00:00:00Z")));
+        f.write(2, &f.user_extra("icono secretword", "2026-01-01T00:00:00Z", json!({"isMeta": true})));
+        scan(&f.db, &[root.clone()], || {}).unwrap();
+        let find = |query: &str| { let mut ids = search_text(&f.db, query).unwrap(); ids.sort(); ids };
+        assert_eq!(find("ICONO barra"), [id(1)]);
+        assert_eq!(find("icon cach"), [id(1)], "words from different messages, as prefixes");
+        assert!(find("secretword").is_empty(), "tool calls and meta lines are not indexed");
+        assert!(find("icono nada").is_empty());
+        assert!(find("\" a -").is_empty(), "no searchable word finds nothing");
+        assert_eq!(excerpt(&f.db, &id(1), &["nada".into(), "cache".into()]).unwrap().as_deref(), Some("Refreshed the Windows icon cache"));
+        assert_eq!(excerpt(&f.db, &id(2), &["cache".into()]).unwrap(), None);
+        f.append(1, &f.user("windows otra vez", "2026-01-02T00:00:00Z"));
+        scan(&f.db, &[root.clone()], || {}).unwrap();
+        assert_eq!(find("otra icono"), [id(1)], "appended lines join the session's text");
+        fs::remove_file(f.file(1)).unwrap();
+        scan(&f.db, &[root], || {}).unwrap();
+        assert!(find("icono").is_empty());
     }
 }

@@ -2226,6 +2226,12 @@ const paletteList = $('palette-list');
 let paletteSessions = [];
 let paletteRow = 0;
 let paletteChoose = null;
+// Message matches arrive after the title matches; an AI answer replaces both until the query changes.
+let paletteText = new Set();
+let paletteAi = null;
+let paletteError = '';
+let paletteSearch = 0;
+let paletteTimer = 0;
 
 function selectPaletteRow(index) {
   paletteRow = index;
@@ -2256,13 +2262,37 @@ function paletteOption(session, index) {
 }
 
 function drawPalette() {
-  const matches = matchSessions(paletteSessions, paletteQuery.value);
+  const titled = matchSessions(paletteSessions, paletteQuery.value);
+  const shown = new Set(titled.map((session) => session.id));
+  const matches = paletteAi ?? [...titled, ...paletteSessions.filter((session) => paletteText.has(session.id) && !shown.has(session.id))];
   paletteList.replaceChildren(...matches.map(paletteOption));
   $('palette-empty').hidden = matches.length > 0;
   selectPaletteRow(matches.length ? 0 : -1);
 }
 
-async function showPalette(load, choose, placeholder = 'Search by title or folder') {
+function resetPaletteSearch() {
+  paletteSearch += 1;
+  clearTimeout(paletteTimer);
+  paletteText = new Set();
+  paletteAi = null;
+  paletteError = '';
+}
+
+function searchMessages() {
+  resetPaletteSearch();
+  drawPalette();
+  const query = paletteQuery.value.trim();
+  const search = paletteSearch;
+  if (query.length < 2) return;
+  paletteTimer = setTimeout(async () => {
+    const ids = await deck.searchMessages(query).catch((error) => (console.warn('Message search failed', error), []));
+    if (search !== paletteSearch) return;
+    paletteText = new Set(ids);
+    drawPalette();
+  }, 200);
+}
+
+async function showPalette(load, choose, placeholder = 'Search titles, folders and messages') {
   if (palette.open) {
     palette.close();
     return;
@@ -2271,6 +2301,7 @@ async function showPalette(load, choose, placeholder = 'Search by title or folde
   paletteChoose = choose;
   paletteQuery.placeholder = placeholder;
   paletteQuery.value = '';
+  resetPaletteSearch();
   palette.showModal();
   drawPalette();
 }
@@ -2279,7 +2310,7 @@ async function togglePalette() {
   await showPalette(deck.getAllSessions, resumeSession);
 }
 
-paletteQuery.oninput = drawPalette;
+paletteQuery.oninput = searchMessages;
 
 paletteQuery.onkeydown = (event) => {
   const count = paletteList.children.length;

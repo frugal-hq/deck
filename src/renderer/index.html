@@ -48,7 +48,7 @@
 </header>
 <aside class="sidebar" aria-label="Sessions">
   <div class="sidebar__tools">
-    <button id="search" class="btn" type="button" aria-label="Search" data-tip="Find a session by title or folder (Ctrl+Shift+K)"><svg class="icon" aria-hidden="true"><use href="#i-search"/></svg><span class="btn__label">Search</span></button>
+    <button id="search" class="btn" type="button" aria-label="Search" data-tip="Find a session by title, folder or message (Ctrl+Shift+K)"><svg class="icon" aria-hidden="true"><use href="#i-search"/></svg><span class="btn__label">Search</span></button>
     <button id="sort" class="btn" type="button" aria-label="Organize" data-tip="Group your sessions by folder or topic"><svg class="icon" aria-hidden="true"><use href="#i-sort"/></svg><span class="btn__label">Organize</span></button>
     <button id="archived" class="btn" type="button" aria-label="Archived" data-tip="Archived sessions and the chat each came from"><svg class="icon" aria-hidden="true"><use href="#i-archive"/></svg><span class="btn__label">Archived</span></button>
   </div>
@@ -114,7 +114,7 @@
   <button id="account-add" class="btn" type="button" data-tip="Sign in to another Claude account">Add account</button>
 </div>
 <dialog id="palette" class="palette" closedby="any" aria-label="Search sessions">
-  <input id="palette-query" class="palette__query" type="text" role="combobox" aria-controls="palette-list" aria-expanded="true" aria-autocomplete="list" aria-label="Search sessions" placeholder="Search by title or folder" autocomplete="off" spellcheck="false">
+  <input id="palette-query" class="palette__query" type="text" role="combobox" aria-controls="palette-list" aria-expanded="true" aria-autocomplete="list" aria-label="Search sessions" placeholder="Search titles, folders and messages" autocomplete="off" spellcheck="false">
   <div id="palette-list" class="palette__list" role="listbox" aria-label="Sessions"></div>
   <p id="palette-empty" class="palette__empty" role="status" hidden>No results.</p>
 </dialog>
