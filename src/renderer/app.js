@@ -2464,7 +2464,7 @@ const menu = $('menu');
 // A source inside another popover nests the menu in it, so opening the menu leaves that popover open.
 function openMenu(x, y, items, source) {
   if (menu.matches(':popover-open')) menu.hidePopover();
-  menu.replaceChildren(...items.map(({ label, run, danger, checked }) => {
+  menu.replaceChildren(...items.map(({ label, run, danger, checked, icon: glyph }) => {
     const item = document.createElement('button');
     item.type = 'button';
     item.className = 'menu__item';
@@ -2472,6 +2472,7 @@ function openMenu(x, y, items, source) {
     if (checked !== undefined) item.ariaChecked = String(checked);
     item.toggleAttribute('data-danger', Boolean(danger));
     item.textContent = label;
+    if (glyph) item.prepend(icon(glyph));
     item.onclick = () => {
       menu.hidePopover();
       run();
@@ -3100,11 +3101,11 @@ $('pick').onclick = startInPicked;
 $('app-menu').onclick = () => {
   const { right, bottom } = $('app-menu').getBoundingClientRect();
   openMenu(right, bottom + 4, [
-    { label: 'New chat in a folder…', run: startInPicked },
-    { label: 'Accounts', run: openAccounts },
-    { label: 'Tasks', run: openTasks },
-    { label: 'Settings', run: openSettings },
-    { label: 'Updates', run: openUpdates },
+    { label: 'New chat in a folder…', run: startInPicked, icon: 'folder' },
+    { label: 'Accounts', run: openAccounts, icon: 'user' },
+    { label: 'Tasks', run: openTasks, icon: 'tasks' },
+    { label: 'Settings', run: openSettings, icon: 'settings' },
+    { label: 'Updates', run: openUpdates, icon: 'update' },
   ], $('app-menu'));
 };
 // Installing closes the Deck, its chats with it, and the installer opens it again.
