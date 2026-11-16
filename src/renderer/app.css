@@ -413,6 +413,8 @@ meter::-webkit-meter-even-less-good-value { background: var(--color-bad); border
 .palette__list { min-height: 0; overflow-y: auto; scrollbar-width: thin; }
 .palette__list .session { padding-inline-start: var(--space-md); }
 .palette__list .session[aria-selected="true"] { background: var(--color-accent-soft); color: var(--color-ink); }
+.palette__ai { display: flex; justify-content: flex-end; gap: var(--space-xs); font-size: var(--text-sm); }
+.palette__note { margin: 0; padding-inline: var(--space-md); color: var(--color-muted); font-size: var(--text-xs); text-align: end; }
 .palette__empty { padding: var(--space-xs) var(--space-md); color: var(--color-muted); font-size: var(--text-sm); }
 .session__folder { max-width: 16ch; overflow: hidden; color: var(--color-muted); font-size: var(--text-xs); text-overflow: ellipsis; white-space: nowrap; }
 
@@ -483,7 +485,7 @@ meter::-webkit-meter-even-less-good-value { background: var(--color-bad); border
 
 /* Selects stay native; base-select opens their button and list to CSS. */
 select, ::picker(select) { appearance: base-select; }
-select { align-items: center; cursor: pointer; transition: background-color var(--dur-micro) var(--ease-out); }
+select { align-items: center; min-height: 28px; padding-inline: var(--space-xs); border: 0; border-radius: var(--radius-pill); background: var(--color-paper-3); color: var(--color-ink); cursor: pointer; transition: background-color var(--dur-micro) var(--ease-out); }
 select:hover { background: var(--color-paper); }
 select:open { background: var(--color-paper); }
 select::picker-icon { content: ""; width: 12px; height: 12px; background: var(--color-muted); mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='black' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 3.5 4.5 4.5L6 12.5'/%3E%3C/svg%3E") center / contain no-repeat; rotate: 90deg; transition: rotate var(--dur-micro) var(--ease-out); }

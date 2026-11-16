@@ -110,6 +110,7 @@
     getSessions: () => invoke('sessions:get'),
     getAllSessions: () => invoke('sessions:all'),
     searchMessages: (query) => invoke('sessions:search', { query }),
+    searchAi: (options, query) => invoke('search:ai', { options, query }),
     organize: (id, organization) => send('sessions:organize', { id, organization }),
     setGroup: (id, name) => send('sessions:set-group', { id, name }),
     setWorkspace: (group, workspace) => send('sessions:set-workspace', { group, workspace }),

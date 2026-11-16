@@ -222,6 +222,7 @@ fn main() {
             mcp::mcp_list,
             organizer::topics_estimate,
             organizer::topics_run,
+            organizer::search_ai,
             organizer::workspaces_estimate,
             organizer::workspaces_run,
             organizer::joins_estimate,

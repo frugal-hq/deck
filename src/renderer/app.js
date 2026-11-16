@@ -1308,6 +1308,7 @@ const setConfirmsClose = (on) => localStorage.setItem('confirmClose', on);
 
 const bypassOn = () => localStorage.getItem('bypassPermissions') === 'true';
 const startsWithFrugal = () => localStorage.getItem('startWithFrugal') === 'true';
+const sendsExcerpts = () => localStorage.getItem('aiSearchExcerpts') === 'true';
 const setBypass = (on) => localStorage.setItem('bypassPermissions', on);
 const adminOn = () => localStorage.getItem('runAsAdmin') === 'true';
 // The Deck's own confirm(): native dialogs never show in this window.
@@ -2266,7 +2267,8 @@ function drawPalette() {
   const shown = new Set(titled.map((session) => session.id));
   const matches = paletteAi ?? [...titled, ...paletteSessions.filter((session) => paletteText.has(session.id) && !shown.has(session.id))];
   paletteList.replaceChildren(...matches.map(paletteOption));
-  $('palette-empty').hidden = matches.length > 0;
+  $('palette-empty').textContent = paletteError || 'No results.';
+  $('palette-empty').hidden = matches.length > 0 && !paletteError;
   selectPaletteRow(matches.length ? 0 : -1);
 }
 
@@ -2292,6 +2294,27 @@ function searchMessages() {
   }, 200);
 }
 
+async function askAi() {
+  const query = paletteQuery.value.trim();
+  const button = $('palette-ask');
+  if (!query || button.disabled) return;
+  resetPaletteSearch();
+  const search = paletteSearch;
+  button.disabled = true;
+  button.textContent = 'Asking…';
+  const reply = await deck.searchAi({ model: $('palette-model').value, effort: $('palette-effort').value, rename: false, excerpts: sendsExcerpts() }, query)
+    .catch((error) => ({ error: String(error) }));
+  button.disabled = false;
+  button.textContent = 'Ask AI';
+  if (search !== paletteSearch || !palette.open || reply.stopped) return;
+  const byId = new Map(paletteSessions.map((session) => [session.id, session]));
+  paletteAi = (reply.ids ?? []).map((id) => byId.get(id)).filter(Boolean);
+  paletteError = reply.error ?? '';
+  drawPalette();
+}
+
+$('palette-ask').onclick = askAi;
+
 async function showPalette(load, choose, placeholder = 'Search titles, folders and messages') {
   if (palette.open) {
     palette.close();
@@ -2302,6 +2325,9 @@ async function showPalette(load, choose, placeholder = 'Search titles, folders a
   paletteQuery.placeholder = placeholder;
   paletteQuery.value = '';
   resetPaletteSearch();
+  $('palette-ai').hidden = load !== deck.getAllSessions;
+  $('palette-sends').hidden = $('palette-ai').hidden;
+  $('palette-sends').textContent = `Ask AI sends Anthropic your description and the title, folder, date and first prompt of up to 40 matching chats${sendsExcerpts() ? ', with up to 200 characters of a matching message from each' : ''}. Change it in Settings.`;
   palette.showModal();
   drawPalette();
 }
@@ -2314,7 +2340,10 @@ paletteQuery.oninput = searchMessages;
 
 paletteQuery.onkeydown = (event) => {
   const count = paletteList.children.length;
-  if (event.key === 'Enter') {
+  if (event.key === 'Enter' && event.ctrlKey && !$('palette-ai').hidden) {
+    event.preventDefault();
+    askAi();
+  } else if (event.key === 'Enter') {
     event.preventDefault();
     paletteList.children[paletteRow]?.click();
   } else if (count && (event.key === 'ArrowDown' || event.key === 'ArrowUp')) {
@@ -2779,6 +2808,7 @@ async function openSettings() {
   $('settings-mouse').checked = await deck.getMouse();
   $('settings-keep-transcripts').checked = await deck.getKeepTranscripts();
   $('settings-frugal').checked = startsWithFrugal();
+  $('settings-ai-excerpts').checked = sendsExcerpts();
   $('settings-tooltips').value = tooltipPlacement();
   $('settings-reopen').checked = reopensChats();
   $('settings-volume').value = notifyVolume();
@@ -2927,6 +2957,7 @@ $('settings-volume').onchange = (event) => {
 checkVoice();
 $('settings-voice-language').onchange = (event) => localStorage.setItem('voiceLanguage', event.target.value);
 $('settings-frugal').onchange = (event) => localStorage.setItem('startWithFrugal', event.target.checked);
+$('settings-ai-excerpts').onchange = (event) => localStorage.setItem('aiSearchExcerpts', event.target.checked);
 $('settings-reopen').onchange = (event) => localStorage.setItem('reopenChats', event.target.checked);
 $('settings-tooltips').onchange = (event) => localStorage.setItem('tooltipPlacement', event.target.value);
 $('settings-always-trust').onchange = (event) => {

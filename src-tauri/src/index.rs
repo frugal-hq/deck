@@ -454,6 +454,14 @@ pub fn search_text(db: &Connection, query: &str) -> Result<Vec<String>> {
     Ok(found.into_iter().flatten().collect())
 }
 
+// The message of a session that best matches any of the queries' words, about 30 words around the match.
+pub fn excerpt(db: &Connection, session_id: &str, queries: &[String]) -> Result<Option<String>> {
+    let terms: Vec<String> = queries.iter().flat_map(|query| fts_terms(query)).collect();
+    if terms.is_empty() { return Ok(None); }
+    Ok(db.prepare_cached("SELECT snippet(session_text, 1, '', '', '…', 30) FROM session_text WHERE session_text MATCH ? AND session_id = ? ORDER BY rank LIMIT 1")?
+        .query_row(params![terms.join(" OR "), session_id], |r| r.get(0)).optional()?)
+}
+
 pub fn open_read() -> Result<Connection> {
     let home = PathBuf::from(std::env::var_os("USERPROFILE").ok_or("No user folder.")?);
     Ok(Connection::open_with_flags(home.join(".frugal-deck").join("deck.db"), rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY)?)
