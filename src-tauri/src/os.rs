@@ -6,8 +6,11 @@ use tauri::{image::Image, AppHandle, Manager, UserAttentionType, WebviewWindow};
 use tauri_plugin_dialog::DialogExt;
 use tauri_plugin_opener::OpenerExt;
 use crate::chat::Chats;
-use webview2_com::Microsoft::Web::WebView2::Win32::{ICoreWebView2, ICoreWebView2File, ICoreWebView2WebMessageReceivedEventArgs2};
-use webview2_com::{take_pwstr, WebMessageReceivedEventHandler};
+use webview2_com::Microsoft::Web::WebView2::Win32::{
+    ICoreWebView2, ICoreWebView2File, ICoreWebView2Profile4, ICoreWebView2WebMessageReceivedEventArgs2, ICoreWebView2_13,
+    COREWEBVIEW2_PERMISSION_KIND_CLIPBOARD_READ, COREWEBVIEW2_PERMISSION_KIND_MICROPHONE, COREWEBVIEW2_PERMISSION_STATE_ALLOW, COREWEBVIEW2_PERMISSION_STATE_DENY,
+};
+use webview2_com::{take_pwstr, SetPermissionStateCompletedHandler, WebMessageReceivedEventHandler};
 use windows_core::{Interface, HSTRING, PWSTR};
 
 // Dialogs block until closed, so they wait on a blocking thread, not on the main one they are drawn by.
@@ -157,6 +160,19 @@ pub fn link_open(app: AppHandle, url: String, cwd: Option<String>) {
 // File objects carry no path in WebView2, and its own drop handler would break the sidebar's HTML5 drag. deck.js posts
 // a drop's files to the host, which answers with their paths in the same order (null for one it cannot read).
 // frugal: Tauri's IPC handler also gets the message and logs a console error for it.
+// WebView2 would ask with its own prompt; the Deck sets the answer from Settings. The page requests no other permission.
+#[tauri::command]
+pub fn permissions_set(window: WebviewWindow, mic: bool, clipboard: bool) {
+    let _ = window.with_webview(move |webview| unsafe {
+        let Ok(profile) = webview.controller().CoreWebView2().and_then(|core| core.cast::<ICoreWebView2_13>()).and_then(|core| core.Profile()).and_then(|profile| profile.cast::<ICoreWebView2Profile4>()) else { return };
+        let origin = HSTRING::from("http://tauri.localhost");
+        for (kind, allow) in [(COREWEBVIEW2_PERMISSION_KIND_MICROPHONE, mic), (COREWEBVIEW2_PERMISSION_KIND_CLIPBOARD_READ, clipboard)] {
+            let state = if allow { COREWEBVIEW2_PERMISSION_STATE_ALLOW } else { COREWEBVIEW2_PERMISSION_STATE_DENY };
+            let _ = profile.SetPermissionState(kind, &origin, state, &SetPermissionStateCompletedHandler::create(Box::new(|_| Ok(()))));
+        }
+    });
+}
+
 pub unsafe fn serve_drop_paths(core: &ICoreWebView2) -> windows_core::Result<()> {
     let handler = WebMessageReceivedEventHandler::create(Box::new(|sender, args| {
         let (Some(sender), Some(args)) = (sender, args) else { return Ok(()) };

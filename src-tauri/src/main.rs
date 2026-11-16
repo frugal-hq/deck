@@ -200,6 +200,7 @@ fn main() {
             accounts::accounts_remove,
             accounts::mcp_set,
             voice::voice_mode,
+            os::permissions_set,
             voice::voice_status,
             voice::voice_prepare,
             voice::voice_transcribe,

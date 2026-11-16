@@ -278,6 +278,11 @@ const voiceMode = () => localStorage.getItem('voiceMode') ?? 'off';
 const voiceModel = () => localStorage.getItem('voiceModel') ?? 'medium';
 const voiceLanguage = () => localStorage.getItem('voiceLanguage') ?? 'en';
 const voiceDevice = () => localStorage.getItem('voiceDevice');
+// Answered from Settings, so WebView2 never shows its own permission prompt.
+const allowsMic = () => localStorage.getItem('allowMic') !== 'false';
+const allowsClipboard = () => localStorage.getItem('allowClipboard') !== 'false';
+const applyPermissions = () => deck.setPermissions(allowsMic(), allowsClipboard());
+applyPermissions();
 const decimal = new Intl.NumberFormat('en-US', { maximumFractionDigits: 1 });
 const sizeText = (bytes) => (bytes >= 1e9 ? `${decimal.format(bytes / 1e9)} GB` : `${decimal.format(bytes / 1e6)} MB`);
 const voiceError = (text) => ask({ title: 'Voice', text, action: 'OK', run: () => {} });
@@ -2810,6 +2815,8 @@ async function openSettings() {
   $('settings-keep-transcripts').checked = await deck.getKeepTranscripts();
   $('settings-frugal').checked = startsWithFrugal();
   $('settings-ai-excerpts').checked = sendsExcerpts();
+  $('settings-mic').checked = allowsMic();
+  $('settings-clipboard').checked = allowsClipboard();
   $('settings-tooltips').value = tooltipPlacement();
   $('settings-reopen').checked = reopensChats();
   $('settings-volume').value = notifyVolume();
@@ -3072,6 +3079,12 @@ $('settings-admin').onchange = async (event) => {
   for (const chat of chats.values()) drawBadge(chat);
 };
 $('settings-roles').onchange = (event) => deck.setRoles(event.target.checked);
+for (const [id, key] of [['settings-mic', 'allowMic'], ['settings-clipboard', 'allowClipboard']]) {
+  $(id).onchange = (event) => {
+    localStorage.setItem(key, event.target.checked);
+    applyPermissions();
+  };
+}
 $('settings-keep-transcripts').onchange = (event) => deck.setKeepTranscripts(event.target.checked).catch((error) => askConfirm('Could not change every account', String(error), 'OK'));
 $('settings-mouse').onchange = async (event) => {
   if (event.target.checked) {

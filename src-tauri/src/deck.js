@@ -84,6 +84,7 @@
     continueIn: (options) => invoke('chat:continue', { options, output: output(options.id) }),
     switchAccount: (options) => invoke('chat:switch-account', { options, output: output(options.id) }),
     setVoiceMode: (mode) => send('voice:mode', { mode }),
+    setPermissions: (mic, clipboard) => send('permissions:set', { mic, clipboard }),
     voiceStatus: (model) => invoke('voice:status', { model }),
     voicePrepare: (model) => invoke('voice:prepare', { model }),
     voiceTranscribe: (options) => invoke('voice:transcribe', { options: { ...options, audio: options?.audio instanceof ArrayBuffer ? Array.from(new Uint8Array(options.audio)) : options?.audio } }),
