@@ -196,10 +196,6 @@ function render() {
   linkButton.dataset.tip = linked ? 'Already linked to a chat. Click to move or unlink it' : 'Join this session to another chat';
   if (!chat) return;
   $('path').textContent = chat.cwd;
-  $('session').textContent = chat.id.slice(0, 8);
-  $('session').dataset.tip = chat.id;
-  $('state').textContent = STATE_LABEL[chat.state](chat);
-  $('state').dataset.state = chat.state;
   drawMeters();
 }
 
@@ -712,7 +708,8 @@ function drawInfo(chat) {
   const title = chat.title?.replace(/^[^\p{L}\p{N}\s] /u, ''); // Without the spinner mark (isBusyTitle).
   const rows = [
     ['Task', [chat.name, title !== chat.name && title].filter(Boolean).join('\n')],
-    ['State', chat.state],
+    ['State', STATE_LABEL[chat.state](chat)],
+    ['Session', chat.id],
     ['Account', account?.name ?? chat.account],
     ['Model', chat.model],
     ['Effort', chat.effort],

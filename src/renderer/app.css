@@ -346,10 +346,6 @@ body:has(.info-panel:not([hidden])) { grid-template-columns: var(--sidebar-width
   white-space: nowrap;
 }
 
-.readout__session { color: var(--color-ink-2); white-space: nowrap; }
-.readout__state { color: var(--color-muted); white-space: nowrap; }
-.readout__state[data-state="running"] { color: var(--color-accent); }
-.readout__state[data-state="error"] { color: var(--color-bad); }
 
 #usage-open { anchor-name: --usage; min-height: 24px; padding-inline: var(--space-xs); background: none; box-shadow: none; color: var(--color-muted); }
 #usage-open:hover { color: var(--color-ink); filter: none; }
@@ -552,7 +548,7 @@ body { transition: opacity var(--dur-short) var(--ease-out); }
 }
 
 @media (max-width: 60rem) {
-  .readout__session, .meter meter { display: none; }
+  .meter meter { display: none; }
 }
 
 .chat { position: relative; }
