@@ -283,6 +283,14 @@ const allowsMic = () => localStorage.getItem('allowMic') !== 'false';
 const allowsClipboard = () => localStorage.getItem('allowClipboard') !== 'false';
 const applyPermissions = () => deck.setPermissions(allowsMic(), allowsClipboard());
 applyPermissions();
+// tokens.css derives every accent shade from --accent-hue, so a new hue repaints the app at once; terminals keep their own copy.
+const ACCENTS = [['Rose', 12.5], ['Red', 35], ['Orange', 57.5], ['Yellow', 80], ['Lime', 102.5], ['Chartreuse', 125], ['Green', 147.5], ['Emerald', 170], ['Teal', 192.5], ['Cyan', 215], ['Sky', 237.5], ['Blue', 260], ['Indigo', 282.5], ['Violet', 305], ['Magenta', 327.5], ['Pink', 350]];
+const accentHue = () => ACCENTS.find(([, hue]) => String(hue) === localStorage.getItem('accentHue'))?.[1] ?? 80;
+const applyAccent = () => {
+  document.documentElement.style.setProperty('--accent-hue', accentHue());
+  for (const chat of chats.values()) chat.term.options.theme = { ...chat.term.options.theme, selectionBackground: token('--color-accent-soft') };
+};
+applyAccent();
 const decimal = new Intl.NumberFormat('en-US', { maximumFractionDigits: 1 });
 const sizeText = (bytes) => (bytes >= 1e9 ? `${decimal.format(bytes / 1e9)} GB` : `${decimal.format(bytes / 1e6)} MB`);
 const voiceError = (text) => ask({ title: 'Voice', text, action: 'OK', run: () => {} });
@@ -2817,6 +2825,7 @@ async function openSettings() {
   $('settings-ai-excerpts').checked = sendsExcerpts();
   $('settings-mic').checked = allowsMic();
   $('settings-clipboard').checked = allowsClipboard();
+  $('settings-accent').querySelector(`[value="${accentHue()}"]`).checked = true;
   $('settings-tooltips').value = tooltipPlacement();
   $('settings-reopen').checked = reopensChats();
   $('settings-volume').value = notifyVolume();
@@ -3085,6 +3094,17 @@ for (const [id, key] of [['settings-mic', 'allowMic'], ['settings-clipboard', 'a
     applyPermissions();
   };
 }
+for (const [name, hue] of ACCENTS) {
+  const swatch = Object.assign(document.createElement('input'), { type: 'radio', name: 'accent', value: hue });
+  swatch.setAttribute('aria-label', name);
+  swatch.dataset.tip = name;
+  swatch.style.setProperty('--hue', hue);
+  $('settings-accent').append(swatch);
+}
+$('settings-accent').onchange = (event) => {
+  localStorage.setItem('accentHue', event.target.value);
+  applyAccent();
+};
 $('settings-keep-transcripts').onchange = (event) => deck.setKeepTranscripts(event.target.checked).catch((error) => askConfirm('Could not change every account', String(error), 'OK'));
 $('settings-mouse').onchange = async (event) => {
   if (event.target.checked) {

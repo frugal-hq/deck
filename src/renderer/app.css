@@ -471,6 +471,12 @@ details.mcp__section > summary { cursor: pointer; }
 .organize__check input.settings__range::before { content: none; }
 .settings__select { min-height: 28px; padding-inline: var(--space-xs); border: 0; border-radius: var(--radius-pill); background: var(--color-paper-3); color: var(--color-ink); font: inherit; }
 .settings__select[type="number"] { flex: none; width: 5rem; padding-inline: var(--space-sm) var(--space-2xs); font-variant-numeric: tabular-nums; }
+.settings__accent { margin: 0; padding: 0; border: 0; font-size: var(--text-sm); }
+.settings__accent legend { margin-bottom: var(--space-xs); padding: 0; }
+.settings__swatches { display: grid; grid-template-columns: repeat(8, 20px); gap: var(--space-xs); }
+.settings__swatches input { appearance: none; width: 20px; height: 20px; margin: 0; border-radius: 50%; background: oklch(82% 0.15 var(--hue)); cursor: pointer; }
+.settings__swatches input:checked { box-shadow: 0 0 0 2px var(--color-paper-2), 0 0 0 4px var(--color-ink); }
+.settings__swatches input:focus-visible { outline-offset: 5px; }
 
 .segmented { display: flex; gap: var(--space-2xs); padding: var(--space-3xs); border: 0; border-radius: var(--radius-pill); background: var(--color-paper-3); }
 .segmented label { position: relative; flex: 1; display: grid; place-items: center; min-height: 30px; border-radius: 8px; color: var(--color-muted); font-size: var(--text-sm); cursor: pointer; transition: background-color var(--dur-micro) var(--ease-out), color var(--dur-micro) var(--ease-out); }
@@ -708,7 +714,7 @@ body { transition: opacity var(--dur-short) var(--ease-out); }
 }
 .term-badge.is-collapsed { padding: var(--space-3xs) var(--space-md); background: none; box-shadow: none; }
 .term-badge.is-collapsed .term-badge__info, .term-badge.is-collapsed .term-badge__action { display: none; }
-.term-badge.is-bypass .term-badge__dot { color: var(--color-cool); }
+.term-badge.is-bypass .term-badge__dot { color: var(--color-accent); }
 .term-badge__action {
   flex: none;
   border: 0;
@@ -718,7 +724,7 @@ body { transition: opacity var(--dur-short) var(--ease-out); }
   cursor: pointer;
   transition: color var(--dur-micro) var(--ease-out);
 }
-.term-badge__action:hover:not(:disabled) { color: var(--color-cool); }
+.term-badge__action:hover:not(:disabled) { color: var(--color-accent); }
 .term-badge__action:disabled { cursor: progress; }
 .term-badge__dot {
   display: grid;
@@ -774,7 +780,7 @@ body { transition: opacity var(--dur-short) var(--ease-out); }
 .term-mic__more { width: 26px; padding: 0 var(--space-2xs) 0 0; }
 .term-mic__record .icon { width: 20px; height: 20px; }
 .term-mic__more .icon { width: 14px; height: 14px; rotate: -90deg; }
-.term-mic__record:hover:not(:disabled), .term-mic__more:hover { color: var(--color-cool); }
+.term-mic__record:hover:not(:disabled), .term-mic__more:hover { color: var(--color-accent); }
 .term-mic__record:disabled { cursor: default; }
 .term-mic[data-state="busy"] .term-mic__record { cursor: progress; }
 .term-mic[data-state="missing"] .term-mic__record::after { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--color-accent); }
