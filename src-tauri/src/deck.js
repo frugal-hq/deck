@@ -3,12 +3,61 @@
 // event's payload is the array of arguments Electron passed to the callback.
 (() => {
   const command = (channel) => channel.replace(/[:-]/g, '_');
-  const invoke = (channel, args) => window.__TAURI__.core.invoke(command(channel), args);
+  // Debug log (Settings > Debug): with it on, every call but the per-keystroke ones, every event but the meters,
+  // and every chat exit add a line through debug.rs. Off, each costs one boolean check.
+  let debugOn = false;
+  const log = (area, text) => {
+    if (debugOn) window.__TAURI__.core.invoke('debug_log', { area, text }).catch(() => {});
+  };
+  const brief = (value) => {
+    try {
+      const text = JSON.stringify(value, (key, v) => (key === 'output' ? undefined : key === 'bytes' || key === 'audio' ? `[${v?.length} bytes]` : v)) ?? '';
+      return text.length > 300 ? `${text.slice(0, 300)}…` : text;
+    } catch {
+      return '?';
+    }
+  };
+  const quietCalls = new Set(['chat:input', 'chat:resize', 'ui:save', 'files:thumbnail', 'window:attention', 'debug:set', 'debug:lines', 'debug:clear', 'debug:reveal']);
+  const quietEvents = new Set(['chat:meters', 'debug:line', 'voice:progress', 'topics:progress']);
+  // frugal: a call logs when it settles, so one that never returns leaves no line; log the start too if hangs need finding.
+  const invoke = (channel, args) => {
+    const call = window.__TAURI__.core.invoke(command(channel), args);
+    if (!debugOn || quietCalls.has(channel)) return call;
+    const started = performance.now();
+    const took = () => `${channel} ${brief(args)} ${Math.round(performance.now() - started)} ms`;
+    call.then((result) => log('call', `${took()}${result?.error ? ` error: ${result.error}` : ''}`), (error) => log('call', `${took()} failed: ${error}`));
+    return call;
+  };
+
+  // localStorage is mirrored to ~/.frugal-deck/ui.json (window.__deckUi, from main.rs): keys missing here come back from
+  // it, so a reinstall or a cleared WebView2 folder keeps the settings, and the installer can preset the language.
+  try {
+    for (const [key, value] of Object.entries(window.__deckUi ?? {})) {
+      if (typeof value === 'string' && localStorage.getItem(key) === null) localStorage.setItem(key, value);
+    }
+  } catch {}
+  debugOn = localStorage.getItem('debugLog') === 'true';
+  let uiTimer = null;
+  const saveUi = () => {
+    clearTimeout(uiTimer);
+    uiTimer = setTimeout(() => invoke('ui:save', { values: { ...localStorage } }).catch((error) => console.warn('ui:save', error)), 500);
+  };
+  for (const name of ['setItem', 'removeItem', 'clear']) {
+    const original = Storage.prototype[name];
+    Storage.prototype[name] = function (...args) {
+      original.apply(this, args);
+      if (this === window.localStorage) saveUi();
+    };
+  }
+  saveUi();
   const send = (channel, args) => {
     invoke(channel, args).catch((error) => console.warn(channel, error));
   };
   const on = (channel, callback) => {
-    window.__TAURI__.event.listen(channel, (event) => callback(...event.payload));
+    window.__TAURI__.event.listen(channel, (event) => {
+      if (debugOn && !quietEvents.has(channel)) log('event', `${channel} ${brief(event.payload)}`);
+      callback(...event.payload);
+    });
   };
   // A chat's output and exit come on its own channel, in order: a string is output, {exit} the exit code.
   const dataCallbacks = [];
@@ -17,7 +66,10 @@
     const channel = new window.__TAURI__.core.Channel();
     channel.onmessage = (message) => {
       if (typeof message === 'string') for (const callback of dataCallbacks) callback(id, message);
-      else for (const callback of exitCallbacks) callback(id, message.exit);
+      else {
+        log('chat', `${id}: exit ${message.exit} reached the renderer`);
+        for (const callback of exitCallbacks) callback(id, message.exit);
+      }
     };
     return channel;
   };
@@ -81,6 +133,15 @@
     onRestarting: (callback) => on('chat:restarting', callback),
     onTurnEnd: (callback) => on('chat:turn-end', callback),
     onHandoff: (callback) => on('chat:handoff', callback),
+    setDebug: (on) => {
+      debugOn = on;
+      send('debug:set', { on });
+    },
+    debugLines: () => invoke('debug:lines'),
+    debugClear: () => send('debug:clear'),
+    debugReveal: () => send('debug:reveal'),
+    debugLog: log,
+    onDebugLine: (callback) => on('debug:line', callback),
     continueIn: (options) => invoke('chat:continue', { options, output: output(options.id) }),
     switchAccount: (options) => invoke('chat:switch-account', { options, output: output(options.id) }),
     setVoiceMode: (mode) => send('voice:mode', { mode }),

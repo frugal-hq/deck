@@ -1022,6 +1022,7 @@ fn index_loop(app: &AppHandle, jobs: mpsc::Sender<Msg>, inbox: mpsc::Receiver<Ms
 
 // A failed write or read shows as the sidebar error until the next change, instead of stopping the index.
 fn report(app: &AppHandle, next: Result<Value>) {
+    if let Err(error) = &next { crate::debug_log!("index", "error: {error:#}"); }
     publish(app, next.unwrap_or_else(|error| json!({ "error": error.to_string() })));
 }
 

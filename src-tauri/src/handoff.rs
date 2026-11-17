@@ -11,9 +11,13 @@ pub fn offer_handoffs(app: &AppHandle, handoffs: Vec<Value>) {
     let chats = app.state::<Chats>();
     for handoff in handoffs {
         let Some(id) = handoff["id"].as_str() else { continue };
-        if !chats.is_live(id) { continue; }
+        if !chats.is_live(id) {
+            crate::debug_log!("handoff", "{id}: turn end skipped, chat not open here (handoff block: {})", handoff["prompt"].is_string());
+            continue;
+        }
         match handoff["prompt"].as_str().filter(|prompt| !prompt.is_empty()) {
             Some(prompt) => {
+                crate::debug_log!("handoff", "{id}: handoff block, {} chars, context {} tokens", prompt.len(), handoff["tokens"]);
                 let _ = app.emit("chat:handoff", [json!(id), json!({ "prompt": prompt, "tokens": handoff["tokens"].clone() })]);
             }
             None => {

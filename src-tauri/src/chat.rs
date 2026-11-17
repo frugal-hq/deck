@@ -293,6 +293,7 @@ fn spawn(app: &AppHandle, id: &str, command: CommandBuilder, (cols, rows): (u16,
         };
         // Dropped outside the lock: closing the pseudoconsole waits for its output to drain.
         let replaced = chat.is_none();
+        crate::debug_log!("chat", "{id}: process exited with {code}{}", if replaced { ", replaced by an account switch" } else { "" });
         drop(chat);
         let _ = reading.join();
         if !replaced {
@@ -379,6 +380,7 @@ fn launch(app: &AppHandle, id: &str, place: &str, folder: PathBuf, size: (u16, u
     if bypass {
         command.arg("--dangerously-skip-permissions");
     }
+    crate::debug_log!("chat", "{id}: claude {} in {} on {}, bypass {bypass}, admin {admin}", if resume { "--resume" } else { "--session-id" }, folder.display(), account["id"]);
     let info = Info { account: account["id"].as_str().unwrap_or_default().to_owned(), folder, bypass, admin, voice };
     let exit_token = token.clone();
     let exit_id = id.to_owned();

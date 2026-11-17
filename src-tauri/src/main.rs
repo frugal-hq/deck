@@ -3,6 +3,7 @@
 mod accounts;
 mod archive;
 mod chat;
+mod debug;
 mod elevated;
 mod handoff;
 mod index;
@@ -18,6 +19,21 @@ use serde_json::json;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Mutex;
 use tauri::{webview::Color, Emitter, Manager, RunEvent, WebviewUrl, WebviewWindow, WebviewWindowBuilder, WindowEvent};
+
+// The renderer's localStorage, mirrored by deck.js, so a reinstall or a cleared WebView2 folder gets it back.
+fn ui_file() -> Option<std::path::PathBuf> {
+    Some(std::path::PathBuf::from(std::env::var_os("USERPROFILE")?).join(".frugal-deck").join("ui.json"))
+}
+
+#[tauri::command]
+fn ui_save(values: serde_json::Value) -> Result<(), String> {
+    if !values.is_object() { return Err("Settings must be an object.".into()); }
+    let file = ui_file().ok_or("No user folder.")?;
+    let temporary = file.with_extension("json.tmp");
+    std::fs::create_dir_all(file.parent().unwrap()).map_err(|e| e.to_string())?;
+    std::fs::write(&temporary, serde_json::to_vec_pretty(&values).map_err(|e| e.to_string())?).map_err(|e| e.to_string())?;
+    std::fs::rename(temporary, file).map_err(|e| e.to_string())
+}
 
 #[tauri::command]
 fn window_action(window: WebviewWindow, action: String) -> tauri::Result<()> {
@@ -62,6 +78,9 @@ fn main() {
             statusline::write_editor(&app.path().app_data_dir()?)?;
             let home = std::path::PathBuf::from(std::env::var_os("USERPROFILE").ok_or("No user folder.")?);
             let codex_home = std::env::var_os("CODEX_HOME").filter(|s| !s.is_empty()).map(std::path::PathBuf::from).unwrap_or_else(|| home.join(".codex"));
+            let ui = ui_file().and_then(|file| std::fs::read_to_string(file).ok())
+                .and_then(|text| serde_json::from_str::<serde_json::Value>(&text).ok()).filter(|v| v.is_object()).unwrap_or_default();
+            debug::init(app.handle().clone(), ui["debugLog"] == "true");
             let accounts = accounts::Accounts::new(home, codex_home);
             // Also covers accounts added to the Frugal pool outside the Deck.
             let _ = accounts.apply_keep_transcripts();
@@ -90,7 +109,8 @@ fn main() {
                 .background_color(Color(0x14, 0x17, 0x1b, 0xff))
                 // Test runs open the window behind the one in use, so it never takes the keyboard.
                 .focused(std::env::var_os("DECK_BACKGROUND").is_none())
-                .initialization_script(include_str!("deck.js"))
+                .initialization_script(format!("window.__deckUi = {ui};
+{}", include_str!("deck.js")))
                 // WebView2's own drop handler would break the sidebar's HTML5 drag; os::serve_drop_paths gives drops their paths.
                 .disable_drag_drop_handler()
                 .on_navigation(|url| url.host_str() == Some("tauri.localhost"))
@@ -168,6 +188,12 @@ fn main() {
         .manage(index::Index::default())
         .manage(organizer::Organizer::default())
         .invoke_handler(tauri::generate_handler![
+            ui_save,
+            debug::debug_set,
+            debug::debug_lines,
+            debug::debug_clear,
+            debug::debug_log,
+            debug::debug_reveal,
             index::sessions_get,
             index::sessions_all,
             index::sessions_search,
@@ -239,6 +265,7 @@ fn main() {
         .expect("Frugal Deck failed to start")
         .run(|app, event| {
             if let RunEvent::Exit = event {
+                debug_log!("deck", "exit");
                 app.state::<chat::Chats>().kill_all();
                 app.state::<organizer::Organizer>().stop();
             }

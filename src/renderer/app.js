@@ -636,6 +636,7 @@ function markActiveSession() {
 }
 
 function activate(id) {
+  deck.debugLog('ui', `activate ${id}`);
   activeId = id;
   for (const chat of chats.values()) chat.el.hidden = chat.id !== id;
   render();
@@ -1276,7 +1277,12 @@ function stopCountdown(chat) {
 function startCountdown(chat) {
   chat.handoff.paused = false;
   chat.handoff.timer = setInterval(() => {
-    if (activeId !== chat.id) return;
+    if (activeId !== chat.id) {
+      if (!chat.handoff.waiting) deck.debugLog('handoff', `${chat.id}: countdown waits, its chat is not on screen`);
+      chat.handoff.waiting = true;
+      return;
+    }
+    chat.handoff.waiting = false;
     chat.handoff.left -= 1;
     if (chat.handoff.left > 0) drawHandoff();
     else continueHandoff(chat);
@@ -1317,6 +1323,7 @@ async function continueHandoff(chat) {
   const { note, instant } = chat.handoff;
   const prompt = note.trim() ? `${chat.handoff.prompt.trimEnd()}\nUser note: ${note.trim()}` : chat.handoff.prompt;
   const result = await openChat({ id: crypto.randomUUID(), cwd: chat.cwd, name: 'New chat', handoff: { from: chat.id, accountId: chat.account, prompt } });
+  deck.debugLog('handoff', `${chat.id}: new session ${result.error ? `failed: ${result.error}` : 'started'}`);
   // A failed start keeps the prompt, so nothing typed into it is lost.
   if (!result.error) chat.handoff = null;
   else if (chat.handoff) chat.handoff.starting = false;
@@ -1333,6 +1340,7 @@ deck.onHandoff((id, { prompt, tokens }) => {
   if (chat.handoff) stopCountdown(chat);
   const delay = handoffDelay();
   const auto = handoffAuto() && tokens >= HANDOFF_AUTO_TOKENS;
+  deck.debugLog('handoff', `${id}: ${tokens} tokens, auto ${auto} (setting ${handoffAuto()}, from ${HANDOFF_AUTO_TOKENS}), delay ${delay} s, on screen ${activeId === id}`);
   chat.handoff = { prompt, note: '', tokens, left: delay, timer: null, paused: false, instant: auto && delay === 0 };
   if (auto && delay === 0 && activeId === id) {
     continueHandoff(chat);
@@ -2935,8 +2943,41 @@ async function openSettings(section = localStorage.getItem('settingsSection')) {
   $('settings-volume').value = notifyVolume();
   $('settings-volume-value').value = `${notifyVolume()}%`;
   $('settings-group-limit').value = groupLimit();
+  $('settings-debug').checked = localStorage.getItem('debugLog') === 'true';
+  debugConsole.replaceChildren();
+  showDebugLines(await deck.debugLines());
   $('settings-dialog').showModal();
+  debugConsole.scrollTop = debugConsole.scrollHeight;
 }
+
+// Settings > Debug: the console shows debug.rs's last lines and follows new ones while the dialog is open.
+function showDebugLines(lines) {
+  const atEnd = debugConsole.scrollHeight - debugConsole.scrollTop - debugConsole.clientHeight < 24;
+  debugConsole.append(...lines.map((line) => `${line}
+`));
+  while (debugConsole.childNodes.length > DEBUG_KEEP) debugConsole.firstChild.remove();
+  if (atEnd) debugConsole.scrollTop = debugConsole.scrollHeight;
+}
+deck.onDebugLine((line) => {
+  if ($('settings-dialog').open) showDebugLines([line]);
+});
+$('settings-debug').onchange = (event) => {
+  localStorage.setItem('debugLog', event.target.checked);
+  deck.setDebug(event.target.checked);
+};
+$('debug-copy').onclick = () => navigator.clipboard.writeText(debugConsole.textContent);
+$('debug-reveal').onclick = () => deck.debugReveal();
+$('debug-clear').onclick = () => {
+  deck.debugClear();
+  debugConsole.replaceChildren();
+};
+const describe = (node) => (node instanceof Element ? `${node.localName}${node.id ? `#${node.id}` : ''}${[...node.classList].map((name) => `.${name}`).join('')}` : '');
+// A click names the element that got it and its parents, so a control that ignores clicks shows what covers it.
+document.addEventListener('pointerdown', (event) => {
+  deck.debugLog('ui', `pointerdown ${event.composedPath().slice(0, 4).map(describe).filter(Boolean).join(' < ')}`);
+}, true);
+window.addEventListener('error', (event) => deck.debugLog('error', `${event.message} at ${event.filename}:${event.lineno}:${event.colno}`));
+window.addEventListener('unhandledrejection', (event) => deck.debugLog('error', `unhandled rejection: ${event.reason?.stack ?? event.reason}`));
 $('settings-group-limit').onchange = (event) => {
   const value = Number(event.target.value);
   if (!Number.isInteger(value) || value < 1 || value > 500) {
