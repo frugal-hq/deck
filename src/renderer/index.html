@@ -232,6 +232,18 @@
     </div>
   </form>
 </dialog>
+<dialog id="switch-dialog" class="organize" closedby="any" aria-labelledby="switch-title" aria-describedby="switch-message">
+  <form method="dialog">
+    <h2 id="switch-title" class="organize__title"></h2>
+    <p id="switch-message" class="organize__text"></p>
+    <div id="switch-list" class="switch__list"></div>
+    <div class="organize__actions">
+      <button class="btn" value="cancel" data-tip="Every chat stays on its account">Cancel</button>
+      <button id="switch-idle" class="btn" value="idle" data-tip="Busy chats keep working on their account">Switch idle chats only</button>
+      <button class="btn btn--danger" value="all" data-tip="Stops the busy chats and reopens every chat on the new account">Switch all</button>
+    </div>
+  </form>
+</dialog>
 <dialog id="close-dialog" class="organize" closedby="any" aria-labelledby="close-title" aria-describedby="close-message">
   <form method="dialog">
     <h2 id="close-title" class="organize__title">Close this chat?</h2>

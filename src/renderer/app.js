@@ -32,6 +32,8 @@ function inlineIcon(name) {
 }
 
 const STATUS_LABEL = { working: 'Working', waiting: 'Waiting for your answer', replied: 'Replied' };
+// Chats in the middle of a turn, highlighted in the tabs while the switch dialog asks about them.
+let switchBusy = new Set();
 
 function statusIcon(status) {
   if (!status) return icon('terminal');
@@ -167,6 +169,7 @@ function render() {
     open.setAttribute('aria-label', chat.name);
     if (chat.id === activeId) open.setAttribute('aria-current', 'true');
     else open.removeAttribute('aria-current');
+    chat.tab.classList.toggle('tab--busy', switchBusy.has(chat.id));
     close.setAttribute('aria-label', `Close chat ${chat.name}`);
   }
 
@@ -536,12 +539,11 @@ function accountBlock(account, primary, chat, caps) {
   const age = account.limits?.at ? `Read ${spanText(Date.now() - account.limits.at)} ago` : '';
   head.append(accountName(account, [account.configDir, primary ? '' : age]));
   if (account.id === accountState.primary) head.append(node('span', 'tag tag--primary', 'Primary'));
-  if (!primary && account.signedIn) {
-    const running = chat?.account && chat.state === 'running';
+  if (account.signedIn && (!primary || switchable(account).length)) {
     const button = node('button', 'btn', 'Use');
     button.type = 'button';
-    button.dataset.tip = running ? 'Restart this chat on this account. New chats use it too' : 'New chats start on this account';
-    button.onclick = async () => (running ? useAccount(chat, account) : report(await deck.setPrimary(account.id)));
+    button.dataset.tip = switchable(account).length ? 'Restart every open chat on this account. New chats use it too' : 'New chats start on this account';
+    button.onclick = () => useAccount(account);
     head.append(button);
   }
   head.append(withMenu(block, account));
@@ -585,8 +587,52 @@ function drawAccounts() {
   drawOthers();
 }
 
-async function useAccount(chat, account) {
+// Open chats on another account; login chats keep theirs.
+const switchable = (account) => [...chats.values()].filter((chat) => !chat.login && chat.account && chat.state === 'running' && chat.account !== account.id);
+
+// Switching accounts moves every open chat with --resume. Busy chats (working, or waiting for an answer) lose their
+// turn, so the dialog lists them: switch all, switch only the idle ones (busy ones stay on their account), or cancel.
+async function useAccount(account) {
   $('usage').hidePopover();
+  const open = switchable(account);
+  const busy = open.filter((chat) => chat.status === 'working' || chat.status === 'waiting');
+  let moving = open;
+  if (busy.length) {
+    const choice = await askSwitch(account, busy, busy.length < open.length);
+    if (choice !== 'all' && choice !== 'idle') return;
+    if (choice === 'idle') moving = open.filter((chat) => !busy.includes(chat));
+  }
+  if (!moving.length) return report(await deck.setPrimary(account.id));
+  for (const chat of moving) await switchChat(chat, account);
+}
+
+function askSwitch(account, busy, someIdle) {
+  const dialog = $('switch-dialog');
+  const name = account.email || account.id;
+  $('switch-title').textContent = `Switch every chat to ${name}?`;
+  $('switch-message').textContent = `${busy.length === 1 ? 'This chat is' : 'These chats are'} still working. Switching stops the turn in progress and reopens the chat on ${name} with its history. Click one to look at it first.`;
+  $('switch-list').replaceChildren(...busy.map((chat) => {
+    const item = node('button', 'switch__chat');
+    item.type = 'button';
+    item.append(node('span', 'switch__name', chat.name), node('span', 'switch__status', STATUS_LABEL[chat.status]));
+    item.onclick = () => activate(chat.id);
+    return item;
+  }));
+  $('switch-idle').hidden = !someIdle;
+  switchBusy = new Set(busy.map((chat) => chat.id));
+  render();
+  dialog.returnValue = '';
+  dialog.showModal();
+  return new Promise((resolve) => {
+    dialog.onclose = () => {
+      switchBusy = new Set();
+      render();
+      resolve(dialog.returnValue);
+    };
+  });
+}
+
+async function switchChat(chat, account) {
   const bypass = chatBypass(chat, null);
   const admin = await confirmAdmin(bypass, chatAdmin(chat, null));
   const result = await deck.switchAccount({ id: chat.id, accountId: account.id, cols: chat.cols, rows: chat.rows, bypass, admin });
