@@ -245,6 +245,7 @@ fn main() {
             chat::chat_input,
             chat::chat_resize,
             chat::chat_kill,
+            chat::chat_recorded_sessions,
             tasks::chat_subagents,
             tasks::tasks_all,
             mcp::mcp_list,

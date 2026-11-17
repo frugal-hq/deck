@@ -304,6 +304,20 @@ fn spawn(app: &AppHandle, id: &str, command: CommandBuilder, (cols, rows): (u16,
     Ok(())
 }
 
+fn record_session(id: &str) {
+    use std::io::Write;
+    let Some(home) = std::env::var_os("USERPROFILE") else { return };
+    let file = PathBuf::from(home).join(".frugal-deck").join("sessions.txt");
+    let _ = std::fs::OpenOptions::new().create(true).append(true).open(file).and_then(|mut f| writeln!(f, "{id}"));
+}
+
+#[tauri::command]
+pub fn chat_recorded_sessions() -> Vec<String> {
+    let Some(home) = std::env::var_os("USERPROFILE") else { return vec![] };
+    let file = PathBuf::from(home).join(".frugal-deck").join("sessions.txt");
+    std::fs::read_to_string(file).unwrap_or_default().lines().map(|s| s.trim().to_string()).filter(|s| !s.is_empty()).collect()
+}
+
 // main.js launchChat.
 #[allow(clippy::too_many_arguments)]
 // place: the session whose chat sets the group and workspace, the source chat's for a handoff.

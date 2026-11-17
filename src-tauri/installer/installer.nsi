@@ -516,7 +516,10 @@ LangString choowHowToInstall 0 ""
   !include "{{this}}"
 {{/each}}
 
+Var DeckInstDir
 Function .onInit
+  ; NSIS has already put /D in $INSTDIR; anything else leaves the placeholder.
+  StrCpy $DeckInstDir $INSTDIR
   ${GetOptions} $CMDLINE "/P" $PassiveMode
   ${IfNot} ${Errors}
     StrCpy $PassiveMode 1
@@ -562,6 +565,10 @@ Function .onInit
 
   !if "${INSTALLMODE}" == "both"
     !insertmacro MULTIUSER_INIT
+    ; MULTIUSER_INIT sets the chosen mode's folder; a /D from Frugal Deck Setup wins over it.
+    ${If} $DeckInstDir != "${PLACEHOLDER_INSTALL_DIR}"
+      StrCpy $INSTDIR $DeckInstDir
+    ${EndIf}
   !endif
 
   ; Abort downgrades if they are disabled, in the modes that skip the reinstall page choice:

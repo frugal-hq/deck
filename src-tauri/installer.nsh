@@ -59,3 +59,26 @@ FunctionEnd
 !macro NSIS_HOOK_PREUNINSTALL
   nsExec::Exec 'schtasks.exe /Delete /TN "\Frugal Deck\Administrator helper" /F'
 !macroend
+
+; Frugal Deck Setup passes its own path in /SETUP=: a copy beside the Deck becomes the uninstaller Windows opens, in the
+; Deck's style with the data choices; uninstall.exe stays as the quiet uninstaller.
+!macro NSIS_HOOK_POSTINSTALL
+  ${GetParameters} $R0
+  ClearErrors
+  ${GetOptions} $R0 "/SETUP=" $R1
+  ${IfNot} ${Errors}
+  ${AndIf} ${FileExists} "$R1"
+    ${If} $R1 != "$INSTDIR\Frugal Deck Setup.exe"
+      CopyFiles /SILENT "$R1" "$INSTDIR\Frugal Deck Setup.exe"
+    ${EndIf}
+    ${If} ${FileExists} "$INSTDIR\Frugal Deck Setup.exe"
+      WriteRegStr SHCTX "${UNINSTKEY}" "UninstallString" "$\"$INSTDIR\Frugal Deck Setup.exe$\" --uninstall"
+      WriteRegStr SHCTX "${UNINSTKEY}" "QuietUninstallString" "$\"$INSTDIR\uninstall.exe$\" /S"
+    ${EndIf}
+  ${EndIf}
+!macroend
+
+!macro NSIS_HOOK_POSTUNINSTALL
+  Delete "$INSTDIR\Frugal Deck Setup.exe"
+  RMDir "$INSTDIR"
+!macroend

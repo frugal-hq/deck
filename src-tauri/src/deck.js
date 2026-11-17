@@ -122,6 +122,7 @@
     start: (options) => invoke('chat:start', { options, output: output(options.id) }),
     subagents: (id, cwd) => invoke('chat:subagents', { id, cwd }),
     allTasks: () => invoke('tasks:all'),
+    recordedSessions: () => invoke('chat:recorded-sessions'),
     input: (id, data) => send('chat:input', { id, data }),
     resize: (id, cols, rows) => send('chat:resize', { id, cols, rows }),
     kill: (id) => send('chat:kill', { id }),

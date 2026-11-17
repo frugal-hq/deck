@@ -10,6 +10,7 @@
 <style>
   html, body { height: 100%; }
   body { display: grid; grid-template-rows: 36px 1fr; overflow: hidden; font-size: var(--text-sm); user-select: none; }
+  [hidden] { display: none !important; }
   .bar { display: flex; align-items: center; padding-inline: var(--space-sm) 0; -webkit-app-region: drag; }
   .bar button { -webkit-app-region: no-drag; }
   .mark { display: inline-flex; align-items: center; gap: var(--space-2xs); font-weight: 500; }
@@ -18,40 +19,55 @@
   .close { display: grid; place-items: center; width: 46px; height: 36px; margin-inline-start: auto; border: 0; background: transparent; color: var(--color-muted); transition: background-color var(--dur-micro) var(--ease-out), color var(--dur-micro) var(--ease-out); }
   .close:hover { background: var(--color-bad); color: var(--color-paper-3); }
   .icon { width: 16px; height: 16px; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linecap: round; stroke-linejoin: round; }
-  main { display: grid; grid-template-rows: auto 1fr auto; gap: var(--space-md); padding: var(--space-md) var(--space-lg) var(--space-lg); }
+  main { display: grid; grid-template-rows: auto 1fr auto; gap: var(--space-md); min-height: 0; padding: var(--space-md) var(--space-lg) var(--space-lg); }
   .hero { display: flex; align-items: center; gap: var(--space-md); }
   .hero svg { width: 48px; height: 48px; flex: none; }
   h1 { font-size: var(--text-xl); font-weight: 500; }
   .muted { color: var(--color-muted); }
-  .choices { display: grid; gap: var(--space-xs); align-content: start; }
+  .content { display: grid; gap: var(--space-sm); align-content: start; min-height: 0; overflow-y: auto; }
+  .content p { margin: 0; }
+  .note { padding: var(--space-sm) var(--space-md); border-radius: 12px; background: var(--color-paper-2); }
+  .note strong { display: block; margin-bottom: 2px; font-weight: 500; }
+  .note--found { background: color-mix(in oklab, var(--color-ok-soft) 70%, var(--color-paper-2)); }
+  .field { display: flex; align-items: center; gap: var(--space-sm); }
+  select { min-height: 32px; padding-inline: var(--space-sm); border: 0; border-radius: var(--radius-pill); background: var(--color-paper-3); color: var(--color-ink); font: inherit; }
   .choice { display: grid; grid-template-columns: 16px 1fr; gap: 2px var(--space-sm); padding: var(--space-sm) var(--space-md); border: var(--rule-hair) solid var(--color-rule); border-radius: 12px; background: var(--color-paper-2); cursor: pointer; transition: border-color var(--dur-micro) var(--ease-out), background-color var(--dur-micro) var(--ease-out); }
   .choice:hover { border-color: var(--color-rule-2); }
   .choice:has(input:checked) { border-color: var(--color-accent); background: color-mix(in oklab, var(--color-accent-soft) 45%, var(--color-paper-2)); }
+  .choice--danger:has(input:checked) { border-color: var(--color-bad); background: color-mix(in oklab, var(--color-bad-soft) 70%, var(--color-paper-2)); }
   .choice input { appearance: none; width: 16px; height: 16px; margin: 3px 0 0; border-radius: 50%; background: var(--color-paper-3); box-shadow: inset 0 0 0 1px var(--color-rule-2); }
   .choice input:checked { background: radial-gradient(var(--color-accent-ink) 30%, var(--color-accent) 34%); box-shadow: none; }
-  .choice span:last-child { grid-column: 2; }
+  .choice input[type="checkbox"] { border-radius: 4px; }
+  .choice input[type="checkbox"]:checked, .check input:checked { background: var(--color-accent) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%23231a0c' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m3.5 8.5 3 3 6-7'/%3E%3C/svg%3E") center / 12px no-repeat; box-shadow: none; }
+  .choice--danger input[type="checkbox"]:checked { background-color: var(--color-bad); }
+  .choice span:not(:first-of-type) { grid-column: 2; }
+  .warn { color: var(--color-bad); }
+  .folder { display: flex; align-items: center; gap: var(--space-sm); }
+  .folder .path { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .presets { display: flex; gap: var(--space-xs); }
   .check { display: flex; align-items: center; gap: var(--space-xs); cursor: pointer; }
   .check input { appearance: none; display: grid; place-content: center; width: 16px; height: 16px; margin: 0; border-radius: 4px; background: var(--color-paper-3); }
-  .check input:checked { background: var(--color-accent) url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%23231a0c' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m3.5 8.5 3 3 6-7'/%3E%3C/svg%3E") center / 12px no-repeat; }
   .actions { display: flex; justify-content: end; align-items: center; gap: var(--space-xs); }
-  .actions .check { margin-inline-end: auto; }
+  .actions .check, .actions .muted { margin-inline-end: auto; }
   .btn { display: inline-flex; align-items: center; min-height: 36px; padding: var(--space-2xs) var(--space-md); border: 0; border-radius: var(--radius-pill); background: linear-gradient(180deg, var(--color-control), var(--color-control-2)); box-shadow: inset 0 1px 0 var(--color-highlight); color: var(--color-ink); font-weight: 500; cursor: pointer; transition: filter var(--dur-micro) var(--ease-out), scale var(--dur-micro) var(--ease-out); }
   .btn:hover { filter: brightness(1.14); }
   .btn:active { filter: brightness(0.92); scale: 0.97; }
+  .btn--small { min-height: 28px; padding-inline: var(--space-sm); font-size: var(--text-xs); }
   .btn--primary { background: linear-gradient(180deg, color-mix(in oklab, var(--color-accent) 90%, var(--color-ink)), var(--color-accent)); color: var(--color-accent-ink); }
+  .btn--danger { background: var(--color-bad); color: var(--color-paper-3); }
   .progress { position: relative; height: 6px; overflow: hidden; border-radius: 3px; background: var(--color-paper-3); align-self: center; }
   .progress::after { content: ""; position: absolute; inset: 0 auto 0 0; width: 35%; border-radius: inherit; background: var(--color-accent); animation: slide 1.4s var(--ease-in-out) infinite; }
   @keyframes slide { from { translate: -100% 0; } to { translate: 290% 0; } }
-  body:not([data-view="choose"]) .on-choose, body:not([data-view="installing"]) .on-installing, body:not([data-view="done"]) .on-done, body:not([data-view="failed"]) .on-failed { display: none !important; }
-  body[data-view="installing"] .close { visibility: hidden; }
+  body:is([data-view="installing"], [data-view="removing"]) .close { visibility: hidden; }
+  #message { white-space: pre-line; user-select: text; }
 </style>
 </head>
-<body data-view="choose">
+<body data-view="about">
 <svg width="0" height="0" aria-hidden="true" style="position: absolute">
   <symbol id="logo" viewBox="36 35.5 184 184"><path fill="currentColor" fill-rule="evenodd" d="M101 54L70 54A24 24 0 0 0 46 78L46 177A24 24 0 0 0 70 201L101 201ZM65.5 89L85.5 89A5.5 5.5 0 0 1 85.5 100L65.5 100A5.5 5.5 0 0 1 65.5 89ZM65.5 122L85.5 122A5.5 5.5 0 0 1 85.5 133L65.5 133A5.5 5.5 0 0 1 65.5 122ZM65.5 155L85.5 155A5.5 5.5 0 0 1 85.5 166L65.5 166A5.5 5.5 0 0 1 65.5 155ZM109 54L186 54A24 24 0 0 1 210 78L210 177A24 24 0 0 1 186 201L109 201ZM140 166L140 132.5L132 132.5A9.5 9.5 0 0 1 132 113.5L140 113.5L140 111A31 31 0 0 1 171 80L177 80A9 9 0 0 1 177 98L171 98A13 13 0 0 0 158 111L158 113.5L162 113.5A9.5 9.5 0 0 1 162 132.5L158 132.5L158 166A9 9 0 0 1 140 166ZM179 122A9 9 0 1 0 197 122A9 9 0 1 0 179 122Z"/></symbol>
 </svg>
 <header class="bar">
-  <span class="mark"><svg aria-hidden="true"><use href="#logo"/></svg>Frugal Deck Setup</span>
+  <span id="mark" class="mark"><svg aria-hidden="true"><use href="#logo"/></svg>Frugal Deck Setup</span>
   <button id="close" class="close" type="button" aria-label="Close"><svg class="icon" viewBox="0 0 16 16" aria-hidden="true"><path d="m4 4 8 8m0-8-8 8"/></svg></button>
 </header>
 <main>
@@ -62,59 +78,223 @@
       <p id="subtitle" class="muted"></p>
     </div>
   </div>
-  <form id="form" class="choices on-choose">
-    <label class="choice" id="choice-user"><input type="radio" name="mode" value="user"><span>Just for me</span><span class="muted">In your user folder. No administrator permission needed. Administrator chats ask for permission every time.</span></label>
-    <label class="choice" id="choice-machine"><input type="radio" name="mode" value="machine" checked><span>Everyone on this PC</span><span class="muted">In Program Files. Windows asks for administrator permission.</span></label>
-  </form>
-  <div class="progress on-installing" role="progressbar" aria-label="Installing"></div>
-  <p id="message" class="muted on-done on-failed" role="status"></p>
+
+  <div class="content">
+    <div class="content" data-views="about">
+      <p>Frugal Deck is a desktop client for Claude Code, built around the Frugal skill. It runs Claude Code's own terminal with tabs, groups and search, delegates work to your other accounts so your limits last longer, and leaves out the noise of Claude Desktop.</p>
+      <p class="note"><strong>Everything stays on this computer</strong>Frugal Deck has no servers and collects nothing. Your sessions, groups and settings live in your user folder. Claude Code talks to Anthropic as it always does.</p>
+      <p id="found" class="note note--found" hidden></p>
+      <div id="external-field" hidden>
+        <label class="check"><input id="external" type="checkbox" checked><span id="external-label"></span></label>
+        <p class="muted">They stay where they are; Frugal Deck only lists them. You can change this later in Settings.</p>
+      </div>
+      <label id="language-field" class="field" hidden>Language
+        <select id="language">
+          <option value="en">English</option>
+          <option value="es">Español</option>
+          <option value="es-ES">Español (España)</option>
+          <option value="es-MX">Español (México)</option>
+          <option value="es-PE">Español (Perú)</option>
+          <option value="pt-BR">Português (Brasil)</option>
+          <option value="pt-PT">Português (Portugal)</option>
+          <option value="fr">Français</option>
+          <option value="de">Deutsch</option>
+          <option value="it">Italiano</option>
+          <option value="nl">Nederlands</option>
+          <option value="pl">Polski</option>
+          <option value="ru">Русский</option>
+          <option value="uk">Українська</option>
+          <option value="tr">Türkçe</option>
+          <option value="ja">日本語</option>
+          <option value="zh-CN">简体中文</option>
+          <option value="ko">한국어</option>
+        </select>
+      </label>
+    </div>
+
+    <form id="form" class="content" data-views="choose">
+      <label class="choice" id="choice-user"><input type="radio" name="mode" value="user"><span>Just for me</span><span class="muted">In your user folder. No administrator permission needed. Administrator chats ask for permission every time.</span></label>
+      <label class="choice" id="choice-machine"><input type="radio" name="mode" value="machine" checked><span>Everyone on this PC</span><span class="muted">In Program Files. Windows asks for administrator permission.</span></label>
+      <div id="folder-row" class="folder"><span>Install in</span><span id="folder-path" class="path muted"></span><button id="folder-change" class="btn btn--small" type="button">Change…</button></div>
+      <p id="folder-warn" class="warn" hidden>Administrator chats are safest in a folder only administrators can change, like Program Files.</p>
+    </form>
+
+    <form id="remove-form" class="content" data-views="remove">
+      <div class="presets">
+        <button id="keep-all" class="btn btn--small" type="button">Keep everything</button>
+        <button id="delete-all" class="btn btn--small" type="button">Delete everything</button>
+      </div>
+      <label class="choice" id="row-deck"><input type="checkbox" name="deck"><span>Delete sessions started in Frugal Deck</span><span class="muted" id="size-deck"></span></label>
+      <label class="choice choice--danger" id="row-claude"><input type="checkbox" name="claude"><span>Delete Claude Code CLI and Claude Desktop sessions</span><span class="muted" id="size-claude"></span><span class="warn">Claude Code and Claude Desktop lose them too.</span></label>
+      <label class="choice" id="row-groups"><input type="checkbox" name="groups"><span>Delete groups, workspaces and the index</span><span class="muted" id="size-groups"></span></label>
+      <label class="choice" id="row-settings"><input type="checkbox" name="settings"><span>Delete Frugal Deck settings</span><span class="muted">Your choices in Settings, the chats left open, and downloaded voice models.</span></label>
+      <label class="check"><input id="backup" type="checkbox"> Save a backup (.zip) in Documents first</label>
+    </form>
+
+    <div class="progress" role="progressbar" aria-label="Working" data-views="installing removing"></div>
+    <p id="message" class="muted" role="status" data-views="done failed removed"></p>
+  </div>
+
   <div class="actions">
-    <label class="check on-choose"><input id="open" type="checkbox" checked> Open Frugal Deck when done</label>
-    <button id="cancel" class="btn on-choose" type="button">Cancel</button>
-    <button id="install" class="btn btn--primary on-choose" type="submit" form="form">Install</button>
-    <button id="retry" class="btn on-failed" type="button">Try again</button>
-    <button id="finish" class="btn btn--primary on-done on-failed" type="button">Close</button>
+    <label class="check" data-views="choose"><input id="open" type="checkbox" checked> Open Frugal Deck when done</label>
+    <span class="muted" data-views="remove">Frugal Deck closes if it is open.</span>
+    <button id="cancel" class="btn" type="button" data-views="about choose remove">Cancel</button>
+    <button id="continue" class="btn btn--primary" type="button" data-views="about">Continue</button>
+    <button id="install" class="btn btn--primary" type="submit" form="form" data-views="choose">Install</button>
+    <button id="uninstall" class="btn btn--primary" type="submit" form="remove-form" data-views="remove">Uninstall</button>
+    <button id="retry" class="btn" type="button" data-views="failed">Try again</button>
+    <button id="reveal" class="btn" type="button" data-views="removed" hidden>Show backup</button>
+    <button id="finish" class="btn btn--primary" type="button" data-views="done failed removed">Close</button>
   </div>
 </main>
 <script type="module">
   const { invoke } = window.__TAURI__.core;
+  const { listen } = window.__TAURI__.event;
   const $ = (id) => document.getElementById(id);
+  // #reveal is shown only after a backup, on top of its view.
+  let revealPath = null;
   const show = (view, title, message = '') => {
     document.body.dataset.view = view;
+    for (const element of document.querySelectorAll('[data-views]')) element.hidden = !element.dataset.views.split(' ').includes(view);
+    $('reveal').hidden = view !== 'removed' || !revealPath;
     $('title').textContent = title;
     $('message').textContent = message;
   };
-  const { version, installed } = await invoke('info');
-  const verb = installed ? (installed.version === version ? 'Reinstall' : 'Update') : 'Install';
-  const choose = () => show('choose', `${verb} Frugal Deck`);
-  $('subtitle').textContent = installed
-    ? `Version ${installed.version} is installed ${installed.mode === 'machine' ? 'for everyone' : 'for you'}. This is version ${version}.`
-    : `Version ${version}`;
-  $('install').textContent = verb;
-  // An update stays where the installed copy is.
-  if (installed) {
-    $(`choice-${installed.mode === 'machine' ? 'user' : 'machine'}`).hidden = true;
-    $('form').elements.mode.value = installed.mode;
-  }
-  choose();
+  const bytes = (n) => {
+    const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+    let i = 0;
+    while (n >= 1024 && i < units.length - 1) { n /= 1024; i++; }
+    return `${n.toFixed(i && n < 10 ? 1 : 0)} ${units[i]}`;
+  };
+  const sessions = (n) => `${n} ${n === 1 ? 'session' : 'sessions'}`;
   const quit = () => invoke('quit');
   $('close').onclick = quit;
   $('cancel').onclick = quit;
   $('finish').onclick = quit;
-  $('retry').onclick = choose;
-  $('form').onsubmit = async (event) => {
-    event.preventDefault();
-    const open = $('open').checked;
-    show('installing', installed ? 'Updating Frugal Deck' : 'Installing Frugal Deck');
-    $('subtitle').textContent = 'Windows may ask for administrator permission.';
-    try {
-      await invoke('install', { everyone: $('form').elements.mode.value === 'machine', open });
-      show('done', 'Frugal Deck is installed', open ? 'It opens in a moment.' : 'Find it in the Start menu.');
-    } catch (error) {
-      show('failed', 'The installation stopped', String(error));
+
+  const { version, installed, uninstall, data, folders } = await invoke('info');
+
+  if (uninstall) {
+    // Uninstaller: what to keep. Rows with nothing on disk are left out.
+    $('mark').lastChild.textContent = 'Uninstall Frugal Deck';
+    const choose = () => {
+      show('remove', 'Uninstall Frugal Deck');
+      $('subtitle').textContent = 'Anything you keep comes back if you install Frugal Deck again. Anything you delete cannot be recovered.';
+    };
+    $('row-deck').hidden = !data?.deck.count;
+    $('size-deck').textContent = data ? `${sessions(data.deck.count)}, ${bytes(data.deck.bytes)}.` : '';
+    $('row-claude').hidden = !data?.claude.count;
+    $('size-claude').textContent = data ? `${sessions(data.claude.count)}, ${bytes(data.claude.bytes)}. They live in the .claude folders of your accounts.` : '';
+    $('row-groups').hidden = !data?.groups;
+    $('size-groups').textContent = data?.groups ? `How the Deck sorts your sessions: groups, workspaces, names, archive marks and its search index, ${bytes(data.groups.bytes)}.` : '';
+    $('row-settings').hidden = !data?.settings;
+    const boxes = () => [...$('remove-form').querySelectorAll('.choice:not([hidden]) input')];
+    const update = () => {
+      const deleting = boxes().some((box) => box.checked);
+      $('uninstall').textContent = deleting ? 'Delete and uninstall' : 'Uninstall';
+      $('uninstall').classList.toggle('btn--danger', deleting);
+      $('uninstall').classList.toggle('btn--primary', !deleting);
+    };
+    $('remove-form').onchange = update;
+    $('keep-all').onclick = () => { for (const box of boxes()) box.checked = false; update(); };
+    $('delete-all').onclick = () => { for (const box of boxes()) box.checked = true; update(); };
+    $('retry').onclick = choose;
+    const steps = { close: 'Closing Frugal Deck', backup: 'Saving the backup', program: 'Removing the program. Windows may ask for administrator permission.', data: 'Deleting what you chose', done: '' };
+    await listen('step', (event) => ($('subtitle').textContent = steps[event.payload] ?? ''));
+    $('remove-form').onsubmit = async (event) => {
+      event.preventDefault();
+      const form = $('remove-form').elements;
+      const picked = Object.fromEntries(['deck', 'claude', 'groups', 'settings'].map((name) => [name, !$(`row-${name}`).hidden && form[name].checked]));
+      show('removing', 'Uninstalling Frugal Deck');
+      try {
+        const result = await invoke('uninstall', { ...picked, backup: $('backup').checked });
+        revealPath = result.backup;
+        const kept = !Object.values(picked).some(Boolean);
+        const lines = [kept ? 'Your sessions, groups and settings are still here. Install Frugal Deck again to get them back.' : 'What you chose was deleted.'];
+        if (result.backup) lines.push(`Backup: ${result.backup}`);
+        if (result.errors.length) lines.push(`Some files could not be deleted:\n${result.errors.slice(0, 5).join('\n')}`);
+        show('removed', 'Frugal Deck is uninstalled', lines.join('\n\n'));
+        $('subtitle').textContent = '';
+      } catch (error) {
+        show('failed', 'The uninstall stopped', String(error));
+        $('subtitle').textContent = '';
+      }
+    };
+    $('reveal').onclick = () => invoke('reveal', { path: revealPath });
+    choose();
+    update();
+  } else {
+    const verb = installed ? (installed.version === version ? 'Reinstall' : 'Update') : 'Install';
+    const versionLine = installed
+      ? `Version ${installed.version} is installed ${installed.mode === 'machine' ? 'for everyone' : 'for you'}. This is version ${version}.`
+      : `Version ${version}`;
+    const about = () => { show('about', `${verb} Frugal Deck`); $('subtitle').textContent = versionLine; };
+    const choose = () => { show('choose', `${verb} Frugal Deck`); $('subtitle').textContent = versionLine; };
+    $('install').textContent = verb;
+    // Data from an earlier install: the Deck reads it again on start, so nothing needs restoring.
+    const count = (data?.deck.count ?? 0) + (data?.claude.count ?? 0);
+    // A fresh Deck with sessions from Claude Code or Claude Desktop asks whether to list them; the count is in that question.
+    const askExternal = data?.claude.count > 0 && !data.settings;
+    const found = [count && !askExternal ? sessions(count) : '', data?.groups ? 'your groups and workspaces' : '', data?.settings ? 'your settings' : ''].filter(Boolean);
+    if (found.length) {
+      $('found').hidden = false;
+      $('found').textContent = `Found ${found.join(', ').replace(/, ([^,]*)$/, ' and $1')}. Frugal Deck opens with them as they were.`;
     }
-    $('subtitle').textContent = `Version ${version}`;
-  };
+    if (askExternal) {
+      const n = data.claude.count;
+      $('external-field').hidden = false;
+      $('external-label').textContent = n === 1 ? 'Show my existing Claude Code or Claude Desktop session in Frugal Deck' : `Show my ${n} existing Claude Code and Claude Desktop sessions in Frugal Deck`;
+    }
+    // The language is asked only once; after that it changes in Settings.
+    if (data && !data.language) {
+      const tags = [...$('language').options].map((option) => option.value);
+      const system = navigator.language;
+      const base = system.split('-')[0];
+      $('language').value = tags.find((tag) => tag.toLowerCase() === system.toLowerCase())
+        ?? (base === 'pt' ? 'pt-BR' : base === 'zh' ? 'zh-CN' : tags.find((tag) => tag === base)) ?? 'en';
+      $('language-field').hidden = false;
+    }
+    // An update stays where the installed copy is.
+    if (installed) {
+      $(`choice-${installed.mode === 'machine' ? 'user' : 'machine'}`).hidden = true;
+      $('form').elements.mode.value = installed.mode;
+    }
+    // The folder follows the mode until the user picks one; an update keeps the installed folder.
+    let picked = null;
+    const mode = () => $('form').elements.mode.value;
+    const folderNow = () => picked ?? folders[mode() === 'machine' ? 'machine' : 'user'];
+    const folderUpdate = () => {
+      $('folder-row').hidden = !!installed;
+      const folder = folderNow() ?? '';
+      $('folder-path').textContent = folder;
+      $('folder-path').title = folder;
+      const programFiles = (folders.programFiles ?? '').toLowerCase();
+      $('folder-warn').hidden = !!installed || mode() !== 'machine' || !programFiles || folder.toLowerCase().startsWith(programFiles + '\\');
+    };
+    $('form').onchange = folderUpdate;
+    $('folder-change').onclick = async () => { picked = (await invoke('pick_folder')) ?? picked; folderUpdate(); };
+    folderUpdate();
+    $('continue').onclick = choose;
+    $('retry').onclick = choose;
+    about();
+    $('form').onsubmit = async (event) => {
+      event.preventDefault();
+      const open = $('open').checked;
+      show('installing', installed ? 'Updating Frugal Deck' : 'Installing Frugal Deck');
+      $('subtitle').textContent = 'Windows may ask for administrator permission.';
+      try {
+        if (data && !data.language) await invoke('set_ui', { key: 'language', value: $('language').value });
+        if (!$('external-field').hidden && !$('external').checked) await invoke('set_ui', { key: 'showExternal', value: 'false' });
+        await invoke('install', { everyone: mode() === 'machine', open, folder: installed ? null : folderNow() });
+        show('done', 'Frugal Deck is installed', open ? 'It opens in a moment.' : 'Find it in the Start menu.');
+        // The Deck is already starting, so the setup steps aside.
+        if (open) setTimeout(quit, 1500);
+      } catch (error) {
+        show('failed', 'The installation stopped', String(error));
+      }
+      $('subtitle').textContent = `Version ${version}`;
+    };
+  }
 </script>
 </body>
 </html>
