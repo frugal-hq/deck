@@ -3452,6 +3452,8 @@ async function openMcpDialog(scope) {
     : `Applies to chats started or restarted in this ${kind}${kind === 'workspace' ? ' and the ones inside it' : ''}${kind === 'folder' ? '' : ', on top of their folder'}. Servers on in all chats (MCP servers in the menu) start checked. ${signIn}`;
   $('mcp-add-section').hidden = true;
   $('mcp-new').hidden = true;
+  $('mcp-ask').value = '';
+  syncMcpAsk();
   $('mcp-list').replaceChildren(node('p', 'mcp__empty', 'Loading…'));
   $('mcp-error').hidden = true;
   $('mcp-dialog').showModal();
@@ -3481,6 +3483,36 @@ function showMcpForm(server) {
 }
 
 $('mcp-list').onchange = () => { mcpTouched = true; };
+// One Haiku request at low effort, as mcp_from_prompt in organizer.rs sends it: ~1,400 tokens of overhead, ~110 of instructions, ~80 out, plus the description.
+const mcpAskTokens = (text) => 1590 + Math.ceil(text.length / 4);
+function syncMcpAsk() {
+  const text = $('mcp-ask').value.trim();
+  $('mcp-ask-run').disabled = !text;
+  $('mcp-ask-cost').textContent = text ? `About ${mcpAskTokens(text).toLocaleString()} tokens on Haiku, main account` : '';
+}
+$('mcp-ask').oninput = syncMcpAsk;
+$('mcp-ask').onkeydown = (event) => {
+  if (event.key !== 'Enter') return;
+  event.preventDefault();
+  $('mcp-ask-run').click();
+};
+$('mcp-ask-run').onclick = async () => {
+  const scope = mcpScope;
+  const text = $('mcp-ask').value.trim();
+  if (!scope || !text || $('mcp-ask-run').disabled) return;
+  $('mcp-ask-run').disabled = true;
+  $('mcp-ask-cost').textContent = 'Asking Haiku...';
+  const reply = await deck.mcpFromPrompt(text).catch((error) => ({ error: String(error) }));
+  if (mcpScope !== scope) return;
+  syncMcpAsk();
+  const server = reply?.server;
+  if (reply?.error || !server?.name) {
+    $('mcp-ask-cost').textContent = reply?.error ?? 'No server found in that description.';
+    return;
+  }
+  showMcpForm({ name: server.name, transport: server.transport, target: server.target ?? '' });
+  $('mcp-ask-cost').textContent = server.note || 'Check the URL or command before adding.';
+};
 $('mcp-new-transport').onchange = syncMcpTarget;
 $('mcp-new-cancel').onclick = () => { $('mcp-new').hidden = true; };
 $('mcp-new-add').onclick = async () => {

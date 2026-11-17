@@ -257,6 +257,7 @@ fn main() {
             organizer::topics_estimate,
             organizer::topics_run,
             organizer::search_ai,
+            organizer::mcp_from_prompt,
             organizer::workspaces_estimate,
             organizer::workspaces_run,
             organizer::joins_estimate,
