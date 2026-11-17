@@ -204,5 +204,6 @@
     pickInstaller: () => invoke('update:pick'),
     installUpdate: (source) => invoke('update:install', { source }),
     updateFrugal: () => invoke('update:frugal'),
+    setFrugalSource: (github) => invoke('update:frugal-source', { github }),
   };
 })();

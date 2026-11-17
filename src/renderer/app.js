@@ -3845,18 +3845,40 @@ async function openTasks() {
 async function openUpdates() {
   $('update-list').replaceChildren();
   $('update-status').textContent = 'Checking for updates…';
-  $('update-dialog').showModal();
-  const { version, local, remote, error, frugal } = await deck.checkUpdates();
+  if (!$('update-dialog').open) $('update-dialog').showModal();
+  const { version, local, remote, error, frugal, frugalSource } = await deck.checkUpdates();
   const install = 'Close Frugal Deck and its chats, install this version and open it again';
   const rows = [];
   if (local) rows.push(updateRow(`Local build from ${new Date(local.built).toLocaleString()}`, 'Install', install, (button) => installUpdate(local.path, button)));
   if (remote?.url) rows.push(updateRow(`Version ${remote.version} on GitHub`, 'Install', install, (button) => installUpdate(remote.url, button)));
   else if (remote) rows.push(updateRow(`Version ${remote.version} on GitHub has no installer`, 'Open', 'Open the release page', () => deck.openLink(remote.page)));
   const releases = rows.length;
-  if (frugal) rows.push(updateRow(`frugal plugin ${frugal}`, 'Update', 'Update frugal on the main account; chats on every account load that copy', updateFrugal));
+  if (frugal) {
+    rows.push(updateRow(`frugal plugin ${frugal}`, 'Update', 'Update frugal on the main account; chats on every account load that copy', updateFrugal));
+    const fromFolder = frugalSource?.source === 'directory';
+    const [kind, from] = fromFolder ? ['folder', frugalSource.path] : frugalSource?.repo ? ['GitHub', frugalSource.repo] : ['other', frugalSource?.url ?? 'unknown'];
+    const tip = fromFolder ? 'Install frugal from GitHub frugal-hq/frugal' : 'Install frugal from a folder that holds its marketplace, such as a clone of the repo';
+    rows.push(updateRow(`frugal source: ${kind}`, fromFolder ? 'Use GitHub' : 'Use a folder', tip, (button) => setFrugalSource(!fromFolder, button), from));
+  }
   $('update-list').replaceChildren(...rows);
   const github = error ? `GitHub could not be checked: ${error}` : releases ? '' : 'This is the latest version.';
   $('update-status').textContent = `Frugal Deck ${version}. ${github}`.trim();
+}
+async function setFrugalSource(github, button) {
+  button.disabled = true;
+  $('update-status').textContent = 'Changing where frugal installs from…';
+  try {
+    const source = await deck.setFrugalSource(github);
+    if (source) {
+      await openUpdates();
+      $('update-status').textContent = `frugal now installs from ${source}. New chats load it; open chats load it when they restart.`;
+      return;
+    }
+    $('update-status').textContent = '';
+  } catch (error) {
+    $('update-status').textContent = `frugal's source did not change: ${error}`;
+  }
+  button.disabled = false;
 }
 async function updateFrugal(button) {
   button.disabled = true;

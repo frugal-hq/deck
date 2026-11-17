@@ -266,7 +266,8 @@ fn main() {
             update::update_check,
             update::update_pick,
             update::update_install,
-            update::update_frugal
+            update::update_frugal,
+            update::update_frugal_source
         ])
         .build(tauri::generate_context!())
         .expect("Frugal Deck failed to start")

@@ -17,6 +17,7 @@ const DOWNLOADS: &str = "https://github.com/frugal-hq/deck/releases/download/";
 // The NSIS installer cargo tauri build makes; the styled setup around it has another name.
 const SUFFIX: &str = "_x64-setup.exe";
 const NO_WINDOW: u32 = 0x0800_0000;
+const FRUGAL_REPO: &str = "frugal-hq/frugal";
 
 // Windows ships curl.exe, so no HTTP client is compiled in.
 fn curl() -> Command {
@@ -67,21 +68,38 @@ fn main_account(app: &AppHandle) -> Option<(Value, std::collections::HashMap<Str
     Some((main, env, accounts.home.clone()))
 }
 
-// A directory marketplace with uncommitted changes would install work in progress to every chat.
-fn dirty_source(config_dir: &Path) -> Option<String> {
-    let known: Value = serde_json::from_slice(&std::fs::read(config_dir.join("plugins/known_marketplaces.json")).ok()?).ok()?;
-    let source = &known["frugal"]["source"];
-    let path = source["path"].as_str().filter(|_| source["source"] == "directory")?;
+fn config_dir(main: &Value) -> &Path {
+    Path::new(main["configDir"].as_str().unwrap_or_default())
+}
+
+// Where the account installs frugal from, as Claude Code records it: { source: "github", repo } or { source: "directory", path }.
+fn frugal_source(config_dir: &Path) -> Value {
+    std::fs::read(config_dir.join("plugins/known_marketplaces.json")).ok().and_then(|bytes| serde_json::from_slice::<Value>(&bytes).ok()).map_or(Value::Null, |known| known["frugal"]["source"].clone())
+}
+
+// A folder with uncommitted changes would install work in progress to every chat. No git, or not a repository: allowed.
+fn dirty(path: &str) -> Option<String> {
     let output = Command::new("git").args(["-C", path, "status", "--porcelain"]).creation_flags(NO_WINDOW).stdin(Stdio::null()).output().ok()?;
-    (output.status.success() && !output.stdout.is_empty()).then(|| format!("frugal's marketplace is the folder {path}, which has uncommitted changes. Commit or discard them, then update again."))
+    (output.status.success() && !output.stdout.is_empty()).then(|| format!("The folder {path} has uncommitted changes. Commit or discard them, then try again."))
+}
+
+// `claude plugin` commands on the main account.
+fn claude_plugin(app: &AppHandle) -> Result<(Value, impl Fn(&[&str]) -> Result<Vec<u8>, String>), String> {
+    let (main, env, home) = main_account(app).ok_or("The main account is not set up.")?;
+    let claude = crate::chat::find_claude().ok_or(crate::chat::NO_CLAUDE)?;
+    Ok((main, move |args: &[&str]| {
+        let mut command = Command::new(&claude);
+        command.env_clear().envs(&env).args(args).current_dir(&home).stdin(Stdio::null());
+        accounts::run(&mut command, Duration::from_secs(300)).map_err(|error| error.to_string().trim().to_owned())
+    }))
 }
 
 #[tauri::command]
 pub async fn update_check(app: AppHandle) -> Value {
     tauri::async_runtime::spawn_blocking(move || {
         let remote = latest_release();
-        let frugal = main_account(&app).map_or(Value::Null, |(main, _, _)| accounts::frugal_install(&main)["version"].clone());
-        json!({ "version": env!("CARGO_PKG_VERSION"), "local": local_build(), "remote": remote.as_ref().ok().cloned().flatten(), "error": remote.err(), "frugal": frugal })
+        let (frugal, source) = main_account(&app).map_or((Value::Null, Value::Null), |(main, _, _)| (accounts::frugal_install(&main)["version"].clone(), frugal_source(config_dir(&main))));
+        json!({ "version": env!("CARGO_PKG_VERSION"), "local": local_build(), "remote": remote.as_ref().ok().cloned().flatten(), "error": remote.err(), "frugal": frugal, "frugalSource": source })
     })
     .await
     .unwrap_or_default()
@@ -92,21 +110,64 @@ pub async fn update_check(app: AppHandle) -> Value {
 #[tauri::command]
 pub async fn update_frugal(app: AppHandle) -> Result<String, String> {
     tauri::async_runtime::spawn_blocking(move || {
-        let (main, env, home) = main_account(&app).ok_or("The main account is not set up.")?;
-        if let Some(error) = dirty_source(Path::new(main["configDir"].as_str().unwrap_or_default())) {
+        let (main, step) = claude_plugin(&app)?;
+        let source = frugal_source(config_dir(&main));
+        if let Some(error) = source["path"].as_str().filter(|_| source["source"] == "directory").and_then(dirty) {
             return Err(error);
         }
-        let claude = crate::chat::find_claude().ok_or(crate::chat::NO_CLAUDE)?;
-        let step = |args: &[&str]| {
-            let mut command = Command::new(&claude);
-            command.env_clear().envs(&env).args(args).current_dir(&home).stdin(Stdio::null());
-            accounts::run(&mut command, Duration::from_secs(300)).map_err(|error| error.to_string().trim().to_owned())
-        };
         step(&["plugin", "marketplace", "update", "frugal"])?;
         let output = step(&["plugin", "update", "frugal@frugal"])?;
         let output = String::from_utf8_lossy(&output);
         let last = output.lines().map(|line| line.trim_start_matches(|c: char| !c.is_alphanumeric())).filter(|line| !line.is_empty()).last().unwrap_or_default();
         Ok(last.split(" Restart").next().unwrap_or_default().to_owned())
+    })
+    .await
+    .map_err(|error| error.to_string())?
+}
+
+// Switches the main account between frugal on GitHub and a folder that holds its marketplace, such as a clone of the repo; returns the new source, or "" when no folder was picked.
+// Removing the marketplace uninstalls frugal and wipes its plugin data (per-session markers only), so it is added and installed again; a failed add puts the old source back.
+#[tauri::command]
+pub async fn update_frugal_source(app: AppHandle, window: WebviewWindow, github: bool) -> Result<String, String> {
+    let folder = if github {
+        None
+    } else {
+        let picked = tauri::async_runtime::spawn_blocking(move || window.dialog().file().set_parent(&window).blocking_pick_folder()).await.map_err(|error| error.to_string())?;
+        match picked.and_then(|folder| folder.into_path().ok()) {
+            Some(folder) => Some(folder),
+            None => return Ok(String::new()),
+        }
+    };
+    tauri::async_runtime::spawn_blocking(move || {
+        let target = match &folder {
+            Some(folder) => {
+                let manifest: Value = std::fs::read(folder.join(".claude-plugin/marketplace.json")).ok().and_then(|bytes| serde_json::from_slice(&bytes).ok()).unwrap_or_default();
+                if manifest["name"] != "frugal" {
+                    return Err("That folder does not hold frugal's marketplace.".to_owned());
+                }
+                let path = folder.to_string_lossy().into_owned();
+                if let Some(error) = dirty(&path) {
+                    return Err(error);
+                }
+                path
+            }
+            None => FRUGAL_REPO.to_owned(),
+        };
+        let (main, step) = claude_plugin(&app)?;
+        let old = frugal_source(config_dir(&main));
+        let old = ["repo", "path", "url"].iter().find_map(|key| old[*key].as_str()).map(str::to_owned);
+        step(&["plugin", "marketplace", "remove", "frugal"])?;
+        if let Err(error) = step(&["plugin", "marketplace", "add", &target]) {
+            if let Some(old) = old {
+                if step(&["plugin", "marketplace", "add", &old]).is_ok() {
+                    let _ = step(&["plugin", "install", "frugal@frugal"]);
+                }
+            }
+            return Err(error);
+        }
+        step(&["plugin", "install", "frugal@frugal"])?;
+        crate::mcp::learn_frugal(app.clone());
+        Ok(target)
     })
     .await
     .map_err(|error| error.to_string())?
