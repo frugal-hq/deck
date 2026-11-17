@@ -290,10 +290,13 @@ pub fn list(accounts: &Mutex<Accounts>, scope: &Value) -> Value {
     let Some(claude) = find_claude() else { return json!({ "error": NO_CLAUDE }) };
     let global = scope["global"] == true;
     let signed;
+    let plugin;
     let (runs, folder, off, on, all, deck, sources, home, (accounts_off, no_delegate)) = {
         let a = accounts.lock().unwrap();
         let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_millis() as i64);
         signed = signed_in(&share_tokens(&a), &a.deck_servers(), now);
+        // Chats run the main account's frugal through --plugin-dir, so its server's command, which chats are allowed by, comes from that copy.
+        plugin = a.claude_accounts().iter().find(|account| account["id"] == crate::accounts::MAIN).and_then(crate::accounts::frugal_dir);
         let runs: Vec<(Value, Value, HashMap<String, String>)> = a.labeled_accounts().iter().map(|account| (account["name"].clone(), account["id"].clone(), account_env(&a, account))).collect();
         let sources = sources(&a);
         let folder = if global { a.home.clone() } else { PathBuf::from(scope["folder"].as_str().unwrap_or_default()) };
@@ -303,10 +306,14 @@ pub fn list(accounts: &Mutex<Accounts>, scope: &Value) -> Value {
     let removed = backup(&home, sources);
     let count = runs.len();
     let lists = thread::scope(|threads| {
-        let (claude, folder) = (&claude, &folder);
+        let (claude, folder, plugin) = (&claude, &folder, &plugin);
         let jobs: Vec<_> = runs.iter().map(|(name, id, env)| threads.spawn(move || {
             let mut command = Command::new(claude);
-            command.env_clear().envs(env).args(["mcp", "list"]).current_dir(folder).stdin(Stdio::null());
+            command.env_clear().envs(env);
+            if let Some(dir) = plugin {
+                command.arg("--plugin-dir").arg(dir);
+            }
+            command.args(["mcp", "list"]).current_dir(folder).stdin(Stdio::null());
             (name.clone(), id.clone(), run(&mut command, Duration::from_secs(60)).map_err(|e| e.to_string()))
         })).collect();
         jobs.into_iter().map(|job| job.join().unwrap_or((Value::Null, Value::Null, Err("Listing failed.".into())))).collect::<Vec<_>>()

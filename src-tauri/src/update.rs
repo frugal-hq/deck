@@ -117,6 +117,7 @@ pub async fn update_frugal(app: AppHandle) -> Result<String, String> {
         }
         step(&["plugin", "marketplace", "update", "frugal"])?;
         let output = step(&["plugin", "update", "frugal@frugal"])?;
+        crate::mcp::learn_frugal(app.clone());
         let output = String::from_utf8_lossy(&output);
         let last = output.lines().map(|line| line.trim_start_matches(|c: char| !c.is_alphanumeric())).filter(|line| !line.is_empty()).last().unwrap_or_default();
         Ok(last.split(" Restart").next().unwrap_or_default().to_owned())
