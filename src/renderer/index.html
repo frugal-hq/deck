@@ -94,10 +94,18 @@
     <div id="info-running">
       <h2 id="info-subagents-heading">In progress</h2>
       <div id="info-running-list"></div>
+      <details class="info-panel__local" id="info-running-local" hidden>
+        <summary>Local <span id="info-running-local-count" class="info-panel__muted"></span></summary>
+        <div id="info-running-local-list"></div>
+      </details>
     </div>
     <details id="info-done">
       <summary>Done <span id="info-done-count" class="info-panel__muted"></span></summary>
       <div id="info-done-list"></div>
+      <details class="info-panel__local" id="info-done-local" hidden>
+        <summary>Local <span id="info-done-local-count" class="info-panel__muted"></span></summary>
+        <div id="info-done-local-list"></div>
+      </details>
     </details>
   </section>
 </aside>

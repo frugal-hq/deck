@@ -744,6 +744,8 @@ const TASK_STATUS = { running: 'Running', done: 'Done', failed: 'Failed', 'not d
 
 // Accounts go by the name the usage panel shows; a run job with no account ran its command here, with no model.
 const accountLabel = (id) => [...accountState.accounts, ...accountState.others].find((account) => account.id === id)?.name ?? id.replace(/^oc-/, '');
+// Local: subagents of the chat and run jobs that ran here. A delegate job's account is logged only when it ends, so its kind marks it while it runs.
+const isLocal = (task) => !task.account && (!task.kind || task.kind === 'run');
 const taskAccount = (task) => (task.account ? accountLabel(task.account) : task.kind === 'run' ? 'Local' : '');
 const taskSpan = (seconds) => (seconds == null ? '' : seconds < 60 ? `${seconds} s` : spanText(seconds * 1000));
 // A run job's command names it, without the cd, export and set steps around it.
@@ -782,12 +784,22 @@ function drawSubagents(tasks) {
   tasks.sort((a, b) => b.updatedAt - a.updatedAt);
   const running = tasks.filter((task) => task.running);
   const done = tasks.filter((task) => !task.running).slice(0, 20);
+  const runningDelegated = running.filter((task) => !isLocal(task));
+  const runningLocal = running.filter((task) => isLocal(task));
+  const doneDelegated = done.filter((task) => !isLocal(task));
+  const doneLocal = done.filter((task) => isLocal(task));
   $('info-subagents').hidden = !tasks.length;
   $('info-running').hidden = !running.length;
-  $('info-running-list').replaceChildren(...running.map(taskRow));
+  $('info-running-list').replaceChildren(...runningDelegated.map(taskRow));
+  $('info-running-local').hidden = !runningLocal.length;
+  $('info-running-local-count').textContent = runningLocal.length;
+  $('info-running-local-list').replaceChildren(...runningLocal.map(taskRow));
   $('info-done').hidden = !done.length;
   $('info-done-count').textContent = done.length;
-  $('info-done-list').replaceChildren(...done.map(taskRow));
+  $('info-done-list').replaceChildren(...doneDelegated.map(taskRow));
+  $('info-done-local').hidden = !doneLocal.length;
+  $('info-done-local-count').textContent = doneLocal.length;
+  $('info-done-local-list').replaceChildren(...doneLocal.map(taskRow));
 }
 
 function syncInfoPanel() {
@@ -3407,9 +3419,11 @@ async function openTasks() {
   $('tasks-summary').textContent = 'Reading tasks…';
   $('tasks-dialog').showModal();
   const tasks = await deck.allTasks();
+  const delegated = tasks.filter((task) => !isLocal(task));
+  const local = tasks.filter((task) => isLocal(task));
   const today = new Date().toDateString();
   const counts = new Map();
-  for (const task of tasks) {
+  for (const task of delegated) {
     const name = taskAccount(task) || 'Unknown';
     const count = counts.get(name) ?? { all: 0, today: 0 };
     count.all += 1;
@@ -3418,8 +3432,16 @@ async function openTasks() {
   }
   const todayTotal = [...counts.values()].reduce((sum, count) => sum + count.today, 0);
   const byAccount = [...counts].sort((a, b) => b[1].all - a[1].all).map(([name, count]) => `${name} ${count.all}${count.today ? ` (${count.today} today)` : ''}`);
-  $('tasks-summary').textContent = tasks.length ? `${tasks.length} tasks, ${todayTotal} today. ${byAccount.join(' · ')}` : 'No delegate tasks yet.';
-  $('tasks-list').replaceChildren(...tasks.map(taskRow));
+  $('tasks-summary').textContent = delegated.length ? `${delegated.length} tasks, ${todayTotal} today. ${byAccount.join(' · ')}${local.length ? `, ${local.length} local` : ''}` : 'No delegate tasks yet.';
+  const rows = delegated.map(taskRow);
+  if (local.length) {
+    const fold = node('details', 'info-panel__local');
+    const summary = document.createElement('summary');
+    summary.append('Local tasks ', node('span', 'info-panel__muted', String(local.length)));
+    fold.append(summary, ...local.map(taskRow));
+    rows.push(fold);
+  }
+  $('tasks-list').replaceChildren(...rows);
 }
 async function openUpdates() {
   $('update-list').replaceChildren();
