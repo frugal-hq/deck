@@ -1972,9 +1972,9 @@ function chatElement(chat) {
   const n = chat.earlier.length;
   const summary = document.createElement('summary');
   summary.className = 'chat__more measured';
+  summary.append(icon('chevron'), document.createTextNode(String(n)));
   const syncSummary = () => {
     const label = history.open ? 'Hide the earlier sessions of this chat' : `Show ${n} earlier session${n === 1 ? '' : 's'} of this chat`;
-    summary.textContent = history.open ? '\u2212' : `+${n}`;
     summary.setAttribute('aria-label', label);
     summary.dataset.tip = label;
   };
