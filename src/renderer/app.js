@@ -3800,11 +3800,16 @@ async function installUpdate(source, button) {
     button?.removeAttribute('aria-busy');
   }
 }
-function updateRow(text, action, tip, run) {
+function updateRow(text, action, tip, run, detail) {
   const row = document.createElement('div');
   row.className = 'update__row';
   const label = document.createElement('span');
   label.textContent = text;
+  if (detail) {
+    const line = node('span', 'update__detail', detail);
+    line.dataset.tip = detail;
+    label.append(line);
+  }
   const button = document.createElement('button');
   Object.assign(button, { type: 'button', className: 'btn btn--primary', textContent: action });
   button.dataset.tip = tip;
