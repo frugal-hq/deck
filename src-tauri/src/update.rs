@@ -5,9 +5,11 @@
 use serde_json::{json, Value};
 use std::os::windows::process::CommandExt;
 use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::process::{Command, Stdio};
+use std::sync::Mutex;
 use std::time::{Duration, UNIX_EPOCH};
-use tauri::{AppHandle, WebviewWindow};
+use tauri::{AppHandle, Manager, WebviewWindow};
+use crate::accounts::{self, Accounts, MAIN};
 use tauri_plugin_dialog::DialogExt;
 
 const RELEASES: &str = "https://api.github.com/repos/frugal-hq/deck/releases/latest";
@@ -57,14 +59,57 @@ fn latest_release() -> Result<Option<Value>, String> {
     Ok(Some(json!({ "version": tag.trim_start_matches('v'), "url": url, "page": release["html_url"] })))
 }
 
+fn main_account(app: &AppHandle) -> Option<(Value, std::collections::HashMap<String, String>, PathBuf)> {
+    let accounts = app.state::<Mutex<Accounts>>();
+    let accounts = accounts.lock().unwrap();
+    let main = accounts.claude_accounts().into_iter().find(|account| account["id"] == MAIN)?;
+    let env = crate::chat::account_env(&accounts, &main);
+    Some((main, env, accounts.home.clone()))
+}
+
+// A directory marketplace with uncommitted changes would install work in progress to every chat.
+fn dirty_source(config_dir: &Path) -> Option<String> {
+    let known: Value = serde_json::from_slice(&std::fs::read(config_dir.join("plugins/known_marketplaces.json")).ok()?).ok()?;
+    let source = &known["frugal"]["source"];
+    let path = source["path"].as_str().filter(|_| source["source"] == "directory")?;
+    let output = Command::new("git").args(["-C", path, "status", "--porcelain"]).creation_flags(NO_WINDOW).stdin(Stdio::null()).output().ok()?;
+    (output.status.success() && !output.stdout.is_empty()).then(|| format!("frugal's marketplace is the folder {path}, which has uncommitted changes. Commit or discard them, then update again."))
+}
+
 #[tauri::command]
-pub async fn update_check() -> Value {
-    tauri::async_runtime::spawn_blocking(|| {
+pub async fn update_check(app: AppHandle) -> Value {
+    tauri::async_runtime::spawn_blocking(move || {
         let remote = latest_release();
-        json!({ "version": env!("CARGO_PKG_VERSION"), "local": local_build(), "remote": remote.as_ref().ok().cloned().flatten(), "error": remote.err() })
+        let frugal = main_account(&app).map_or(Value::Null, |(main, _, _)| accounts::frugal_install(&main)["version"].clone());
+        json!({ "version": env!("CARGO_PKG_VERSION"), "local": local_build(), "remote": remote.as_ref().ok().cloned().flatten(), "error": remote.err(), "frugal": frugal })
     })
     .await
     .unwrap_or_default()
+}
+
+// Chats on every account load the main account's frugal (--plugin-dir), so updating it there reaches them all.
+// Returns Claude Code's own last line, such as `Plugin "frugal" updated from 0.27.7 to 0.28.0`.
+#[tauri::command]
+pub async fn update_frugal(app: AppHandle) -> Result<String, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let (main, env, home) = main_account(&app).ok_or("The main account is not set up.")?;
+        if let Some(error) = dirty_source(Path::new(main["configDir"].as_str().unwrap_or_default())) {
+            return Err(error);
+        }
+        let claude = crate::chat::find_claude().ok_or(crate::chat::NO_CLAUDE)?;
+        let step = |args: &[&str]| {
+            let mut command = Command::new(&claude);
+            command.env_clear().envs(&env).args(args).current_dir(&home).stdin(Stdio::null());
+            accounts::run(&mut command, Duration::from_secs(300)).map_err(|error| error.to_string().trim().to_owned())
+        };
+        step(&["plugin", "marketplace", "update", "frugal"])?;
+        let output = step(&["plugin", "update", "frugal@frugal"])?;
+        let output = String::from_utf8_lossy(&output);
+        let last = output.lines().map(|line| line.trim_start_matches(|c: char| !c.is_alphanumeric())).filter(|line| !line.is_empty()).last().unwrap_or_default();
+        Ok(last.split(" Restart").next().unwrap_or_default().to_owned())
+    })
+    .await
+    .map_err(|error| error.to_string())?
 }
 
 #[tauri::command]

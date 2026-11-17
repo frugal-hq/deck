@@ -3846,15 +3846,28 @@ async function openUpdates() {
   $('update-list').replaceChildren();
   $('update-status').textContent = 'Checking for updates…';
   $('update-dialog').showModal();
-  const { version, local, remote, error } = await deck.checkUpdates();
+  const { version, local, remote, error, frugal } = await deck.checkUpdates();
   const install = 'Close Frugal Deck and its chats, install this version and open it again';
   const rows = [];
   if (local) rows.push(updateRow(`Local build from ${new Date(local.built).toLocaleString()}`, 'Install', install, (button) => installUpdate(local.path, button)));
   if (remote?.url) rows.push(updateRow(`Version ${remote.version} on GitHub`, 'Install', install, (button) => installUpdate(remote.url, button)));
   else if (remote) rows.push(updateRow(`Version ${remote.version} on GitHub has no installer`, 'Open', 'Open the release page', () => deck.openLink(remote.page)));
+  const releases = rows.length;
+  if (frugal) rows.push(updateRow(`frugal plugin ${frugal}`, 'Update', 'Update frugal on the main account; chats on every account load that copy', updateFrugal));
   $('update-list').replaceChildren(...rows);
-  const github = error ? `GitHub could not be checked: ${error}` : rows.length ? '' : 'This is the latest version.';
+  const github = error ? `GitHub could not be checked: ${error}` : releases ? '' : 'This is the latest version.';
   $('update-status').textContent = `Frugal Deck ${version}. ${github}`.trim();
+}
+async function updateFrugal(button) {
+  button.disabled = true;
+  $('update-status').textContent = 'Updating frugal…';
+  try {
+    const result = await deck.updateFrugal();
+    $('update-status').textContent = `${result}. New chats load it; open chats load it when they restart.`;
+  } catch (error) {
+    $('update-status').textContent = `frugal did not update: ${error}`;
+  }
+  button.disabled = false;
 }
 $('update-pick').onclick = async () => {
   const file = await deck.pickInstaller();

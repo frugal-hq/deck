@@ -203,5 +203,6 @@
     checkUpdates: () => invoke('update:check'),
     pickInstaller: () => invoke('update:pick'),
     installUpdate: (source) => invoke('update:install', { source }),
+    updateFrugal: () => invoke('update:frugal'),
   };
 })();
