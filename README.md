@@ -12,14 +12,20 @@ Open-source desktop client that wraps the official Claude Code CLI. It shows the
 In development toward 0.1.0, for Windows 10 and 11. Working today:
 
 - The official Claude Code terminal in tabs, with context and usage-limit meters
-- An index of every local session, with search and resume
+- An index of every local session, with search by title and message, an optional AI search, and resume
 - Pins, spaces, and tags
 - Grouping by folder or by topic. Topics and clearer titles come from an optional one-shot Claude call that you start yourself; it uses your account's tokens and sends only titles, folder names, and dates
 - New chats that open in `Frugal Deck/Sessions` in your home folder, or in a folder you choose
 - Chats that join the sessions continued through a Frugal handoff, without any model call, with a Link to chat button and undo. If a handoff has several possible origins, an optional Claude call that you start yourself can pick one
+- Handoffs offered at the end of a turn, and offered again after a restart
+- Attached files and folders, and dictation with a local model or Anthropic's voice mode
+- Several Claude accounts, switched for every open chat at once, with usage limits for each and for Frugal's delegate accounts
+- MCP servers managed in Deck, per folder, workspace, and account, with one sign-in shared by your accounts
+- Settings for permissions, accent color, handoffs, and a debug log
+- An installer and uninstaller, and updates for Deck and for the Frugal plugin
 - A title bar and window controls in Deck's own design
 
-Not built yet: attachments, voice, multiple accounts, and opening the next session automatically after a handoff.
+Not built yet: opening the next session automatically after a handoff, and translations.
 
 ## Principles
 
