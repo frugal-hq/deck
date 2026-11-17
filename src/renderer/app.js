@@ -1247,22 +1247,24 @@ addEventListener('mouseup', () => (mouseHeld = false), true);
 // WebView2 shows the browser's own menu (Back, Refresh, Print) wherever the Deck has none; Electron showed nothing. Text fields keep it for cut, copy and paste.
 addEventListener('contextmenu', (event) => event.target.closest('input, textarea:not(.xterm-helper-textarea), [contenteditable="true"]') || event.preventDefault());
 
+// A chat's look; the MCP sign-in window shares it.
+const termOptions = () => ({
+  linkHandler,
+  fontFamily: token('--font-term'),
+  fontSize: 14,
+  theme: {
+    background: token('--color-paper-3'),
+    foreground: token('--color-ink'),
+    cursor: token('--color-ink'),
+    selectionBackground: token('--color-accent-soft'),
+  },
+});
+
 async function openChat({ id, cwd, name, resume, group, login, accountId, handoff }) {
   const el = document.createElement('div');
   el.className = 'term';
   stage.append(el);
-  const term = new Terminal({
-    scrollback: 10000,
-    linkHandler,
-    fontFamily: token('--font-term'),
-    fontSize: 14,
-    theme: {
-      background: token('--color-paper-3'),
-      foreground: token('--color-ink'),
-      cursor: token('--color-ink'),
-      selectionBackground: token('--color-accent-soft'),
-    },
-  });
+  const term = new Terminal({ scrollback: 10000, ...termOptions() });
   const fit = new FitAddon();
   term.loadAddon(fit);
   term.open(el);
@@ -3147,7 +3149,205 @@ function mcpRow(row) {
     button.onclick = () => showMcpForm(row.import);
     label.append(button);
   }
-  return label;
+  if (row.signIn) {
+    const button = node('button', 'btn btn--bar', row.signIn);
+    button.type = 'button';
+    button.dataset.tip = row.signInOn.length ? `Opens /mcp in a window, on ${row.signInOn.join(', ')}` : 'Opens /mcp in a window; one sign-in serves every account';
+    button.onclick = (event) => {
+      event.preventDefault();
+      openMcpLogin(row);
+    };
+    label.append(button);
+  }
+  if (row.everywhere) {
+    const button = node('button', 'btn btn--bar', 'Use in every account');
+    button.type = 'button';
+    button.dataset.tip = `Moves it to the Deck as ${row.everywhere.target}, for every account and delegate; one sign-in serves all`;
+    button.onclick = (event) => {
+      event.preventDefault();
+      useEverywhere(row, button);
+    };
+    label.append(button);
+  }
+  if (row.access) {
+    const button = node('button', 'btn btn--bar', 'Access');
+    button.type = 'button';
+    button.setAttribute('aria-expanded', 'false');
+    button.dataset.tip = row.delegable ? 'Which accounts load it, and whether delegates get it' : 'Which accounts load it';
+    button.onclick = (event) => {
+      event.preventDefault();
+      const panel = label.nextElementSibling;
+      panel.hidden = !panel.hidden;
+      button.setAttribute('aria-expanded', String(!panel.hidden));
+    };
+    label.append(button);
+  }
+  if (row.removable) {
+    const button = node('button', 'btn btn--icon');
+    button.type = 'button';
+    button.innerHTML = '<svg class="icon" aria-hidden="true"><use href="#i-trash"/></svg>';
+    button.setAttribute('aria-label', `Remove ${row.name}`);
+    button.dataset.tip = `Remove from ${row.deck ? 'the Deck' : row.accounts.join(', ')}, in every folder. Uncheck it to turn it off only here`;
+    button.onclick = (event) => {
+      event.preventDefault();
+      removeMcp(row, button);
+    };
+    label.append(button);
+  }
+  if (!row.access) return label;
+  const fragment = document.createDocumentFragment();
+  fragment.append(label, accessPanel(row));
+  return fragment;
+}
+
+// Which accounts' chats load a server, and for an account's own server whether frugal may hand it to a delegate. Saved with Save.
+function accessPanel(row) {
+  const panel = node('div', 'mcp__access');
+  panel.hidden = true;
+  panel.dataset.server = row.name;
+  const off = new Set(mcpShown.accountsOff?.[row.name] ?? []);
+  const check = (text, checked, key, value) => {
+    const label = node('label', 'organize__check');
+    const input = document.createElement('input');
+    input.type = 'checkbox';
+    input.checked = checked;
+    input.dataset[key] = value;
+    label.append(input, text);
+    panel.append(label);
+  };
+  const ids = row.deck ? accountState.accounts.map((account) => account.id) : row.accountIds ?? [];
+  for (const id of ids) check(accountState.accounts.find((account) => account.id === id)?.name ?? id, !off.has(id), 'account', id);
+  if (row.delegable) check('Delegates', !(mcpShown.noDelegate ?? []).includes(row.name), 'delegates', '1');
+  return panel;
+}
+
+// A claude.ai connector lives in one Claude account; its URL as a Deck server reaches every account and delegate, and replaces the connector in chats.
+async function useEverywhere(row, button) {
+  button.disabled = true;
+  const { name, transport, target } = row.everywhere;
+  const message = $('mcp-error');
+  message.hidden = false;
+  const added = await deck.mcpAdd({ name, transport, target }).catch((error) => ({ error: String(error) }));
+  // On everywhere the connector was on; chats deny the connector by name while its copy loads.
+  const global = mcpShown.global ?? [];
+  const result = added?.error || !global.includes(row.name) ? added : await deck.mcpSet({ global: true }, [], [...global, name]).catch((error) => ({ error: String(error) }));
+  if (result?.error) {
+    message.textContent = result.error;
+    button.disabled = false;
+    return;
+  }
+  message.textContent = `Moved ${row.name} to the Deck as ${name}, for every account and delegate. Sign in once with its Sign in. Removing ${name} brings ${row.name} back.`;
+  refreshMcp();
+}
+
+// Unlike its checkbox, which applies to this folder, group or workspace, removing reaches every folder and delegated work.
+async function removeMcp(row, button) {
+  const where = row.deck ? 'the Deck, for every account and folder' : `${row.accounts.join(', ')} in every folder (unless it was added only for this one), and from delegated work`;
+  if (!await askConfirm(`Remove ${row.name}?`, `It is removed from ${where}, not only here. To turn it off only here, uncheck it instead. Removed keeps it to restore, though it may need a new sign-in.`, 'Remove')) return;
+  button.disabled = true;
+  const result = await deck.mcpRemove(row.name, Boolean(row.deck), mcpScope).catch((error) => ({ error: String(error) }));
+  const message = $('mcp-error');
+  message.hidden = false;
+  if (result?.error) {
+    message.textContent = result.error;
+    button.disabled = false;
+    return;
+  }
+  message.textContent = `Removed ${row.name}. Removed, below, can restore it.`;
+  const shown = button.closest('.mcp__row');
+  if (shown.nextElementSibling?.classList.contains('mcp__access')) shown.nextElementSibling.remove();
+  shown.remove();
+  refreshMcp();
+}
+
+// After a change outside the checkboxes: a fresh list, drawn unless a box changed meanwhile.
+function refreshMcp() {
+  mcpCache.clear();
+  const scope = mcpScope;
+  if (scope && $('mcp-dialog').open) fetchMcp(scope, 0).then((result) => { if (mcpScope === scope && !mcpTouched && $('mcp-dialog').open) drawMcp(result); });
+}
+
+// An MCP sign-in in a window over the Deck: Claude Code on the chosen account opens /mcp, and closing the window ends it.
+let mcpLogin = null;
+
+function openMcpLogin(row) {
+  const accounts = accountState.accounts.filter((account) => account.signedIn);
+  const fallback = accounts.find((account) => account.id === chats.get(activeId)?.account) ?? accounts[0];
+  const select = $('mcp-login-account');
+  select.replaceChildren(...accounts.map((account) => new Option(account.name, account.id)));
+  select.value = (accounts.find((account) => row.signInOn.includes(account.name)) ?? fallback)?.id ?? '';
+  $('mcp-login-title').textContent = `Sign in to ${row.name}`;
+  $('mcp-login').showModal();
+  mcpLogin = { row };
+  startMcpLogin();
+}
+
+async function startMcpLogin() {
+  const { row } = mcpLogin;
+  stopMcpLogin();
+  const term = new Terminal(termOptions());
+  const fit = new FitAddon();
+  term.loadAddon(fit);
+  $('mcp-login-term').replaceChildren();
+  term.open($('mcp-login-term'));
+  fit.fit();
+  const id = crypto.randomUUID();
+  mcpLogin = { id, row, term };
+  term.onData((data) => deck.input(id, data));
+  term.focus();
+  const accountId = $('mcp-login-account').value;
+  if (!accountId) return term.write('Sign in to a Claude account first.');
+  // The home folder asks for trust on every run, so a global sign-in runs in the default chat folder.
+  const folder = mcpScope?.global ? await deck.defaultFolder().catch(() => null) : mcpScope?.folder ?? null;
+  const result = await deck.mcpLogin({ id, cols: term.cols, rows: term.rows, accountId, folder, deckServer: row.deck ? row.name : null })
+    .catch((error) => ({ error: String(error) }));
+  if (result?.error && mcpLogin?.id === id) term.write(result.error);
+}
+
+function stopMcpLogin() {
+  if (!mcpLogin?.id) return;
+  deck.kill(mcpLogin.id);
+  mcpLogin.term.dispose();
+  mcpLogin.id = null;
+}
+
+function closeMcpLogin() {
+  stopMcpLogin();
+  mcpLogin = null;
+  $('mcp-login').close();
+  refreshMcp();
+}
+
+deck.onData((id, data) => { if (mcpLogin?.id === id) mcpLogin.term.write(data); });
+// Leaving Claude Code closes the window; a failed start stays open to show why.
+deck.onExit((id, code) => { if (mcpLogin?.id === id && code === 0) closeMcpLogin(); });
+$('mcp-login-account').onchange = startMcpLogin;
+$('mcp-login-close').onclick = closeMcpLogin;
+
+// A server the backup holds that is gone from its account, folder or the Deck; Restore puts its saved config back.
+function removedRow(entry) {
+  const row = node('div', 'organize__check mcp__row');
+  const where = entry.folder ? `${entry.account}, ${entry.folder}` : entry.account;
+  const status = node('span', 'mcp__status', where);
+  status.title = `${entry.target}\nRemoved from ${where}`;
+  const button = node('button', 'btn btn--bar', 'Restore');
+  button.type = 'button';
+  button.onclick = async () => {
+    button.disabled = true;
+    const result = await deck.mcpRestore(entry.owner, entry.place, entry.name).catch((error) => ({ error: String(error) }));
+    const message = $('mcp-error');
+    message.hidden = false;
+    if (result?.error) {
+      message.textContent = result.error;
+      button.disabled = false;
+      return;
+    }
+    message.textContent = `Restored ${entry.name} in ${where}.`;
+    mcpCache.clear();
+    row.remove();
+  };
+  row.append(node('span', 'mcp__name', entry.name), status, button);
+  return row;
 }
 
 function mcpSection(title, rows, empty, collapsed) {
@@ -3158,8 +3358,12 @@ function mcpSection(title, rows, empty, collapsed) {
   return section;
 }
 
-function deckRow(name, config, checked) {
-  return { name, deck: true, checked, status: config.type === 'stdio' ? 'Local command' : config.url };
+// `claude mcp list` never sees Deck servers: they reach chats through --mcp-config, so only /mcp checks or signs them in.
+// Signed in: an account holds a live token for it, and every account shares it.
+function deckRow(name, config, checked, signedIn) {
+  const remote = config.type !== 'stdio';
+  return { name, deck: true, checked, status: remote ? (signedIn ? 'Signed in' : 'Checked in chats') : 'Local command', title: remote ? config.url : undefined,
+    signIn: remote && !signedIn ? 'Sign in' : null, signInOn: [], removable: true, access: true };
 }
 
 function drawMcp(result) {
@@ -3177,23 +3381,42 @@ function drawMcp(result) {
   const checked = (name) => (mcpScope?.global ? global.has(name) : (global.has(name) || on.has(name)) && !off.has(name));
   const deckServers = Object.entries(result.deck ?? {});
   // A server imported into the Deck shows once, as the Deck's: same name, same on and off, and it runs on any account.
-  const rows = (result.servers ?? []).filter(({ name }) => !result.deck?.[name]).map(({ name, status, target, transport, accounts }) => {
-    const { full, short } = mcpStatus(status);
+  // A claude.ai connector moved to the Deck shows only as its Deck copy, and comes back when that copy is removed.
+  const deckUrls = new Set(deckServers.map(([, config]) => config.url).filter(Boolean));
+  const moved = (result.servers ?? []).filter(({ name, target }) => /^claude\.ai /.test(name) && deckUrls.has(target)).map(({ name }) => name);
+  const rows = (result.servers ?? []).filter(({ name }) => !result.deck?.[name] && !moved.includes(name)).map(({ name, status, target, transport, accounts, accountIds, statuses = {} }) => {
+    // Connected only when every account that has it connects; otherwise the first failing account's status, and where it fails.
+    const failing = Object.entries(statuses).filter(([, each]) => !/^connected$/i.test(mcpStatus(each).short));
+    const { full, short } = mcpStatus(failing[0]?.[1] ?? status);
+    const where = failing.length && failing.length < accounts.length ? ` in ${failing.map(([account]) => account).join(', ')}` : '';
     // A plain account server missing from some account can become a Deck server; claude.ai connectors and plugin servers cannot.
-    const portable = !/^(claude\.ai |plugin:)/.test(name) && /^[A-Za-z0-9][\w-]{0,63}$/.test(name) && accounts.length < result.accounts;
-    return { name, accounts, status: short, title: `${full}\n${target}\nIn ${accounts.join(', ')}`, checked: checked(name),
-      connected: /^connected$/i.test(short), import: portable ? { name, transport, target } : null };
+    const own = !/^(claude\.ai |plugin:)/.test(name) && /^[A-Za-z0-9][\w-]{0,63}$/.test(name);
+    const portable = own && accounts.length < result.accounts;
+    const copy = name.replace(/^claude\.ai /, '').toLowerCase().replace(/[^a-z0-9_-]+/g, '-').replace(/^[-_]+|-+$/g, '').slice(0, 64);
+    const everywhere = /^claude\.ai /.test(name) && /^https?:\/\/\S+$/.test(target) && copy && !result.deck?.[copy] && accounts.length < result.accounts
+      ? { name: copy, transport, target } : null;
+    const connected = /^connected$/i.test(short);
+    return { name, accounts, status: short + where, title: `${full}${where}\n${target}\nIn ${accounts.join(', ')}`, checked: checked(name),
+      connected, removable: own, access: !name.startsWith('plugin:frugal:'), delegable: own, accountIds, everywhere, import: portable ? { name, transport, target } : null, signIn: connected ? null : /auth/i.test(full) ? 'Sign in' : 'Reconnect',
+      signInOn: failing.length ? failing.map(([account]) => account) : accounts };
   });
-  const listed = new Set([...rows.map((row) => row.name), ...deckServers.map(([name]) => name)]);
-  for (const name of new Set([...global, ...on, ...off])) if (!listed.has(name)) rows.push({ name, status: 'Not listed', checked: checked(name), connected: true });
+  const listed = new Set([...rows.map((row) => row.name), ...deckServers.map(([name]) => name), ...moved]);
+  const gone = new Set((result.removed ?? []).map((entry) => entry.name));
+  for (const name of new Set([...global, ...on, ...off])) if (!listed.has(name) && !gone.has(name)) rows.push({ name, status: 'Not listed', checked: checked(name), connected: true });
   const frugal = (row) => row.name.startsWith('plugin:frugal:');
   const sections = [
     ...(rows.some(frugal) ? [mcpSection('Frugal, always on', rows.filter(frugal), '')] : []),
     mcpSection('Account servers', rows.filter((row) => row.connected && !frugal(row)), 'None connected.'),
-    Object.assign(mcpSection('Deck servers, any account', deckServers.map(([name, config]) => deckRow(name, config, checked(name))), 'None yet. Add one below.'), { id: 'mcp-deck' }),
+    Object.assign(mcpSection('Deck servers, any account', deckServers.map(([name, config]) => deckRow(name, config, checked(name), (result.signedIn ?? []).includes(name))), 'None yet. Add one below.'), { id: 'mcp-deck' }),
   ];
   const failing = rows.filter((row) => !row.connected && !frugal(row));
   if (failing.length) sections.push(mcpSection('Not connected', failing, '', true));
+  const removed = result.removed ?? [];
+  if (removed.length) {
+    const section = node('details', 'mcp__section');
+    section.append(node('summary', 'mcp__title', `Removed, can be restored (${removed.length})`), ...removed.map(removedRow));
+    sections.push(section);
+  }
   list.replaceChildren(...sections);
   const names = [...rows.map((row) => row.name), ...deckServers.map(([name]) => name)].map((name) => name.toLowerCase());
   drawMcpSuggestions(MCP_RECOMMENDED.filter((server) => !names.some((name) => name.includes(server.name))));
@@ -3223,7 +3446,7 @@ async function openMcpDialog(scope) {
   mcpShown = null;
   const kind = scope.workspace ? 'workspace' : scope.group ? 'group' : 'folder';
   $('mcp-folder').textContent = scope.global ? 'All chats, every account' : scope.workspace ?? scope.group ?? scope.folder;
-  const signIn = 'Deck servers that sign in ask once per account, with /mcp in the chat.';
+  const signIn = 'Deck servers that sign in ask once per account: Sign in opens a window for it.';
   $('mcp-note').textContent = scope.global
     ? `On in every chat unless a folder, group or workspace turns it off. Every other server stays off. Applies to chats started or restarted after saving. ${signIn}`
     : `Applies to chats started or restarted in this ${kind}${kind === 'workspace' ? ' and the ones inside it' : ''}${kind === 'folder' ? '' : ', on top of their folder'}. Servers on in all chats (MCP servers in the menu) start checked. ${signIn}`;
@@ -3282,7 +3505,7 @@ $('mcp-new-add').onclick = async () => {
 $('mcp-save').onclick = async () => {
   if (!mcpScope || !mcpShown) { $('mcp-dialog').close(); return; }
   // Only the difference from the global list is kept, and names this list did not show stay as they were.
-  const inputs = [...$('mcp-list').querySelectorAll('input[type="checkbox"]')];
+  const inputs = [...$('mcp-list').querySelectorAll('input[data-name]')];
   const shown = new Set(inputs.map((input) => input.dataset.name));
   const kept = (names) => new Set((names ?? []).filter((name) => !shown.has(name)));
   const global = new Set(mcpShown.global ?? []);
@@ -3295,6 +3518,17 @@ $('mcp-save').onclick = async () => {
   }
   const scope = mcpScope.global ? { global: true } : { folder: mcpScope.folder, group: mcpScope.group, workspace: mcpScope.workspace };
   await deck.mcpSet(scope, [...off], [...on]);
+  // An account the list did not show keeps its setting.
+  const access = {};
+  for (const panel of $('mcp-list').querySelectorAll('.mcp__access')) {
+    const boxes = [...panel.querySelectorAll('input[data-account]')];
+    const ids = new Set(boxes.map((input) => input.dataset.account));
+    const accountsOff = (mcpShown.accountsOff?.[panel.dataset.server] ?? []).filter((id) => !ids.has(id));
+    accountsOff.push(...boxes.filter((input) => !input.checked).map((input) => input.dataset.account));
+    const delegates = panel.querySelector('input[data-delegates]');
+    access[panel.dataset.server] = delegates ? { accountsOff, delegates: delegates.checked } : { accountsOff };
+  }
+  if (Object.keys(access).length) await deck.mcpAccessSet(access);
   mcpCache.clear();
   $('mcp-dialog').close();
 };

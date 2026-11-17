@@ -19,7 +19,7 @@ const KEEP_DAYS: i64 = 3650;
 
 fn now() -> f64 { SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs_f64() * 1000.0 }
 
-fn read_strict(file: &Path, fallback: Value) -> Result<Value> {
+pub(crate) fn read_strict(file: &Path, fallback: Value) -> Result<Value> {
     match fs::read(file) {
         Ok(bytes) => Ok(serde_json::from_slice(&bytes)?),
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(fallback),
@@ -27,9 +27,9 @@ fn read_strict(file: &Path, fallback: Value) -> Result<Value> {
     }
 }
 
-fn read_json(file: &Path, fallback: Value) -> Value { read_strict(file, fallback.clone()).unwrap_or(fallback) }
+pub(crate) fn read_json(file: &Path, fallback: Value) -> Value { read_strict(file, fallback.clone()).unwrap_or(fallback) }
 
-fn write_json(file: &Path, data: &Value) -> Result<()> {
+pub(crate) fn write_json(file: &Path, data: &Value) -> Result<()> {
     fs::create_dir_all(file.parent().ok_or("No parent folder.")?)?;
     let mut temporary = file.as_os_str().to_owned();
     temporary.push(".tmp");
@@ -38,7 +38,7 @@ fn write_json(file: &Path, data: &Value) -> Result<()> {
     Ok(())
 }
 
-fn object(value: &mut Value) -> &mut serde_json::Map<String, Value> {
+pub(crate) fn object(value: &mut Value) -> &mut serde_json::Map<String, Value> {
     if !value.is_object() { *value = json!({}); }
     value.as_object_mut().unwrap()
 }
@@ -171,6 +171,11 @@ impl Accounts {
         object(object(&mut s).entry("mcpServers").or_insert_with(|| json!({}))).insert(name.to_owned(), config);
         self.save(&s)
     }
+    pub fn remove_deck_server(&self, name: &str) -> Result<()> {
+        let mut s = self.load();
+        if let Some(servers) = s["mcpServers"].as_object_mut() { servers.remove(name); }
+        self.save(&s)
+    }
     // main.js:317-321: the names listed for the folder, the chat's group, or any workspace it sits in, once each.
     fn chat_scope_names(&self, field: &str, folder: &Path, topic: Option<&str>, workspaces: &[String]) -> Result<Vec<Value>> {
         let mut scopes = vec![json!({"folder": folder})];
@@ -184,7 +189,8 @@ impl Accounts {
     }
     // A chat's servers: the global list plus its folder, group and workspaces' on-lists, less their off-lists; every other server is off.
     // Returns allowedMcpServers, deniedMcpServers, and the --mcp-config with the Deck's servers among them, whatever account it runs on.
-    pub fn chat_mcp(&self, folder: &Path, topic: Option<&str>, workspaces: &[String]) -> Result<(Vec<Value>, Vec<Value>, Option<Value>)> {
+    // A server turned off for the chat's account stays off whatever its scopes say.
+    pub fn chat_mcp(&self, account_id: &str, folder: &Path, topic: Option<&str>, workspaces: &[String]) -> Result<(Vec<Value>, Vec<Value>, Option<Value>)> {
         let s = self.load();
         let off = self.chat_scope_names("mcpOff", folder, topic, workspaces)?;
         let mut on = array(&s["mcpGlobal"]).to_vec();
@@ -194,16 +200,52 @@ impl Accounts {
         for name in s["mcpTargets"].as_object().into_iter().flat_map(|map| map.keys()).filter(|name| is_frugal(name)) {
             if !on.contains(&json!(name)) { on.push(json!(name)); }
         }
-        let off: Vec<Value> = off.into_iter().filter(|name| !is_frugal(string(name))).collect();
+        let blocked: Vec<Value> = on.iter().filter(|name| array(&s["mcpAccountsOff"][string(name)]).contains(&json!(account_id))).cloned().collect();
+        on.retain(|name| !blocked.contains(name) || is_frugal(string(name)));
+        // A claude.ai connector moved to the Deck stays off while its Deck copy loads, so a chat never has both. Only its name is denied: its URL is the copy's.
+        let urls: Vec<&Value> = on.iter().filter_map(|name| s["mcpServers"][string(name)].get("url")).collect();
+        let moved: Vec<Value> = s["mcpTargets"].as_object().into_iter().flatten()
+            .filter(|(name, entries)| name.starts_with("claude.ai ") && array(entries).iter().any(|entry| urls.contains(&&entry["serverUrl"])))
+            .map(|(name, _)| json!(name)).collect();
+        on.retain(|name| !moved.contains(name));
+        let off: Vec<Value> = off.into_iter().chain(blocked).filter(|name| !is_frugal(string(name))).collect();
         let mut allowed = Vec::new();
         for name in &on { for entry in mcp_entries(&s, name) { if !allowed.contains(&entry) { allowed.push(entry); } } }
         let mut denied = Vec::new();
         for name in &off {
             for entry in std::iter::once(json!({"serverName": name})).chain(mcp_entries(&s, name)) { if !denied.contains(&entry) { denied.push(entry); } }
         }
+        for name in moved { let entry = json!({"serverName": name}); if !denied.contains(&entry) { denied.push(entry); } }
         let deck: serde_json::Map<String, Value> = on.iter()
             .filter_map(|name| { let name = name.as_str()?; Some((name.to_owned(), s["mcpServers"].get(name)?.clone())) }).collect();
         Ok((allowed, denied, (!deck.is_empty()).then(|| json!({"mcpServers": deck}))))
+    }
+    // mcpAccountsOff: the account ids whose chats never load a server; no_delegate_mcp in frugal's accounts.json: servers frugal never hands a delegate.
+    pub fn mcp_access(&self) -> (Value, Value) {
+        (coalesce(&self.load()["mcpAccountsOff"], json!({})), coalesce(&read_json(&self.frugal_file(), json!({}))["no_delegate_mcp"], json!([])))
+    }
+    // changes: { name: { accountsOff: [ids], delegates?: bool } } for each server the dialog showed; without delegates that list is left as it was.
+    pub fn set_mcp_access(&self, changes: &serde_json::Map<String, Value>) -> Result<()> {
+        let mut s = self.load();
+        let off = object(object(&mut s).entry("mcpAccountsOff").or_insert_with(|| json!({})));
+        for (name, change) in changes {
+            let ids = array(&change["accountsOff"]);
+            if ids.is_empty() { off.remove(name); } else { off.insert(name.clone(), json!(ids)); }
+        }
+        self.save(&s)?;
+        if changes.values().all(|change| change.get("delegates").is_none()) { return Ok(()); }
+        let file = self.frugal_file();
+        with_frugal_lock(&file, || {
+            let mut data = read_strict(&file, json!({}))?;
+            let mut names = array(&data["no_delegate_mcp"]).to_vec();
+            for (name, change) in changes {
+                let Some(delegates) = change.get("delegates") else { continue };
+                names.retain(|known| known != name.as_str());
+                if delegates == false { names.push(json!(name)); }
+            }
+            object(&mut data).insert("no_delegate_mcp".into(), json!(names));
+            write_json(&file, &data)
+        })
     }
     pub fn mcp_global(&self) -> Value { coalesce(&self.load()["mcpGlobal"], json!([])) }
     pub fn set_mcp_global(&self, names: &Value) -> Result<()> { let mut s = self.load(); object(&mut s).insert("mcpGlobal".into(), names.clone()); self.save(&s) }
@@ -235,12 +277,14 @@ impl Accounts {
         Ok(())
     }
 
+    // The main account keeps .claude.json in the home folder, the others in their config folder.
+    pub fn claude_json(&self, account: &Value) -> PathBuf {
+        if account["id"] == MAIN { self.home.join(".claude.json") } else { Path::new(string(&account["configDir"])).join(".claude.json") }
+    }
+
     fn signed_in_email(&mut self, account: &Value) -> Value {
-        let id = string(&account["id"]);
-        self.emails.entry(id.to_owned()).or_insert_with(|| {
-            let dir = if id == MAIN { self.home.clone() } else { PathBuf::from(string(&account["configDir"])) };
-            read_json(&dir.join(".claude.json"), json!({}))["oauthAccount"]["emailAddress"].clone()
-        }).clone()
+        let file = self.claude_json(account);
+        self.emails.entry(string(&account["id"]).to_owned()).or_insert_with(|| read_json(&file, json!({}))["oauthAccount"]["emailAddress"].clone()).clone()
     }
     pub fn clear_emails(&mut self) { self.emails.clear(); }
 
@@ -1271,9 +1315,9 @@ mod tests {
         a.set_mcp_off(&json!({"workspace": "Space"}), &json!(["d", "a"])).unwrap();
         a.set_mcp_off(&json!({"workspace": "Other"}), &json!(["e"])).unwrap();
         let names = |list: Vec<Value>| list.iter().map(|v| v["serverName"].clone()).collect::<Vec<_>>();
-        assert_eq!(names(a.chat_mcp(&folder, Some("topic"), &["SPACE".into()]).unwrap().1), ["a", "b", "c", "d"]);
-        assert_eq!(names(a.chat_mcp(&folder, None, &[]).unwrap().1), ["a", "b"]);
-        assert_eq!(a.chat_mcp(&dir.0, None, &[]).unwrap(), (vec![], vec![], None));
+        assert_eq!(names(a.chat_mcp("main", &folder, Some("topic"), &["SPACE".into()]).unwrap().1), ["a", "b", "c", "d"]);
+        assert_eq!(names(a.chat_mcp("main", &folder, None, &[]).unwrap().1), ["a", "b"]);
+        assert_eq!(a.chat_mcp("main", &dir.0, None, &[]).unwrap(), (vec![], vec![], None));
         a.add_deck_server("notion", json!({"type": "http", "url": "https://mcp.notion.com/mcp"})).unwrap();
         a.add_deck_server("air", json!({"type": "stdio", "command": "npx", "args": ["-y", "air"]})).unwrap();
         a.set_mcp_on(&json!({"group": "Topic"}), &json!(["notion", "gone"])).unwrap();
@@ -1283,12 +1327,28 @@ mod tests {
         learned.insert("plugin:frugal:accounts".into(), json!([{"serverCommand": ["python", "server.py"]}]));
         a.learn_mcp_targets(learned).unwrap();
         a.set_mcp_off(&json!({"workspace": "Other"}), &json!(["plugin:frugal:accounts"])).unwrap();
-        let (allowed, denied, config) = a.chat_mcp(&folder, Some("TOPIC"), &["other".into()]).unwrap();
+        let (allowed, denied, config) = a.chat_mcp("main", &folder, Some("TOPIC"), &["other".into()]).unwrap();
         assert_eq!(allowed, [json!({"serverCommand": ["npx", "-y", "air"]}), json!({"serverUrl": "https://mcp.linear.app/mcp"}),
             json!({"serverUrl": "https://mcp.notion.com/mcp"}), json!({"serverName": "gone"}), json!({"serverCommand": ["python", "server.py"]})]);
         assert_eq!(names(denied), ["a", "b", "c"]);
         assert_eq!(config.unwrap()["mcpServers"].as_object().unwrap().keys().collect::<Vec<_>>(), ["air", "notion"]);
-        assert_eq!(a.chat_mcp(&dir.0, None, &[]).unwrap().2.unwrap()["mcpServers"].as_object().unwrap().len(), 1);
+        assert_eq!(a.chat_mcp("main", &dir.0, None, &[]).unwrap().2.unwrap()["mcpServers"].as_object().unwrap().len(), 1);
+        a.set_mcp_access(json!({"air": {"accountsOff": ["sm"]}, "plugin:frugal:accounts": {"accountsOff": ["sm"]}}).as_object().unwrap()).unwrap();
+        let (allowed, denied, config) = a.chat_mcp("sm", &dir.0, None, &[]).unwrap();
+        assert_eq!(allowed, [json!({"serverUrl": "https://mcp.linear.app/mcp"}), json!({"serverName": "a"}), json!({"serverCommand": ["python", "server.py"]})]);
+        assert_eq!(denied, [json!({"serverName": "air"}), json!({"serverCommand": ["npx", "-y", "air"]})]);
+        assert!(config.is_none());
+        a.set_mcp_access(json!({"air": {"accountsOff": [], "delegates": false}}).as_object().unwrap()).unwrap();
+        assert_eq!(a.mcp_access().1, json!(["air"]));
+        assert_eq!(a.chat_mcp("sm", &dir.0, None, &[]).unwrap().2.unwrap()["mcpServers"].as_object().unwrap().len(), 1);
+        let mut learned = serde_json::Map::new();
+        learned.insert("claude.ai Notion".into(), json!([{"serverUrl": "https://mcp.notion.com/mcp"}]));
+        a.learn_mcp_targets(learned).unwrap();
+        a.set_mcp_global(&json!(["air", "linear", "a", "claude.ai Notion"])).unwrap();
+        let (allowed, denied, _) = a.chat_mcp("main", &folder, Some("TOPIC"), &[]).unwrap();
+        assert!(allowed.contains(&json!({"serverUrl": "https://mcp.notion.com/mcp"})));
+        assert!(denied.contains(&json!({"serverName": "claude.ai Notion"})) && !denied.contains(&json!({"serverUrl": "https://mcp.notion.com/mcp"})));
+        assert!(!a.chat_mcp("main", &dir.0, None, &[]).unwrap().1.contains(&json!({"serverName": "claude.ai Notion"})));
         a.rename_mcp_scope("group", "Topic", "Next").unwrap();
         assert_eq!(a.mcp_on(&json!({"group": "next"})).unwrap(), json!(["notion", "gone"]));
     }

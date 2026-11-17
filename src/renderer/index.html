@@ -487,6 +487,15 @@
     <button id="mcp-save" class="btn btn--primary" type="button">Save</button>
   </div>
 </dialog>
+<dialog id="mcp-login" class="organize mcp-login" closedby="none" aria-labelledby="mcp-login-title">
+  <div class="mcp-login__head">
+    <h2 id="mcp-login-title" class="organize__title"></h2>
+    <label class="organize__field">Account <select id="mcp-login-account"></select></label>
+    <button id="mcp-login-close" class="btn btn--icon" type="button" aria-label="Close" data-tip="Close and end this sign-in"><svg class="icon" aria-hidden="true"><use href="#i-x"/></svg></button>
+  </div>
+  <p class="mcp__folder">Pick the server, then Authenticate: the browser opens to sign in. Close this window once it shows connected. Every Claude account, delegates included, gets this sign-in.</p>
+  <div id="mcp-login-term" class="mcp-login__term"></div>
+</dialog>
 <dialog id="confirm-dialog" class="organize" closedby="any" aria-labelledby="confirm-title" aria-describedby="confirm-message">
   <form method="dialog">
     <h2 id="confirm-title" class="organize__title"></h2>

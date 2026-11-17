@@ -563,6 +563,50 @@ pub fn accounts_login(app: AppHandle, chats: State<Chats>, accounts: State<Mutex
     result.map_or_else(|error| error, |()| json!({ "ok": true }))
 }
 
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct McpLoginOptions {
+    id: String,
+    account_id: String,
+    folder: Option<String>,
+    deck_server: Option<String>,
+    cols: u16,
+    rows: u16,
+}
+
+// An MCP server's sign-in window: Claude Code on the account, opening /mcp. A Deck server is the only server loaded, the way chats load it,
+// so its token is the one chats use. frugal: if /mcp alone leaves a session in the account's history, pass --session-id and delete it on exit.
+#[tauri::command]
+pub fn mcp_login(app: AppHandle, chats: State<Chats>, accounts: State<Mutex<Accounts>>, options: McpLoginOptions, output: Channel<Value>) -> Value {
+    let o = options;
+    if !is_uuid(&o.id) || chats.is_live(&o.id) || !is_size(o.cols) || !is_size(o.rows) {
+        return invalid();
+    }
+    let Some(claude) = find_claude() else {
+        return json!({ "error": NO_CLAUDE });
+    };
+    let a = accounts.lock().unwrap();
+    let Some(account) = a.claude_accounts().into_iter().find(|account| account["id"] == o.account_id.as_str()) else {
+        return invalid();
+    };
+    let folder = match &o.folder {
+        Some(folder) if accounts::mcp_scope(&json!({ "folder": folder })).is_some() => PathBuf::from(folder),
+        Some(_) => return invalid(),
+        None => a.home.clone(),
+    };
+    let mut command = command(claude, account_env(&a, &account), &folder);
+    if let Some(name) = &o.deck_server {
+        let config = a.deck_servers()[name.as_str()].clone();
+        if !config.is_object() {
+            return invalid();
+        }
+        command.args(["--mcp-config", &json!({ "mcpServers": { name.as_str(): config } }).to_string(), "--strict-mcp-config"]);
+    }
+    drop(a);
+    command.arg("/mcp");
+    spawn(&app, &o.id, command, (o.cols, o.rows), None, output, "", |_, _| {}).map_or_else(|error| error, |()| json!({ "ok": true }))
+}
+
 #[tauri::command]
 pub fn chat_input(chats: tauri::State<Chats>, id: String, data: String) {
     if let Some(chat) = chats.live.lock().unwrap().get_mut(&id) {
