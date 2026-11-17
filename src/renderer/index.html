@@ -37,9 +37,9 @@
   <symbol id="i-mic" viewBox="0 0 16 16"><rect x="5.75" y="1.75" width="4.5" height="8" rx="2.25"/><path d="M3.5 7.5a4.5 4.5 0 0 0 9 0M8 12v2.25"/></symbol>
   <symbol id="i-mic-off" viewBox="0 0 16 16"><rect x="5.75" y="1.75" width="4.5" height="8" rx="2.25"/><path d="M3.5 7.5a4.5 4.5 0 0 0 9 0M8 12v2.25M2.5 2.5l11 11"/></symbol>
 </svg>
-<header class="bar">
-  <span class="mark"><svg class="mark__logo" aria-hidden="true"><use href="#i-logo"/></svg>Frugal Deck</span>
-  <nav id="tabs" class="tabs" aria-label="Open chats"></nav>
+<header class="bar" data-tauri-drag-region>
+  <span class="mark" data-tauri-drag-region><svg class="mark__logo" aria-hidden="true"><use href="#i-logo"/></svg>Frugal Deck</span>
+  <nav id="tabs" class="tabs" data-tauri-drag-region aria-label="Open chats"></nav>
   <div class="bar__actions">
     <button id="new" class="btn btn--bar btn--icon" type="button" aria-label="New chat" data-tip="Start a new chat in the default folder"><svg class="icon" aria-hidden="true"><use href="#i-plus"/></svg></button>
     <button id="app-menu" class="btn btn--bar btn--icon" type="button" aria-label="Menu" aria-haspopup="menu" data-tip="Accounts, settings and a chat in another folder"><svg class="icon" aria-hidden="true"><use href="#i-menu"/></svg></button>

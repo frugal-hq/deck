@@ -34,10 +34,8 @@ body:has(.info-panel:not([hidden])) { grid-template-columns: var(--sidebar-width
   align-items: center;
   gap: var(--space-md);
   padding-inline: var(--space-xs) 0;
-  -webkit-app-region: drag;
 }
 
-.bar button { -webkit-app-region: no-drag; }
 .bar__actions { display: flex; align-items: center; gap: var(--space-2xs); }
 
 .window-controls {
@@ -437,7 +435,9 @@ meter::-webkit-meter-even-less-good-value { background: var(--color-bad); border
 .archived__item { display: flex; align-items: center; gap: var(--space-xs); }
 .archived__item .session { flex: 1; min-width: 0; }
 .organize__actions { display: flex; justify-content: end; align-items: center; gap: var(--space-xs); }
-.mcp { display: grid; gap: var(--space-sm); width: min(30rem, 90vw); }
+.mcp { gap: var(--space-sm); width: min(30rem, 90vw); max-height: calc(100dvh - 2rem); margin: auto; overflow-y: auto; }
+/* Only an open dialog takes grid: a closed one keeps display: none, or its invisible box catches clicks over the tabs. */
+.mcp[open] { display: grid; }
 .mcp[hidden], .mcp [hidden] { display: none; }
 .mcp p { margin: 0; }
 .mcp__folder { color: var(--color-muted); font-size: var(--text-xs); word-break: break-all; }
