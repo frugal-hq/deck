@@ -522,6 +522,13 @@ pub fn has_frugal(account: &Value) -> bool {
     let plugins = &data["plugins"]["frugal@frugal"];
     plugins.as_array().is_some_and(|a| !a.is_empty()) || plugins.as_str().is_some_and(|s| !s.is_empty())
 }
+// frugal as an account has it installed: its installPath and version, or null.
+pub fn frugal_install(account: &Value) -> Value {
+    read_json(&Path::new(string(&account["configDir"])).join("plugins/installed_plugins.json"), json!({}))["plugins"]["frugal@frugal"][0].clone()
+}
+pub fn frugal_dir(account: &Value) -> Option<PathBuf> {
+    Some(PathBuf::from(frugal_install(account)["installPath"].as_str()?)).filter(|dir| dir.is_dir())
+}
 fn is_signed_in(a: &Value) -> bool { Path::new(string(&a["configDir"])).join(".credentials.json").exists() }
 
 pub fn ensure_onboarded(dir: &Path) -> Result<()> {

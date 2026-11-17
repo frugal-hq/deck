@@ -335,7 +335,7 @@ fn launch(app: &AppHandle, id: &str, place: &str, folder: PathBuf, size: (u16, u
     let session = index.session(id).unwrap_or_default();
     let dir = Path::new(account["configDir"].as_str().unwrap_or_default());
     let group = group.as_str().filter(|group| !group.is_empty());
-    let prepared = (|| -> Result<(Vec<Value>, Vec<Value>, Option<Value>), Box<dyn std::error::Error>> {
+    let prepared = (|| -> Result<(Vec<Value>, Vec<Value>, Option<Value>, Option<String>, Option<String>, Option<PathBuf>), Box<dyn std::error::Error>> {
         // A folder removed since its sessions ran comes back empty, so they resume and new chats start there.
         std::fs::create_dir_all(&folder)?;
         if account["id"] != MAIN {
@@ -353,9 +353,12 @@ fn launch(app: &AppHandle, id: &str, place: &str, folder: PathBuf, size: (u16, u
         let topic = group.or(chat_topic.as_deref());
         let workspaces = index.workspaces_of(&space, topic, &folder.to_string_lossy());
         let accounts = accounts.lock().unwrap();
-        accounts.chat_mcp(&folder, topic, &workspaces)
+        crate::mcp::share_tokens(&accounts);
+        let (allowed, denied, mcp) = accounts.chat_mcp(account["id"].as_str().unwrap_or_default(), &folder, topic, &workspaces)?;
+        let plugin = accounts.claude_accounts().iter().find(|a| a["id"] == MAIN).and_then(accounts::frugal_dir);
+        Ok((allowed, denied, mcp, topic.map(str::to_owned), workspaces.first().map(|w| w.to_string()), plugin))
     })();
-    let (allowed, denied, deck_mcp) = match prepared {
+    let (allowed, denied, deck_mcp, deck_group, deck_workspace, frugal_plugin) = match prepared {
         Ok(prepared) => prepared,
         Err(error) => return json!({ "error": format!("Failed to start Claude: {error}") }),
     };
@@ -368,6 +371,17 @@ fn launch(app: &AppHandle, id: &str, place: &str, folder: PathBuf, size: (u16, u
         env.insert("VISUAL".into(), format!("\"{}\"", dir.join(crate::statusline::EDITOR).display()));
     }
     env.insert("DECK_EDIT_URL".into(), status["editUrl"].as_str().unwrap_or_default().into());
+    // Read by frugal's commits skill to offer a per-group or per-workspace choice.
+    env.insert("FRUGAL_DECK".into(), "1".into());
+    // frugal's delegate hands a task only this chat's servers: the account's own that these lists pass, plus the Deck's.
+    let deck_servers = deck_mcp.as_ref().map_or(json!({}), |config| config["mcpServers"].clone());
+    env.insert("FRUGAL_DECK_MCP".into(), json!({ "mcpServers": deck_servers, "allowed": allowed, "denied": denied }).to_string());
+    if let Some(group) = deck_group {
+        env.insert("DECK_GROUP".into(), group);
+    }
+    if let Some(workspace) = deck_workspace {
+        env.insert("DECK_WORKSPACE".into(), workspace);
+    }
     let voice = crate::voice::anthropic_voice();
     // The Deck's own warning took the consent, so Claude Code's disclaimer is skipped (it reads this key from flag settings too).
     // Claude Code reads voice.enabled before voiceEnabled, and /voice off writes it to user settings. The mic button holds Space, so the mode is hold.
@@ -388,6 +402,13 @@ fn launch(app: &AppHandle, id: &str, place: &str, folder: PathBuf, size: (u16, u
         command.args(["--mcp-config", &config.to_string()]);
     }
     command.args([if resume { "--resume" } else { "--session-id" }, id, "--settings", &settings.to_string()]);
+    // Every account runs the main account's frugal: --plugin-dir replaces its own install, so one update reaches them all.
+    if let Some(dir) = frugal_plugin {
+        command.arg("--plugin-dir");
+        command.arg(dir);
+    }
+    // The uninstaller tells sessions started here from Claude Code's own by this list.
+    if !resume { record_session(id); }
     if let Some(prompt) = prompt {
         command.arg(prompt);
     }
