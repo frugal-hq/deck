@@ -983,7 +983,7 @@ async function micMenu(chat) {
     items.push({ label: 'Default microphone', checked: !voiceDevice(), run: () => localStorage.removeItem('voiceDevice') });
     inputs.forEach((device, index) => items.push({ label: device.label || `Microphone ${index + 1}`, checked: voiceDevice() === device.deviceId, run: () => localStorage.setItem('voiceDevice', device.deviceId) }));
   }
-  items.push({ label: 'Voice settings…', run: openSettings });
+  items.push({ label: 'Voice settings…', run: () => openSettings('voice') });
   const box = chat.mic.getBoundingClientRect();
   openMenu(box.right, box.top, items, chat.mic.querySelector('.term-mic__more'));
   menu.style.left = `${Math.max(8, box.right - menu.offsetWidth)}px`;
@@ -1323,7 +1323,7 @@ async function continueHandoff(chat) {
   render();
   if (!result.error && instant && localStorage.getItem('handoffInstantShown') !== 'true') {
     localStorage.setItem('handoffInstantShown', 'true');
-    if (await askConfirm('Handoff started at once', 'The handoff delay in Settings is 0 seconds, so new sessions start as soon as a handoff is ready, with no countdown. This notice shows once.', 'Open settings')) openSettings();
+    if (await askConfirm('Handoff started at once', 'The handoff delay in Settings is 0 seconds, so new sessions start as soon as a handoff is ready, with no countdown. This notice shows once.', 'Open settings')) openSettings('handoff');
   }
 }
 
@@ -2891,7 +2891,25 @@ for (const radio of viewRadios) {
   radio.checked = radio.value === sessionView;
   radio.onchange = () => setSessionView(radio.value);
 }
-async function openSettings() {
+const debugConsole = $('debug-console');
+const DEBUG_KEEP = 2000;
+function showSettingsSection(name) {
+  if (!document.querySelector(`.settings__section[data-section="${name}"]`)) name = 'general';
+  for (const tab of document.querySelectorAll('.settings__tab')) {
+    if (tab.dataset.section === name) tab.setAttribute('aria-current', 'page');
+    else tab.removeAttribute('aria-current');
+  }
+  for (const section of document.querySelectorAll('.settings__section')) section.hidden = section.dataset.section !== name;
+  if (name === 'debug') debugConsole.scrollTop = debugConsole.scrollHeight;
+  localStorage.setItem('settingsSection', name);
+}
+document.querySelector('.settings__nav').onclick = (event) => {
+  const tab = event.target.closest('.settings__tab');
+  if (tab) showSettingsSection(tab.dataset.section);
+};
+
+async function openSettings(section = localStorage.getItem('settingsSection')) {
+  showSettingsSection(section);
   $('settings-confirm-close').checked = confirmsClose();
   $('settings-always-trust').checked = alwaysTrusts();
   $('settings-bypass').checked = bypassOn();
@@ -3383,7 +3401,7 @@ $('app-menu').onclick = () => {
     { label: 'New chat in a folder…', run: startInPicked, icon: 'folder' },
     { label: 'Accounts', run: openAccounts, icon: 'user' },
     { label: 'Tasks', run: openTasks, icon: 'tasks' },
-    { label: 'Settings', run: openSettings, icon: 'settings' },
+    { label: 'Settings', run: () => openSettings(), icon: 'settings' },
     { label: 'MCP servers', run: () => openMcpDialog({ global: true }), icon: 'plug' },
     { label: 'Updates', run: openUpdates, icon: 'update' },
   ], $('app-menu'));

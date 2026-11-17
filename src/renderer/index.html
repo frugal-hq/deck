@@ -26,10 +26,15 @@
   <symbol id="i-trash" viewBox="0 0 16 16"><path d="M2.75 4.25h10.5M6.25 4.25v-1.5h3.5v1.5M4 4.25l.6 8.1c.06.8.7 1.4 1.5 1.4h3.8c.8 0 1.44-.6 1.5-1.4l.6-8.1M6.75 7v4m2.5-4v4"/></symbol>
   <symbol id="i-merge" viewBox="0 0 16 16"><path d="M4 2.5v2.75c0 1.6 1.1 2.7 2.6 3.4L8 9.4m4-6.9v2.75c0 1.6-1.1 2.7-2.6 3.4L8 9.4v4.1"/></symbol>
   <symbol id="i-settings" viewBox="0 0 16 16"><path d="M2.5 5h6m3 0h2M2.5 11h2m3 0h6"/><circle cx="10" cy="5" r="1.5"/><circle cx="6" cy="11" r="1.5"/></symbol>
+  <symbol id="i-palette" viewBox="0 0 16 16"><path d="M8 2a6 6 0 0 0 0 12c.9 0 1.4-.6 1.4-1.3 0-.9-.8-1.2-.8-2 0-.7.6-1.2 1.3-1.2h1.6A2.5 2.5 0 0 0 14 7 6 6 0 0 0 8 2z"/><path d="M5 7.5h.01M6.5 5h.01M9.5 5h.01" stroke-width="2"/></symbol>
+  <symbol id="i-handoff" viewBox="0 0 16 16"><path d="M2.5 5.5h9m-2.5-3 3 3-3 3M13.5 10.5h-9m2.5 3-3-3 3-3"/></symbol>
+  <symbol id="i-shield" viewBox="0 0 16 16"><path d="M8 1.75 13 3.75v4c0 3-2.2 5.3-5 6.5-2.8-1.2-5-3.5-5-6.5v-4z"/></symbol>
+  <symbol id="i-lock" viewBox="0 0 16 16"><rect x="3" y="7" width="10" height="7" rx="2"/><path d="M5.5 7V5a2.5 2.5 0 0 1 5 0v2"/></symbol>
   <symbol id="i-plug" viewBox="0 0 16 16"><path d="M6 1.75v3m4-3v3M4.25 4.75h7.5V7a3.75 3.75 0 0 1-7.5 0zM8 10.75v3.5"/></symbol>
   <symbol id="i-user" viewBox="0 0 16 16"><circle cx="8" cy="5.5" r="2.75"/><path d="M2.75 13.5a5.25 5.25 0 0 1 10.5 0"/></symbol>
   <symbol id="i-tasks" viewBox="0 0 16 16"><path d="m2.5 4.5 1.25 1.25L6 3.5m-3.5 7 1.25 1.25L6 9.5M8.5 4.75h5M8.5 10.75h5"/></symbol>
   <symbol id="i-update" viewBox="0 0 16 16"><path d="M8 2.5v7.5m-3-3 3 3 3-3M3 13.5h10"/></symbol>
+  <symbol id="i-bug" viewBox="0 0 16 16"><rect x="4.5" y="4.5" width="7" height="9" rx="3.5"/><path d="M6 4.5a2 2 0 0 1 4 0M4.5 9H2m11.5 0H11M4.8 6.5 3 5m8.2 1.5L13 5m-8.2 6L3 12.5m8.2-1.5 1.8 1.5"/></symbol>
   <symbol id="i-terminal" viewBox="0 0 16 16"><rect x="1.75" y="2.5" width="12.5" height="11" rx="2.5"/><path d="m4.5 6 2 2-2 2m4 .5h3"/></symbol>
   <symbol id="i-menu" viewBox="0 0 16 16"><path d="M2.5 4.5h11M2.5 8h11M2.5 11.5h11"/></symbol>
   <symbol id="i-more" viewBox="0 0 16 16"><path d="M3.5 8h.01M8 8h.01M12.5 8h.01" stroke-width="2"/></symbol>
@@ -259,67 +264,191 @@
     </div>
   </form>
 </dialog>
-<dialog id="settings-dialog" class="organize" closedby="any" aria-labelledby="settings-title">
+<dialog id="settings-dialog" class="organize settings" closedby="any" aria-labelledby="settings-title">
   <form method="dialog">
-    <h2 id="settings-title" class="organize__title">Settings</h2>
-    <label class="organize__check"><input id="settings-confirm-close" type="checkbox"> Ask before closing a running chat</label>
-    <label class="organize__check"><input id="settings-always-trust" type="checkbox"> Always trust folders</label>
-    <label class="organize__check" data-tip="Chats with at least one message reopen where they were"><input id="settings-reopen" type="checkbox"> Reopen chats on start</label>
-    <label class="organize__check" data-tip="Applies to chats started after the change"><input id="settings-bypass" type="checkbox"> Bypass permissions in all chats</label>
-    <label class="organize__check" data-tip="Applies to chats started after the change. Windows asks for permission for each chat"><input id="settings-admin" type="checkbox"> Run all chats as administrator</label>
-    <label class="organize__check" data-tip="Applies to chats started after the change"><input id="settings-roles" type="checkbox"> Never delegate to the account a chat runs on</label>
-    <label class="organize__check" data-tip="Warning: may not work as expected. Forces Claude Code's fullscreen renderer and overrides its fallback to the classic renderer after failed starts. Turn it off if chats fail to start, flicker or draw wrong. Applies to chats started after the change"><input id="settings-mouse" type="checkbox"> Mouse clicks in chats (fullscreen renderer)</label>
-    <label class="organize__check" data-tip="Sets cleanupPeriodDays to 3650 in the settings of every Claude account, so Claude Code stops deleting transcripts idle for 30 days. Turning it off removes only that value"><input id="settings-keep-transcripts" type="checkbox"> Keep transcripts in all accounts</label>
-    <label class="organize__check" data-tip="Applies to chats started after the change. Needs the Frugal plugin in the account"><input id="settings-frugal" type="checkbox"> Start new chats with Frugal</label>
-    <label class="organize__check" data-tip="From 150K tokens of context, a handoff opens a new session after the delay. Off, it waits for Continue in new session"><input id="settings-handoff-auto" type="checkbox"> Start handoffs on their own</label>
-    <label class="organize__check" data-tip="0 starts the new session as soon as the handoff is ready, with no countdown">Handoff delay in seconds
-      <input id="settings-handoff-delay" class="settings__select" type="number" min="0" max="600" step="1">
-    </label>
-    <label class="organize__check" data-tip="A box under the handoff for more context. Typing in it pauses the countdown"><input id="settings-handoff-note" type="checkbox"> Add a note box to handoffs</label>
-    <label class="organize__check" data-tip="Ask AI (Ctrl+Shift+K) also sends Anthropic up to 200 characters of a matching message from each of up to 40 chats. Finds chats better, but parts of your conversations leave this computer"><input id="settings-ai-excerpts" type="checkbox"> Send message excerpts with Ask AI</label>
-    <label class="organize__check" data-tip="Win+H starts Windows dictation in any app, with no download">Voice input
-      <select id="settings-voice" class="settings__select">
-        <option value="off">off</option>
-        <option value="local">local model (whisper.cpp)</option>
-        <option value="anthropic">Anthropic (/voice in Claude Code)</option>
-      </select>
-    </label>
-    <label class="organize__check settings__voice">Voice model
-      <select id="settings-voice-model" class="settings__select">
-        <option value="small">small, 488 MB, fastest</option>
-        <option value="medium">medium, 1.5 GB</option>
-        <option value="large-v3">large-v3, 3.1 GB, most accurate</option>
-      </select>
-    </label>
-    <label class="organize__check settings__voice">Dictation language
-      <select id="settings-voice-language" class="settings__select">
-        <option value="en">English</option>
-        <option value="es">Spanish</option>
-        <option value="auto">detect</option>
-      </select>
-    </label>
-    <label class="organize__check" data-tip="Local dictation records with it. Off, it stays blocked"><input id="settings-mic" type="checkbox"> Allow the microphone</label>
-    <label class="organize__check" data-tip="Ctrl+V in a chat reads it. Off, Ctrl+V pastes only images"><input id="settings-clipboard" type="checkbox"> Allow reading the clipboard</label>
-    <label class="organize__check" data-tip="Plays the notification sound when you let go">Notification volume
-      <input id="settings-volume" class="settings__range" type="range" min="0" max="100" step="5">
-      <output id="settings-volume-value" for="settings-volume"></output>
-    </label>
-    <label class="organize__check" data-tip="A longer group shows a row that reveals the rest">Chats shown per group
-      <input id="settings-group-limit" class="settings__select" type="number" min="1" max="500" step="1">
-    </label>
-    <label class="organize__check">Show tooltips
-      <select id="settings-tooltips" class="settings__select">
-        <option value="above">above the pointer</option>
-        <option value="below">below the pointer</option>
-      </select>
-    </label>
-    <fieldset class="settings__accent">
-      <legend>Accent color</legend>
-      <div id="settings-accent" class="settings__swatches"></div>
-    </fieldset>
-    <div class="organize__actions">
-      <button class="btn" type="submit" data-tip="Close settings">Close</button>
+    <nav class="settings__nav" aria-label="Settings sections">
+      <h2 id="settings-title" class="settings__heading">Settings</h2>
+      <button class="settings__tab" type="button" data-section="general" aria-current="page"><svg class="icon" aria-hidden="true"><use href="#i-settings"/></svg>General</button>
+      <button class="settings__tab" type="button" data-section="appearance"><svg class="icon" aria-hidden="true"><use href="#i-palette"/></svg>Appearance</button>
+      <button class="settings__tab" type="button" data-section="chats"><svg class="icon" aria-hidden="true"><use href="#i-terminal"/></svg>Chats</button>
+      <button class="settings__tab" type="button" data-section="handoff"><svg class="icon" aria-hidden="true"><use href="#i-handoff"/></svg>Handoff</button>
+      <button class="settings__tab" type="button" data-section="permissions"><svg class="icon" aria-hidden="true"><use href="#i-shield"/></svg>Permissions</button>
+      <button class="settings__tab" type="button" data-section="accounts"><svg class="icon" aria-hidden="true"><use href="#i-user"/></svg>Accounts</button>
+      <button class="settings__tab" type="button" data-section="voice"><svg class="icon" aria-hidden="true"><use href="#i-mic"/></svg>Voice</button>
+      <button class="settings__tab" type="button" data-section="privacy"><svg class="icon" aria-hidden="true"><use href="#i-lock"/></svg>Privacy</button>
+      <button class="settings__tab" type="button" data-section="debug"><svg class="icon" aria-hidden="true"><use href="#i-bug"/></svg>Debug</button>
+    </nav>
+    <div class="settings__body">
+      <section class="settings__section" data-section="general">
+        <h3 class="settings__title">General</h3>
+        <div class="settings__row" data-tip="Saves the chats you leave open, so closing the Deck does not lose your place">
+          <label class="organize__check"><input id="settings-reopen" type="checkbox"> Reopen chats on start</label>
+          <p class="settings__hint">Chats with at least one message reopen where they were.</p>
+        </div>
+        <div class="settings__row" data-tip="Closing a chat while Claude works stops the turn in the middle">
+          <label class="organize__check"><input id="settings-confirm-close" type="checkbox"> Ask before closing a running chat</label>
+          <p class="settings__hint">Asks when Claude is still working in the chat.</p>
+        </div>
+        <div class="settings__row" data-tip="Claude Code CLI and Claude Desktop sessions in your accounts folders. Off lists only chats started here.">
+          <label class="organize__check"><input id="settings-show-external" type="checkbox"> Show sessions started outside Frugal Deck</label>
+          <p class="settings__hint">Claude Code CLI and Claude Desktop sessions in your accounts folders. Off lists only chats started here.</p>
+        </div>
+        <div class="settings__row" data-tip="The chime tells you a chat finished or needs you while you look elsewhere">
+          <label class="organize__check">Notification volume
+            <input id="settings-volume" class="settings__range" type="range" min="0" max="100" step="5">
+            <output id="settings-volume-value" for="settings-volume"></output>
+          </label>
+          <p class="settings__hint">Plays the notification sound when you let go.</p>
+        </div>
+      </section>
+      <section class="settings__section" data-section="appearance" hidden>
+        <h3 class="settings__title">Appearance</h3>
+        <div class="settings__row settings__accent" role="group" aria-labelledby="settings-accent-label">
+          <span id="settings-accent-label" class="organize__check">Accent color</span>
+          <div id="settings-accent" class="settings__swatches"></div>
+          <p class="settings__hint">Buttons, selection and highlights take this color.</p>
+        </div>
+        <div class="settings__row" data-tip="Below keeps tooltips from covering the row above the pointer">
+          <label class="organize__check">Show tooltips
+            <select id="settings-tooltips" class="settings__select">
+              <option value="above">above the pointer</option>
+              <option value="below">below the pointer</option>
+            </select>
+          </label>
+          <p class="settings__hint">Where help like this appears.</p>
+        </div>
+        <div class="settings__row" data-tip="Long groups stay short, so other groups stay in view">
+          <label class="organize__check">Chats shown per group
+            <input id="settings-group-limit" class="settings__select" type="number" min="1" max="500" step="1">
+          </label>
+          <p class="settings__hint">A longer group shows a row that reveals the rest.</p>
+        </div>
+      </section>
+      <section class="settings__section" data-section="chats" hidden>
+        <h3 class="settings__title">Chats</h3>
+        <div class="settings__row" data-tip="Frugal keeps replies short and context small, so limits last longer">
+          <label class="organize__check"><input id="settings-frugal" type="checkbox"> Start new chats with Frugal</label>
+          <p class="settings__hint">Needs the Frugal plugin in the account. Applies to chats started after the change.</p>
+        </div>
+        <div class="settings__row" data-tip="Lets you click menus and questions in Claude Code instead of using the keyboard">
+          <label class="organize__check"><input id="settings-mouse" type="checkbox"> Mouse clicks in chats</label>
+          <p class="settings__hint">Uses Claude Code's fullscreen renderer. Applies to chats started after the change.</p>
+          <p class="settings__warn">May not work as expected. It overrides Claude Code's fallback to the classic renderer after failed starts. Turn it off if chats fail to start, flicker or draw wrong.</p>
+        </div>
+      </section>
+      <section class="settings__section" data-section="handoff" hidden>
+        <h3 class="settings__title">Handoff</h3>
+        <div class="settings__row" data-tip="A fresh session costs less per turn than one with a full context">
+          <label class="organize__check"><input id="settings-handoff-auto" type="checkbox"> Start handoffs on their own</label>
+          <p class="settings__hint">From 150K tokens of context, a handoff opens a new session after the delay. Off, it waits for Continue in new session.</p>
+        </div>
+        <div class="settings__row" data-tip="Time to read or cancel the handoff before it starts">
+          <label class="organize__check">Handoff delay in seconds
+            <input id="settings-handoff-delay" class="settings__select" type="number" min="0" max="600" step="1">
+          </label>
+          <p class="settings__hint">0 starts the new session as soon as the handoff is ready, with no countdown.</p>
+        </div>
+        <div class="settings__row" data-tip="Adds what the handoff left out before the new session reads it">
+          <label class="organize__check"><input id="settings-handoff-note" type="checkbox"> Add a note box to handoffs</label>
+          <p class="settings__hint">A box under the handoff for more context. Typing in it pauses the countdown.</p>
+        </div>
+      </section>
+      <section class="settings__section" data-section="permissions" hidden>
+        <h3 class="settings__title">Permissions</h3>
+        <div class="settings__row" data-tip="Saves the trust question in every new folder">
+          <label class="organize__check"><input id="settings-always-trust" type="checkbox"> Always trust folders</label>
+          <p class="settings__hint">Accepts Claude Code's trust check in every folder you open here.</p>
+          <p class="settings__warn">A folder's own settings and hooks can run commands as soon as the chat starts. Only for folders you know.</p>
+        </div>
+        <div class="settings__row" data-tip="Long tasks run without stopping at every command">
+          <label class="organize__check"><input id="settings-bypass" type="checkbox"> Bypass permissions in all chats</label>
+          <p class="settings__hint">Claude runs commands and edits files without asking. Applies to chats started after the change.</p>
+          <p class="settings__warn settings__warn--danger">An error or a malicious instruction in a file or page can cause damage before you can stop it. Anthropic recommends it only in isolated containers or virtual machines.</p>
+        </div>
+        <div class="settings__row" data-tip="For tasks that change services, drivers or system settings">
+          <label class="organize__check"><input id="settings-admin" type="checkbox"> Run all chats as administrator</label>
+          <p class="settings__hint">Windows asks for permission the first time. Applies to chats started after the change.</p>
+          <p class="settings__warn settings__warn--danger">Claude can change system configuration, services, programs and any user's files. Those changes can leave Windows unstable or insecure.</p>
+        </div>
+      </section>
+      <section class="settings__section" data-section="accounts" hidden>
+        <h3 class="settings__title">Accounts</h3>
+        <div class="settings__row" data-tip="Delegated work then spends another account's limits, not the one already in use">
+          <label class="organize__check"><input id="settings-roles" type="checkbox"> Never delegate to the account a chat runs on</label>
+          <p class="settings__hint">Applies to chats started after the change.</p>
+        </div>
+        <div class="settings__row" data-tip="Old sessions stay available to resume and search">
+          <label class="organize__check"><input id="settings-keep-transcripts" type="checkbox"> Keep transcripts in all accounts</label>
+          <p class="settings__hint">Sets cleanupPeriodDays to 3650 in every Claude account, so Claude Code stops deleting transcripts idle for 30 days. Off removes only that value.</p>
+        </div>
+      </section>
+      <section class="settings__section" data-section="voice" hidden>
+        <h3 class="settings__title">Voice</h3>
+        <div class="settings__row" data-tip="Speaking is faster than typing long prompts">
+          <label class="organize__check">Voice input
+            <select id="settings-voice" class="settings__select">
+              <option value="off">off</option>
+              <option value="local">local model (whisper.cpp)</option>
+              <option value="anthropic">Anthropic (/voice in Claude Code)</option>
+            </select>
+          </label>
+          <p class="settings__hint">Win+H starts Windows dictation in any app, with no download.</p>
+        </div>
+        <div class="settings__row settings__voice" data-tip="Larger models get more words right and take longer">
+          <label class="organize__check">Voice model
+            <select id="settings-voice-model" class="settings__select">
+              <option value="small">small, 488 MB, fastest</option>
+              <option value="medium">medium, 1.5 GB</option>
+              <option value="large-v3">large-v3, 3.1 GB, most accurate</option>
+            </select>
+          </label>
+          <p class="settings__hint">Downloads on first use, after showing its size.</p>
+        </div>
+        <div class="settings__row settings__voice" data-tip="A fixed language transcribes better than detection">
+          <label class="organize__check">Dictation language
+            <select id="settings-voice-language" class="settings__select">
+              <option value="en">English</option>
+              <option value="es">Spanish</option>
+              <option value="auto">detect</option>
+            </select>
+          </label>
+          <p class="settings__hint">The language you speak in.</p>
+        </div>
+      </section>
+      <section class="settings__section" data-section="privacy" hidden>
+        <h3 class="settings__title">Privacy</h3>
+        <div class="settings__row" data-tip="Matching message text helps the model pick the right chat">
+          <label class="organize__check"><input id="settings-ai-excerpts" type="checkbox"> Send message excerpts with Ask AI</label>
+          <p class="settings__hint">Ask AI (Ctrl+Shift+K) also sends Anthropic up to 200 characters of a matching message from each of up to 40 chats.</p>
+          <p class="settings__warn">Parts of your conversations leave this computer.</p>
+        </div>
+        <div class="settings__row" data-tip="Blocks recording when you never dictate">
+          <label class="organize__check"><input id="settings-mic" type="checkbox"> Allow the microphone</label>
+          <p class="settings__hint">Local dictation records with it. Off, it stays blocked.</p>
+        </div>
+        <div class="settings__row" data-tip="Blocks the Deck from reading copied text you did not paste">
+          <label class="organize__check"><input id="settings-clipboard" type="checkbox"> Allow reading the clipboard</label>
+          <p class="settings__hint">Ctrl+V in a chat reads it. Off, Ctrl+V pastes only images.</p>
+        </div>
+      </section>
+      <section class="settings__section" data-section="debug" hidden>
+        <h3 class="settings__title">Debug</h3>
+        <div class="settings__row" data-tip="Shows what the Deck did when something fails, like a handoff that never started">
+          <label class="organize__check"><input id="settings-debug" type="checkbox"> Record a debug log</label>
+          <p class="settings__hint">Records chat starts and exits, handoffs, calls between the window and the Deck, events, clicks and errors. Also saved to ~/.frugal-deck/debug.log, so it survives a restart. Times are UTC.</p>
+          <p class="settings__warn">Uses some extra CPU and disk while on. The log holds folder paths and the start of prompts; it stays on this computer.</p>
+        </div>
+        <div class="settings__row">
+          <pre id="debug-console" class="debug__console" role="log" tabindex="0" aria-label="Debug log"></pre>
+          <div class="debug__actions">
+            <button id="debug-copy" class="btn btn--bar" type="button" data-tip="Copy every line shown">Copy</button>
+            <button id="debug-reveal" class="btn btn--bar" type="button" data-tip="Show debug.log in File Explorer">Show file</button>
+            <button id="debug-clear" class="btn btn--bar" type="button" data-tip="Empty this console and debug.log">Clear</button>
+          </div>
+        </div>
+      </section>
     </div>
+    <button class="btn btn--icon settings__close" type="submit" aria-label="Close settings" data-tip="Close settings"><svg class="icon" aria-hidden="true"><use href="#i-x"/></svg></button>
   </form>
 </dialog>
 <dialog id="mcp-dialog" class="organize mcp" closedby="any" aria-labelledby="mcp-title">
