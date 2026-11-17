@@ -880,9 +880,29 @@ function makeBadge(chat) {
   more.setAttribute('aria-label', 'Voice options');
   more.onclick = () => micMenu(chat);
   mic.append(record, more);
+  const dock = node('div', 'term-dock');
+  const dockButton = (name, tip, run, extra = '') => {
+    const button = node('button', `term-dock__btn ${extra}`.trim());
+    button.type = 'button';
+    button.append(icon(name));
+    button.dataset.tip = tip;
+    button.setAttribute('aria-label', tip);
+    button.onclick = () => {
+      run();
+      chat.term.focus();
+    };
+    return button;
+  };
+  const edit = dockButton('edit', 'Open the prompt in an editor (Ctrl+G)', () => {
+    holdOutput(chat);
+    deck.input(chat.id, '\x07');
+  }, 'term-dock__edit');
+  const send = dockButton('send', 'Send the prompt (Enter)', () => deck.input(chat.id, '\r'), 'term-dock__send');
+  dock.append(edit, send, mic);
   chat.badge = badge;
   chat.mic = mic;
-  chat.el.append(badge, mic);
+  chat.dock = dock;
+  chat.el.append(badge, dock);
   drawBadge(chat);
 }
 
@@ -973,6 +993,8 @@ function drawMic(chat, running) {
   }[state];
   chat.mic.dataset.state = state;
   chat.mic.hidden = !chat.account;
+  chat.dock.hidden = !chat.account;
+  for (const button of chat.dock.querySelectorAll('.term-dock__btn')) button.disabled = !running;
   chat.mic.toggleAttribute('data-idle', state !== 'listening' && !running);
   const record = chat.mic.querySelector('.term-mic__record');
   record.disabled = state === 'busy' || (state !== 'off' && state !== 'listening' && !running);
