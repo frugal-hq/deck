@@ -2084,9 +2084,10 @@ function renameOpenKey(from, to) {
 function workspaceMenu(name) {
   // Listed from the folder of one of its chats, nested workspaces included.
   const folder = currentIndex.sessions.find((s) => withinSpace(s.space ?? currentIndex.workspaces?.[chatsById.get(s.chatId)?.topic] ?? currentIndex.workspaces?.[s.cwd], name, currentIndex))?.cwd;
+  if (folder) fetchMcp({ workspace: name, folder }, 30_000);
   return [
-    ...(folder ? [{ label: 'MCP servers', run: () => openMcpDialog({ workspace: name, folder }) }] : []),
-    { label: 'Rename', run: () => ask({
+    ...(folder ? [{ label: 'MCP servers', icon: 'plug', run: () => openMcpDialog({ workspace: name, folder }) }] : []),
+    { label: 'Rename', icon: 'edit', run: () => ask({
       title: `Rename ${name}`,
       text: 'Use the name of another workspace to merge them.',
       value: name,
@@ -2098,8 +2099,8 @@ function workspaceMenu(name) {
         deck.renameWorkspace(name, to);
       },
     }) },
-    { label: 'Move to workspace', run: () => openWorkspace(spaceKey(name), name) },
-    { label: 'Delete', danger: true, run: () => ask({
+    { label: 'Move to workspace', icon: 'topic', run: () => openWorkspace(spaceKey(name), name) },
+    { label: 'Delete', icon: 'trash', danger: true, run: () => ask({
       title: `Delete ${name}?`,
       text: 'Its groups and chats stay, outside any workspace. Workspaces inside it move up one level.',
       action: 'Delete',
@@ -2112,14 +2113,17 @@ function workspaceMenu(name) {
 const sessionsOfGroup = (key) => currentIndex.sessions.filter((s) => chatsById.get(s.chatId)?.topic === key).map((s) => s.id);
 
 function groupMenu(key, label, byTopic) {
-  const move = { label: 'Move to workspace', run: () => openWorkspace(key, label) };
+  const move = { label: 'Move to workspace', icon: 'topic', run: () => openWorkspace(key, label) };
   // A group's servers are listed from the folder of one of its chats.
   const folder = byTopic ? currentIndex.sessions.find((s) => chatsById.get(s.chatId)?.topic === key)?.cwd : key;
-  const mcp = { label: 'MCP servers', run: () => openMcpDialog(byTopic ? { group: key, folder } : { folder }) };
+  const listScope = byTopic ? { group: key, folder } : { folder };
+  // `claude mcp list` takes seconds per account: listing while the menu is open lets the dialog show it sooner.
+  if (folder) fetchMcp(listScope, 30_000);
+  const mcp = { label: 'MCP servers', icon: 'plug', run: () => openMcpDialog(listScope) };
   if (!byTopic) return [move, mcp];
   const workspace = currentIndex.workspaces?.[key];
   return [
-    { label: 'Rename', run: () => ask({
+    { label: 'Rename', icon: 'edit', run: () => ask({
       title: `Rename ${label}`,
       text: 'Use the name of another group to merge them.',
       value: key,
@@ -2131,7 +2135,7 @@ function groupMenu(key, label, byTopic) {
         deck.renameGroup(sessionsOfGroup(key), key, to);
       },
     }) },
-    { label: 'Merge into another group', run: () => ask({
+    { label: 'Merge into another group', icon: 'merge', run: () => ask({
       title: `Merge ${label} into`,
       text: 'Its chats move into the group you choose, and this group goes away.',
       names: groupNames.filter((other) => other !== key),
@@ -2144,7 +2148,7 @@ function groupMenu(key, label, byTopic) {
     }) },
     move,
     ...(folder ? [mcp] : []),
-    { label: 'Delete', danger: true, run: () => ask({
+    { label: 'Delete', icon: 'trash', danger: true, run: () => ask({
       title: `Delete ${label}?`,
       text: workspace ? `Its chats stay in ${workspace}, without a group.` : 'Its chats stay, outside any group.',
       action: 'Delete',

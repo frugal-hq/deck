@@ -530,6 +530,7 @@ option:focus-visible, .menu__item:focus-visible { outline-offset: -2px; }
 .menu__item { width: 100%; border: 0; background: transparent; overflow: hidden; text-align: start; text-overflow: ellipsis; white-space: nowrap; transition: background-color var(--dur-micro) var(--ease-out), color var(--dur-micro) var(--ease-out); }
 .menu__item .icon { flex: none; width: 14px; height: 14px; margin-inline-end: var(--space-xs); color: var(--color-muted); }
 .menu__item[data-danger] { color: var(--color-bad); }
+.menu__item[data-danger] .icon { color: inherit; }
 .menu__item[aria-checked]::before { content: ""; display: inline-block; width: 1.25em; }
 .menu__item[aria-checked="true"]::before { content: "\2713"; color: var(--color-accent); }
 .combo { top: anchor(bottom); left: anchor(left); width: anchor-size(width); min-width: 0; margin-top: var(--space-2xs); }
