@@ -31,7 +31,7 @@ Not built yet: opening the next session automatically after a handoff, and trans
 
 1. **The terminal is the real one.** Deck runs the official Claude Code binary unchanged, inside a PTY.
 2. **Zero added tokens.** No feature may add content to the prompt, MCP servers, or model calls. Anything that fails this is out or optional and off.
-3. **Deck never touches credentials.** It does not read, copy, or store `.credentials.json` or tokens. Login is always the official flow inside the terminal.
+3. **Deck never touches your Claude login.** It does not copy or store the Claude sign-in token, and login is always the official flow inside the terminal. The one exception is MCP server sign-ins: Deck copies the `mcpOAuth` entries of `.credentials.json` between your own accounts on this computer, so one sign-in serves them all.
 4. **Nothing is lost.** Archiving never deletes, and Deck keeps its own copy of every session.
 
 ## Documents

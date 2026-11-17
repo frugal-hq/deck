@@ -8,7 +8,7 @@
 | Platform | Windows only in 0.1.0 | Reduces risk; it is the usage environment | Multiplatform |
 | Integration | Official binary in PTY | Preserves all features and is the route allowed by the terms | Agent SDK or `stream-json` with own UI |
 | Product rule | Zero added tokens | The project exists to save | Prompts, MCP, or own calls |
-| Credentials | Deck never reads or stores them | The terms prohibit collecting, storing, or brokering credentials | Local store with tokens |
+| Credentials | Deck never reads or stores the Claude login; it copies only MCP server sign-ins (`mcpOAuth`) between the user's own accounts on this computer | The terms prohibit collecting, storing, or brokering credentials; one MCP sign-in then serves every account, delegates included | Local store with tokens; a separate MCP sign-in on each account |
 | Accounts | One `CLAUDE_CONFIG_DIR` folder per account | Method recommended in the official docs; already used by Frugal | Copying `.credentials.json` or using `/logout`, which revokes the credential |
 | Account switch | Restart with `--resume` with Claude idle | Cannot switch live | Live switch |
 | Account roles | Per session, according to its `CLAUDE_CONFIG_DIR` | `accounts.json` is global and there can be chats on different accounts at the same time | Rewriting `accounts.json` on every switch |
