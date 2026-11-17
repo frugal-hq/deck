@@ -1255,6 +1255,11 @@ async function openChat({ id, cwd, name, resume, group, login, accountId, handof
   // A handoff block opens with /frugal, so that chat already runs in Frugal mode.
   chat.frugal = Boolean(handoff) || result.frugal === true;
   render();
+  const pending = resume && !result.error && pendingHandoffs()[id];
+  if (pending) {
+    deck.debugLog('handoff', `${id}: pending handoff offered again`);
+    offerHandoff(id, pending);
+  }
   return result;
 }
 
@@ -1266,6 +1271,16 @@ const handoffDelay = () => {
   return Number.isInteger(seconds) && seconds >= 0 && seconds <= 600 ? seconds : 10;
 };
 const handoffNotes = () => localStorage.getItem('handoffNote') !== 'false';
+// A handoff not yet answered outlives a Deck restart: its chat offers it again when it resumes.
+const pendingHandoffs = () => {
+  try { return JSON.parse(localStorage.getItem('pendingHandoffs') || '{}'); } catch { return {}; }
+};
+function savePendingHandoff(id, handoff) {
+  const all = pendingHandoffs();
+  if (handoff) all[id] = handoff;
+  else delete all[id];
+  localStorage.setItem('pendingHandoffs', JSON.stringify(all)); // frugal: a chat closed for good keeps its entry; prune by age if the list grows
+}
 
 function stopCountdown(chat) {
   if (!chat.handoff?.timer) return;
@@ -1325,7 +1340,10 @@ async function continueHandoff(chat) {
   const result = await openChat({ id: crypto.randomUUID(), cwd: chat.cwd, name: 'New chat', handoff: { from: chat.id, accountId: chat.account, prompt } });
   deck.debugLog('handoff', `${chat.id}: new session ${result.error ? `failed: ${result.error}` : 'started'}`);
   // A failed start keeps the prompt, so nothing typed into it is lost.
-  if (!result.error) chat.handoff = null;
+  if (!result.error) {
+    chat.handoff = null;
+    savePendingHandoff(chat.id, null);
+  }
   else if (chat.handoff) chat.handoff.starting = false;
   render();
   if (!result.error && instant && localStorage.getItem('handoffInstantShown') !== 'true') {
@@ -1334,9 +1352,14 @@ async function continueHandoff(chat) {
   }
 }
 
-deck.onHandoff((id, { prompt, tokens }) => {
+deck.onHandoff(offerHandoff);
+function offerHandoff(id, { prompt, tokens }) {
   const chat = chats.get(id);
-  if (!chat) return;
+  if (!chat) {
+    deck.debugLog('handoff', `${id}: no tab for this chat, handoff dropped`);
+    return;
+  }
+  savePendingHandoff(id, { prompt, tokens });
   if (chat.handoff) stopCountdown(chat);
   const delay = handoffDelay();
   const auto = handoffAuto() && tokens >= HANDOFF_AUTO_TOKENS;
@@ -1348,7 +1371,7 @@ deck.onHandoff((id, { prompt, tokens }) => {
   }
   if (auto) startCountdown(chat);
   drawHandoff();
-});
+}
 
 $('handoff-text').addEventListener('focus', pauseCountdown);
 $('handoff-note').addEventListener('focus', pauseCountdown);
@@ -1366,7 +1389,10 @@ $('handoff-stop').onclick = () => {
   if (chat.handoff.timer || chat.handoff.paused) {
     stopCountdown(chat);
     chat.handoff.paused = false;
-  } else chat.handoff = null;
+  } else {
+    chat.handoff = null;
+    savePendingHandoff(chat.id, null);
+  }
   drawHandoff();
 };
 $('handoff-save').onclick = () => {
@@ -1592,6 +1618,8 @@ function onTitle(chat, title) {
 deck.onTurnEnd((id) => {
   const chat = chats.get(id);
   if (!chat) return;
+  // Every turn end comes before its own handoff block, so a turn after the block clears it and the block itself sets it again.
+  savePendingHandoff(id, null);
   chat.turnEnded = true;
   if (!chat.busy && chat.status === 'waiting') setStatus(chat, seen(chat) ? null : 'replied');
 });
