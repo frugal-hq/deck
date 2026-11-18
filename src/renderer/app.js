@@ -806,7 +806,8 @@ function taskRow(task) {
   row.append(head);
   const cost = task.cost != null && `$${task.cost.toFixed(2)}`;
   const tokens = task.tokens && `${compact.format(task.tokens)} tokens`;
-  const meta = [taskAccount(task), task.level, taskSpan(task.seconds), tokens, cost].filter(Boolean).join(' · ');
+  const seconds = task.running ? Math.round((Date.now() - task.updatedAt) / 1000) : task.seconds;
+  const meta = [taskAccount(task), task.model, task.level, taskSpan(seconds), tokens, cost].filter(Boolean).join(' · ');
   if (meta) row.append(node('p', 'info-panel__muted', meta));
   const chat = task.chat && currentIndex?.sessions?.find((s) => s.id === task.chat)?.title;
   const label = (name, value) => (value ? `${name}: ${value}` : '');
