@@ -588,29 +588,41 @@ function drawAccounts() {
 }
 
 // Open chats on another account; login chats keep theirs.
-const switchable = (account) => [...chats.values()].filter((chat) => !chat.login && chat.account && chat.state === 'running' && chat.account !== account.id);
+const restartable = () => [...chats.values()].filter((chat) => !chat.login && chat.account && chat.state === 'running');
+const switchable = (account) => restartable().filter((chat) => chat.account !== account.id);
+const isWorking = (chat) => chat.status === 'working' || chat.status === 'waiting';
 
 // Switching accounts moves every open chat with --resume. Busy chats (working, or waiting for an answer) lose their
 // turn, so the dialog lists them: switch all, switch only the idle ones (busy ones stay on their account), or cancel.
 async function useAccount(account) {
   $('usage').hidePopover();
   const open = switchable(account);
-  const busy = open.filter((chat) => chat.status === 'working' || chat.status === 'waiting');
+  const busy = open.filter(isWorking);
   let moving = open;
   if (busy.length) {
-    const choice = await askSwitch(account, busy, busy.length < open.length);
+    const name = account.email || account.id;
+    const choice = await askBusy(busy, busy.length < open.length, {
+      title: `Switch every chat to ${name}?`,
+      message: `Switching stops the turn in progress and reopens the chat on ${name} with its history.`,
+      cancel: 'Every chat stays on its account',
+      idle: ['Switch idle chats only', 'Busy chats keep working on their account'],
+      all: ['Switch all', 'Stops the busy chats and reopens every chat on the new account'],
+    });
     if (choice !== 'all' && choice !== 'idle') return;
     if (choice === 'idle') moving = open.filter((chat) => !busy.includes(chat));
   }
   if (!moving.length) return report(await deck.setPrimary(account.id));
-  for (const chat of moving) await switchChat(chat, account);
+  for (const chat of moving) await switchChat(chat, account, busy.includes(chat));
 }
 
-function askSwitch(account, busy, someIdle) {
+// Busy chats lose their turn on a restart, so they are listed: restart all, only the idle ones, or cancel.
+function askBusy(busy, someIdle, text) {
   const dialog = $('switch-dialog');
-  const name = account.email || account.id;
-  $('switch-title').textContent = `Switch every chat to ${name}?`;
-  $('switch-message').textContent = `${busy.length === 1 ? 'This chat is' : 'These chats are'} still working. Switching stops the turn in progress and reopens the chat on ${name} with its history. Click one to look at it first.`;
+  $('switch-title').textContent = text.title;
+  $('switch-message').textContent = `${busy.length === 1 ? 'This chat is' : 'These chats are'} still working. ${text.message} Click one to look at it first.`;
+  $('switch-cancel').dataset.tip = text.cancel;
+  [$('switch-idle').textContent, $('switch-idle').dataset.tip] = text.idle;
+  [$('switch-all').textContent, $('switch-all').dataset.tip] = text.all;
   $('switch-list').replaceChildren(...busy.map((chat) => {
     const item = node('button', 'switch__chat');
     item.type = 'button';
@@ -632,10 +644,11 @@ function askSwitch(account, busy, someIdle) {
   });
 }
 
-async function switchChat(chat, account) {
+// restart: the user chose to stop this chat's turn, or to restart it on its own account.
+async function switchChat(chat, account, restart = false) {
   const bypass = chatBypass(chat, null);
   const admin = await confirmAdmin(bypass, chatAdmin(chat, null));
-  const result = await deck.switchAccount({ id: chat.id, accountId: account.id, cols: chat.cols, rows: chat.rows, bypass, admin });
+  const result = await deck.switchAccount({ id: chat.id, accountId: account.id, cols: chat.cols, rows: chat.rows, bypass, admin, restart });
   if (!result.error) chat.adminOn = admin;
   chat.error = result.error ?? null;
   if (result.stopped) chat.state = 'error';

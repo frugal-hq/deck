@@ -117,6 +117,9 @@ pub struct ContinueOptions {
 pub struct SwitchOptions {
     id: String,
     account_id: String,
+    // The user asked for it: restart even with nothing changed, and stop a turn in progress.
+    #[serde(default)]
+    restart: bool,
     cols: u16,
     rows: u16,
     #[serde(default)]
@@ -510,7 +513,7 @@ fn switch_account(app: &AppHandle, o: SwitchOptions, output: Channel<Value>) -> 
     let moving = info.account != account_id;
     // Anthropic voice turns on at launch (Claude Code reads the voice setting only then), so a chat started without it restarts once.
     let flags_changed = bypass != info.bypass || admin != info.admin || (crate::voice::anthropic_voice() && !info.voice);
-    if must_wait(session.is_some(), moving || flags_changed, chat.activity.last_output.lock().unwrap().elapsed()) {
+    if !o.restart && must_wait(session.is_some(), moving || flags_changed, chat.activity.last_output.lock().unwrap().elapsed()) {
         return json!({ "error": "Claude is working. Switch accounts when it is idle." });
     }
     // A bypass or administrator toggle restarts on the chat's own account, which is no reason to make it the primary.
