@@ -3864,7 +3864,7 @@ async function openUpdates() {
     const fromFolder = frugalSource?.source === 'directory';
     const [kind, from] = fromFolder ? ['folder', frugalSource.path] : frugalSource?.repo ? ['GitHub', frugalSource.repo] : ['other', frugalSource?.url ?? 'unknown'];
     const tip = fromFolder ? 'Install frugal from GitHub frugal-hq/frugal' : 'Install frugal from a folder that holds its marketplace, such as a clone of the repo';
-    rows.push(updateRow(`frugal source: ${kind}`, fromFolder ? 'Use GitHub' : 'Use a folder', tip, (button) => setFrugalSource(!fromFolder, button), from));
+    rows.push(updateRow(`frugal source: ${kind}`, fromFolder ? 'Use GitHub' : 'Use a folder', tip, (button) => setFrugalSource(fromFolder, button), from));
   }
   $('update-list').replaceChildren(...rows);
   const github = error ? `GitHub could not be checked: ${error}` : releases ? '' : 'This is the latest version.';
