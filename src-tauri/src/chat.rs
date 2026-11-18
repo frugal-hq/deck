@@ -517,7 +517,7 @@ fn switch_account(app: &AppHandle, o: SwitchOptions, output: Channel<Value>) -> 
         return json!({ "error": "Claude is working. Switch accounts when it is idle." });
     }
     // A bypass or administrator toggle restarts on the chat's own account, which is no reason to make it the primary.
-    if moving || !flags_changed {
+    if moving || (!flags_changed && !o.restart) {
         let accounts = app.state::<Mutex<Accounts>>();
         let mut a = accounts.lock().unwrap();
         if let Err(error) = a.set_primary(&account_id).and_then(|()| accounts::publish(app, &mut a)) {
@@ -526,10 +526,14 @@ fn switch_account(app: &AppHandle, o: SwitchOptions, output: Channel<Value>) -> 
         drop(a);
         accounts::read_now(app, &account_id);
     }
-    if !moving && !flags_changed {
+    if !moving && !flags_changed && !o.restart {
         return json!({ "ok": true, "account": account_id });
     }
     let Some(session) = session else {
+        // A chat with no message yet has nothing to resume; it keeps running as it started.
+        if o.restart && !moving && !flags_changed {
+            return json!({ "ok": true, "account": account_id });
+        }
         return json!({ "error": "Send a first message before switching this chat. New chats will use this account." });
     };
     let mut chat = live.remove(&o.id).unwrap();

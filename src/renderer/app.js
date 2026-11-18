@@ -3888,23 +3888,47 @@ async function setFrugalSource(github, button) {
   $('update-status').textContent = 'Changing where frugal installs from…';
   try {
     const source = await deck.setFrugalSource(github);
-    if (source) {
-      await openUpdates();
-      $('update-status').textContent = `frugal now installs from ${source}. New chats load it; open chats load it when they restart.`;
-      return;
-    }
+    if (source) return frugalChanged(`frugal now installs from ${source}.`);
     $('update-status').textContent = '';
   } catch (error) {
     $('update-status').textContent = `frugal's source did not change: ${error}`;
   }
   button.disabled = false;
 }
+// New chats load the new frugal; open ones keep the copy they started with until they restart.
+async function frugalChanged(text) {
+  await openUpdates();
+  const open = restartable();
+  $('update-status').textContent = `${text} New chats load it${open.length ? '; open chats load it when they restart' : ''}.`;
+  if (open.length) $('update-list').append(updateRow(`${open.length} open ${open.length === 1 ? 'chat runs' : 'chats run'} the previous frugal`, 'Restart chats', 'Reopen every chat with its history so it loads the new frugal', restartChats));
+}
+async function restartChats(button) {
+  const open = restartable();
+  const busy = open.filter(isWorking);
+  let restarting = open;
+  if (busy.length) {
+    const choice = await askBusy(busy, busy.length < open.length, {
+      title: 'Restart every chat?',
+      message: 'Restarting stops the turn in progress and reopens the chat with its history.',
+      cancel: 'Every chat keeps running',
+      idle: ['Restart idle chats only', 'Busy chats keep working with the frugal they started with'],
+      all: ['Restart all', 'Stops the busy chats and reopens every chat'],
+    });
+    if (choice !== 'all' && choice !== 'idle') return;
+    if (choice === 'idle') restarting = open.filter((chat) => !busy.includes(chat));
+  }
+  button.disabled = true;
+  for (const chat of restarting) await switchChat(chat, { id: chat.account }, true);
+  $('update-status').textContent = `Restarted ${restarting.length} ${restarting.length === 1 ? 'chat' : 'chats'}${restarting.length < open.length ? '; busy chats keep the previous frugal until they restart' : ''}.`;
+  button.closest('.update__row')?.remove();
+}
 async function updateFrugal(button) {
   button.disabled = true;
   $('update-status').textContent = 'Updating frugal…';
   try {
     const result = await deck.updateFrugal();
-    $('update-status').textContent = `${result}. New chats load it; open chats load it when they restart.`;
+    if (/ updated from /.test(result)) return frugalChanged(`${result}.`);
+    $('update-status').textContent = `${result}.`;
   } catch (error) {
     $('update-status').textContent = `frugal did not update: ${error}`;
   }

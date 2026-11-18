@@ -68,6 +68,12 @@ fn main_account(app: &AppHandle) -> Option<(Value, std::collections::HashMap<Str
     Some((main, env, accounts.home.clone()))
 }
 
+// Chats allow frugal's server by the command of the copy they load, which moves with each install; listed before returning,
+// so a chat restarted right after an update gets the new command.
+fn relearn(app: &AppHandle) {
+    crate::mcp::list(&app.state::<Mutex<Accounts>>(), &json!({ "global": true }));
+}
+
 fn config_dir(main: &Value) -> &Path {
     Path::new(main["configDir"].as_str().unwrap_or_default())
 }
@@ -120,7 +126,7 @@ pub async fn update_frugal(app: AppHandle) -> Result<String, String> {
         crate::mcp::learn_frugal(app.clone());
         let output = String::from_utf8_lossy(&output);
         let last = output.lines().map(|line| line.trim_start_matches(|c: char| !c.is_alphanumeric())).filter(|line| !line.is_empty()).last().unwrap_or_default();
-        Ok(last.split(" Restart").next().unwrap_or_default().to_owned())
+        Ok(last.split(" Restart").next().unwrap_or_default().trim_end_matches('.').to_owned())
     })
     .await
     .map_err(|error| error.to_string())?
@@ -167,7 +173,7 @@ pub async fn update_frugal_source(app: AppHandle, window: WebviewWindow, github:
             return Err(error);
         }
         step(&["plugin", "install", "frugal@frugal"])?;
-        crate::mcp::learn_frugal(app.clone());
+        relearn(&app);
         Ok(target)
     })
     .await
