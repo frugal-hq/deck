@@ -427,10 +427,9 @@ pub fn remove_session(db: &Connection, file: &str) -> Result<()> {
     Ok(())
 }
 
-pub fn scan(db: &Connection, roots: &[String], mut on_batch: impl FnMut()) -> Result<()> {
+pub fn scan(db: &Connection, roots: &[String], mut on_batch: impl FnMut(usize, usize)) -> Result<()> {
     let mut seen = HashSet::new();
-    let mut changed: usize = 0;
-    let mut tx = db.unchecked_transaction()?;
+    let mut files = Vec::new();
     for root in roots.iter().filter(|r| Path::new(r).exists()) {
         for project in fs::read_dir(root)? {
             let project = project?;
@@ -439,20 +438,27 @@ pub fn scan(db: &Connection, roots: &[String], mut on_batch: impl FnMut()) -> Re
                 let entry = entry?;
                 let file = entry.path().to_string_lossy().into_owned();
                 if !entry.file_type()?.is_file() || !(file.ends_with(".jsonl") || archive::is_copy(&file)) || !seen.insert(session_id(&file)) { continue; }
-                if !matches!(sync_file(&tx, &file, None), Ok(true)) { continue; }
-                changed += 1;
-                if changed.is_multiple_of(BATCH) {
-                    tx.commit()?;
-                    on_batch();
-                    tx = db.unchecked_transaction()?;
-                }
+                files.push(file);
             }
+        }
+    }
+    let total = files.len();
+    on_batch(0, total);
+    let mut tx = db.unchecked_transaction()?;
+    for (i, file) in files.iter().enumerate() {
+        let _ = sync_file(&tx, file, None);
+        let done = i + 1;
+        if done.is_multiple_of(BATCH) {
+            tx.commit()?;
+            on_batch(done, total);
+            tx = db.unchecked_transaction()?;
         }
     }
     for row in all(&tx, "SELECT id, file FROM sessions", [])? {
         if !seen.contains(row["id"].as_str().unwrap()) { remove_session(&tx, row["file"].as_str().unwrap())?; }
     }
     tx.commit()?;
+    on_batch(total, total);
     Ok(())
 }
 
@@ -955,6 +961,7 @@ pub(crate) fn publish(app: &AppHandle, next: Value) {
 fn listed(db: &Connection, indexing: bool) -> Result<Value> {
     let mut index = list_index(db)?;
     index["indexing"] = json!(indexing);
+    index["progress"] = Value::Null;
     Ok(index)
 }
 
@@ -966,7 +973,7 @@ pub fn start(app: AppHandle) {
     }
     thread::spawn(move || {
         if let Err(error) = index_loop(&app, jobs, inbox) {
-            publish(&app, json!({ "indexing": false, "error": error.to_string() }));
+            publish(&app, json!({ "indexing": false, "progress": null, "error": error.to_string() }));
         }
     });
 }
@@ -982,8 +989,9 @@ fn index_loop(app: &AppHandle, jobs: mpsc::Sender<Msg>, inbox: mpsc::Receiver<Ms
     let db = until_free(|| {
         let db = open_index(&file)?;
         publish(app, listed(&db, true)?);
-        scan(&db, &names, || {
-            if let Ok(index) = listed(&db, true) {
+        scan(&db, &names, |done, total| {
+            if let Ok(mut index) = listed(&db, true) {
+                index["progress"] = json!({ "done": done, "total": total });
                 publish(app, index);
             }
         })?;
@@ -1246,7 +1254,7 @@ mod tests {
         }
         fn listed(&self) -> Vec<Value> { list_sessions(&self.db).unwrap().iter().map(|s| s["id"].clone()).collect() }
         fn scan(&self) {
-            scan(&self.db, &[self.dir.0.join("projects").to_string_lossy().into_owned()], || {}).unwrap();
+            scan(&self.db, &[self.dir.0.join("projects").to_string_lossy().into_owned()], |_, _| {}).unwrap();
         }
         fn partial(&self) {
             save_group(&self.db, &id(1), Some(" Manual ")).unwrap();
@@ -2013,14 +2021,14 @@ mod tests {
         fs::create_dir(&nested).unwrap();
         fs::write(nested.join("ignored.jsonl"), f.user("ignored", "2026-01-01T00:00:00Z")).unwrap();
         fs::write(f.dir.0.join("projects/ignored.jsonl"), f.user("ignored", "2026-01-01T00:00:00Z")).unwrap();
-        let mut batches = 0;
-        scan(&f.db, &[root.clone(), root.clone()], || batches += 1).unwrap();
-        assert_eq!(batches, 1);
+        let mut batches = Vec::new();
+        scan(&f.db, &[root.clone(), root.clone()], |done, total| batches.push((done, total))).unwrap();
+        assert_eq!(batches, vec![(0, BATCH + 1), (BATCH, BATCH + 1), (BATCH + 1, BATCH + 1)]);
         assert_eq!(all(&f.db, "SELECT id, file FROM sessions", []).unwrap().len(), BATCH + 1);
         assert_eq!(f.row(0)["turns"], 1);
-        batches = 0;
-        scan(&f.db, &[root], || batches += 1).unwrap();
-        assert_eq!(batches, 0);
+        batches.clear();
+        scan(&f.db, &[root], |done, total| batches.push((done, total))).unwrap();
+        assert_eq!(batches, vec![(0, BATCH + 1), (BATCH, BATCH + 1), (BATCH + 1, BATCH + 1)]);
     }
 
     #[test]
@@ -2093,17 +2101,17 @@ mod tests {
         let home = &f.dir.0;
         let roots = [home.join("projects"), archive::mirror(home, &home.join("projects")).unwrap()].map(|r| r.to_string_lossy().into_owned());
         f.write(1, &f.user("hello", "2026-01-01T00:00:00Z"));
-        scan(&f.db, &roots, || {}).unwrap();
+        scan(&f.db, &roots, |_, _| {}).unwrap();
         let live = f.session(1);
         assert_eq!(live["stored"], false);
         assert!(archive::copy(home, Path::new(&f.file(1)), Duration::ZERO).unwrap());
         fs::remove_file(f.file(1)).unwrap();
-        scan(&f.db, &roots, || {}).unwrap();
+        scan(&f.db, &roots, |_, _| {}).unwrap();
         let stored = f.session(1);
         assert_eq!((&stored["stored"], &stored["title"], &stored["lastAt"]), (&json!(true), &live["title"], &live["lastAt"]));
         archive::restore(home, Path::new(stored["file"].as_str().unwrap())).unwrap();
         f.append(1, &f.user("again", "2026-01-02T00:00:00Z"));
-        scan(&f.db, &roots, || {}).unwrap();
+        scan(&f.db, &roots, |_, _| {}).unwrap();
         let back = f.session(1);
         assert_eq!((&back["stored"], &back["lastAt"]), (&json!(false), &json!("2026-01-02T00:00:00Z")));
         assert_eq!(Path::new(back["file"].as_str().unwrap()), Path::new(&f.file(1)));
@@ -2153,7 +2161,7 @@ mod tests {
         let reply = line(json!({"type": "assistant", "timestamp": "2026-01-01T00:00:01Z", "message": {"content": [{"type": "text", "text": "Refreshed the Windows icon cache"}, {"type": "tool_use", "name": "secretword"}]}}));
         f.write(1, &format!("{}{reply}", f.user("El ícono de la barra está mal", "2026-01-01T00:00:00Z")));
         f.write(2, &f.user_extra("icono secretword", "2026-01-01T00:00:00Z", json!({"isMeta": true})));
-        scan(&f.db, &[root.clone()], || {}).unwrap();
+        scan(&f.db, &[root.clone()], |_, _| {}).unwrap();
         let find = |query: &str| { let mut ids = search_text(&f.db, query).unwrap(); ids.sort(); ids };
         assert_eq!(find("ICONO barra"), [id(1)]);
         assert_eq!(find("icon cach"), [id(1)], "words from different messages, as prefixes");
@@ -2163,10 +2171,10 @@ mod tests {
         assert_eq!(excerpt(&f.db, &id(1), &["nada".into(), "cache".into()]).unwrap().as_deref(), Some("Refreshed the Windows icon cache"));
         assert_eq!(excerpt(&f.db, &id(2), &["cache".into()]).unwrap(), None);
         f.append(1, &f.user("windows otra vez", "2026-01-02T00:00:00Z"));
-        scan(&f.db, &[root.clone()], || {}).unwrap();
+        scan(&f.db, &[root.clone()], |_, _| {}).unwrap();
         assert_eq!(find("otra icono"), [id(1)], "appended lines join the session's text");
         fs::remove_file(f.file(1)).unwrap();
-        scan(&f.db, &[root], || {}).unwrap();
+        scan(&f.db, &[root], |_, _| {}).unwrap();
         assert!(find("icono").is_empty());
     }
 }

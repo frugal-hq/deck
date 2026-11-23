@@ -2326,8 +2326,9 @@ function workspaceElement(workspace, byTopic) {
   return group;
 }
 
-function indexStatus({ indexing, sessions, error }) {
+function indexStatus({ indexing, sessions, error, progress }) {
   if (error) return `Could not read the index: ${error}`;
+  if (indexing && progress?.total) return `Indexing sessions ${progress.done} of ${progress.total}`;
   if (sessions.length) return '';
   return indexing ? 'Indexing sessions' : 'No sessions yet.';
 }
@@ -2382,6 +2383,12 @@ function renderSessions(index) {
   const status = indexStatus(index);
   $('index-status').hidden = !status;
   $('index-status').textContent = status;
+  const progress = $('index-progress');
+  progress.hidden = !(index.indexing && index.progress?.total);
+  if (!progress.hidden) {
+    progress.max = index.progress.total;
+    progress.value = index.progress.done;
+  }
 
   // Transcripts change every second during a turn; rebuilding only when the list changes keeps focus and scroll.
   const signature = `${sessionView}\n${index.indexing}\n${$('space-filter').value}\n${index.modelJoins}\n${index.modelWorkspaces}\n${JSON.stringify(index.workspaces ?? {})}\n${JSON.stringify(index.workspaceParents ?? {})}\n${index.ambiguous.length}\n${index.sessions.map((s) => `${s.id}\n${s.chatId}\n${s.title}\n${s.cwd}\n${shortDate.format(new Date(s.lastAt))}\n${s.pinned}\n${s.deck}\n${s.space}\n${s.tags}\n${s.topic}\n${s.userGroup ?? ''}`).join('\n')}`;

@@ -210,6 +210,9 @@ body:has(.info-panel:not([hidden])) { grid-template-columns: var(--sidebar-width
   font-size: var(--text-sm);
 }
 
+.index__progress { width: 100%; height: 4px; margin: var(--space-xs) 0; accent-color: var(--color-accent); }
+.index__progress[hidden] { display: none; }
+
 .group__name {
   display: flex;
   align-items: baseline;
