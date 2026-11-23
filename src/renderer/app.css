@@ -787,8 +787,8 @@ body { transition: opacity var(--dur-short) var(--ease-out); }
 /* The editor and send buttons sit left of the mic pill, all floating together in the pane's bottom corner. */
 .term-dock {
   position: absolute;
-  right: var(--space-md);
-  bottom: var(--space-2xs);
+  right: var(--space-sm);
+  bottom: var(--space-sm);
   z-index: calc(var(--z-raised) + 1);
   display: flex;
   align-items: center;
@@ -798,8 +798,8 @@ body { transition: opacity var(--dur-short) var(--ease-out); }
 .term-dock__btn {
   display: grid;
   place-items: center;
-  width: 40px;
-  height: 40px;
+  width: 46px;
+  height: 46px;
   border: 0;
   border-radius: var(--radius-pill);
   background: var(--color-control-2);
@@ -808,7 +808,7 @@ body { transition: opacity var(--dur-short) var(--ease-out); }
   cursor: pointer;
   transition: color var(--dur-micro) var(--ease-out), background-color var(--dur-micro) var(--ease-out);
 }
-.term-dock__btn .icon { width: 20px; height: 20px; }
+.term-dock__btn .icon { width: 23px; height: 23px; }
 .term-dock__btn:hover:not(:disabled) { color: var(--color-accent); }
 .term-dock__btn:disabled { color: var(--color-muted); cursor: default; }
 .term-dock__send { background: var(--color-accent); color: var(--color-accent-ink); }
@@ -823,7 +823,7 @@ body { transition: opacity var(--dur-short) var(--ease-out); }
   align-items: center;
   justify-content: center;
   gap: var(--space-xs);
-  min-height: 40px;
+  min-height: 46px;
   border: 0;
   border-radius: var(--radius-pill);
   background: none;
@@ -833,10 +833,10 @@ body { transition: opacity var(--dur-short) var(--ease-out); }
   cursor: pointer;
   transition: color var(--dur-micro) var(--ease-out);
 }
-.term-mic__record { min-width: 40px; padding: 0 var(--space-2xs) 0 var(--space-sm); }
-.term-mic__more { width: 26px; padding: 0 var(--space-2xs) 0 0; }
-.term-mic__record .icon { width: 20px; height: 20px; }
-.term-mic__more .icon { width: 14px; height: 14px; rotate: -90deg; }
+.term-mic__record { min-width: 46px; padding: 0 var(--space-2xs) 0 var(--space-sm); }
+.term-mic__more { width: 30px; padding: 0 var(--space-2xs) 0 0; }
+.term-mic__record .icon { width: 23px; height: 23px; }
+.term-mic__more .icon { width: 16px; height: 16px; rotate: -90deg; }
 .term-mic__record:hover:not(:disabled), .term-mic__more:hover { color: var(--color-accent); }
 .term-mic__record:disabled { cursor: default; }
 .term-mic[data-state="busy"] .term-mic__record { cursor: progress; }
