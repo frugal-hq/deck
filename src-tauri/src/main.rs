@@ -135,16 +135,31 @@ fn main() {
             let maximized = AtomicBool::new(false);
             window.on_window_event(move |event| {
                 if let WindowEvent::Moved(_) | WindowEvent::Resized(_) = event {
-                    if !events.is_maximized().unwrap_or(false) && !events.is_minimized().unwrap_or(false) {
+                    if events.is_minimized().unwrap_or(false) {
+                    } else if !events.is_maximized().unwrap_or(false) {
                         if let Some(bounds) = normal_bounds(&events) {
                             *normal.lock().unwrap() = Some(bounds);
                         }
+                    } else if let Ok(Some(monitor)) = events.current_monitor() {
+                        // A maximized window moved to another display (Win+Shift+arrow, a snap drag) must reopen there:
+                        // its normal rect, still on the old display, is centered on the new one's work area.
+                        let (scale, area) = (monitor.scale_factor(), monitor.work_area());
+                        let (x, y) = (f64::from(area.position.x) / scale, f64::from(area.position.y) / scale);
+                        let (w, h) = (f64::from(area.size.width) / scale, f64::from(area.size.height) / scale);
+                        if let Some(b) = normal.lock().unwrap().as_mut() {
+                            let (cx, cy) = ((b.x + b.width / 2) as f64, (b.y + b.height / 2) as f64);
+                            if cx < x || cx >= x + w || cy < y || cy >= y + h {
+                                b.x = (x + (w - b.width as f64).max(0.0) / 2.0).round() as i64;
+                                b.y = (y + (h - b.height as f64).max(0.0) / 2.0).round() as i64;
+                            }
+                        }
                     }
                 }
-                if let WindowEvent::CloseRequested { .. } = event {
+                // Also on losing focus and on destroy: an installer ends the Deck with no close request, and it was saved only then.
+                if let WindowEvent::CloseRequested { .. } | WindowEvent::Focused(false) | WindowEvent::Destroyed = event {
                     // A failed save must never block closing.
                     if let Some(bounds) = *normal.lock().unwrap() {
-                        let _ = std::fs::write(&bounds_file, json!(Bounds { maximized: events.is_maximized().unwrap_or(false), ..bounds }).to_string());
+                        let _ = std::fs::write(&bounds_file, json!(Bounds { maximized: events.is_maximized().unwrap_or_else(|_| maximized.load(Ordering::Relaxed)), ..bounds }).to_string());
                     }
                 }
                 if let WindowEvent::Resized(_) = event {
