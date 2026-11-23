@@ -4091,6 +4091,7 @@ function updateRow(text, action, tip, run, detail) {
   Object.assign(button, { type: 'button', className: 'btn btn--primary', textContent: action });
   button.dataset.tip = tip;
   button.onclick = () => run(button);
+  button.disabled = !run;
   row.append(label, button);
   return row;
 }
@@ -4124,27 +4125,43 @@ async function openTasks() {
   }
   $('tasks-list').replaceChildren(...rows);
 }
+// Each one updates from its own source. The Deck: GitHub releases, or the installers built in this exe's build folder
+// (only on the computer that built it). frugal: GitHub or a folder, as Claude Code records it. With nothing newer, the button is off.
 async function openUpdates() {
   $('update-list').replaceChildren();
   $('update-status').textContent = 'Checking for updates…';
   if (!$('update-dialog').open) $('update-dialog').showModal();
-  const { version, local, remote, error, frugal, frugalSource } = await deck.checkUpdates();
+  const { version, local, remote, error, buildFolder, frugal, frugalSource, frugalLatest } = await deck.checkUpdates();
   const install = 'Close Frugal Deck and its chats, install this version and open it again';
-  const rows = [];
-  if (local) rows.push(updateRow(`Local build from ${new Date(local.built).toLocaleString()}`, 'Install', install, (button) => installUpdate(local.path, button)));
-  if (remote?.url) rows.push(updateRow(`Version ${remote.version} on GitHub`, 'Install', install, (button) => installUpdate(remote.url, button)));
+  const rows = [node('h3', 'update__heading', `Frugal Deck ${version}`)];
+  const fromBuilds = Boolean(buildFolder) && localStorage.getItem('deckUpdateSource') !== 'github';
+  if (fromBuilds) rows.push(local ? updateRow(`Local build from ${new Date(local.built).toLocaleString()}`, 'Install', install, (button) => installUpdate(local.path, button)) : updateRow('No newer local build', 'Install', 'Nothing newer to install'));
+  else if (remote?.url) rows.push(updateRow(`Version ${remote.version} on GitHub`, 'Install', install, (button) => installUpdate(remote.url, button)));
   else if (remote) rows.push(updateRow(`Version ${remote.version} on GitHub has no installer`, 'Open', 'Open the release page', () => deck.openLink(remote.page)));
-  const releases = rows.length;
+  else rows.push(updateRow(error ? 'GitHub could not be checked' : 'Up to date', 'Install', error ? '' : 'Nothing newer to install', null, error));
+  if (buildFolder) {
+    const use = (source) => () => {
+      localStorage.setItem('deckUpdateSource', source);
+      openUpdates();
+    };
+    rows.push(fromBuilds
+      ? updateRow('Source: local builds', 'Use GitHub', 'Install Frugal Deck from the releases of frugal-hq/deck', use('github'), buildFolder)
+      : updateRow('Source: GitHub releases', 'Use local builds', 'Install Frugal Deck from the installers built in this folder', use('local'), 'frugal-hq/deck'));
+  }
+  rows.push(updateRow('Install from a file', 'Choose installer…', 'Install Frugal Deck from an installer file', pickInstaller));
   if (frugal) {
-    rows.push(updateRow(`frugal plugin ${frugal}`, 'Update', 'Update frugal on the main account; chats on every account load that copy', updateFrugal));
+    rows.push(node('h3', 'update__heading', `frugal plugin ${frugal}`));
+    const { version: latest, newer, dirty } = frugalLatest ?? {};
+    const state = dirty ? 'The folder has uncommitted changes' : newer ? `Version ${latest} available` : latest ? 'Up to date' : 'The latest version could not be read';
+    const tip = dirty ? 'Commit or discard them, then update' : newer || !latest ? 'Update frugal on the main account; chats on every account load that copy' : 'Nothing newer to install';
+    rows.push(updateRow(state, 'Update', tip, !dirty && (newer || !latest) ? updateFrugal : null));
     const fromFolder = frugalSource?.source === 'directory';
     const [kind, from] = fromFolder ? ['folder', frugalSource.path] : frugalSource?.repo ? ['GitHub', frugalSource.repo] : ['other', frugalSource?.url ?? 'unknown'];
-    const tip = fromFolder ? 'Install frugal from GitHub frugal-hq/frugal' : 'Install frugal from a folder that holds its marketplace, such as a clone of the repo';
-    rows.push(updateRow(`frugal source: ${kind}`, fromFolder ? 'Use GitHub' : 'Use a folder', tip, (button) => setFrugalSource(fromFolder, button), from));
+    const sourceTip = fromFolder ? 'Install frugal from GitHub frugal-hq/frugal' : 'Install frugal from a folder that holds its marketplace, such as a clone of the repo';
+    rows.push(updateRow(`Source: ${kind}`, fromFolder ? 'Use GitHub' : 'Use a folder', sourceTip, (button) => setFrugalSource(fromFolder, button), from));
   }
   $('update-list').replaceChildren(...rows);
-  const github = error ? `GitHub could not be checked: ${error}` : releases ? '' : 'This is the latest version.';
-  $('update-status').textContent = `Frugal Deck ${version}. ${github}`.trim();
+  $('update-status').textContent = '';
 }
 async function setFrugalSource(github, button) {
   button.disabled = true;
@@ -4197,10 +4214,10 @@ async function updateFrugal(button) {
   }
   button.disabled = false;
 }
-$('update-pick').onclick = async () => {
+async function pickInstaller(button) {
   const file = await deck.pickInstaller();
-  if (file) installUpdate(file, $('update-pick'));
-};
+  if (file) installUpdate(file, button);
+}
 render();
 for (const button of document.querySelectorAll('[data-window-action]')) {
   button.onclick = () => deck.windowAction(button.dataset.windowAction);

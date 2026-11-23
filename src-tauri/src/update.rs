@@ -31,9 +31,14 @@ fn newer(tag: &str, current: &str) -> bool {
     parts(tag) > parts(current)
 }
 
+// Where cargo tauri build puts the installer, on the computer this exe was built on.
+fn build_folder() -> PathBuf {
+    Path::new(env!("CARGO_MANIFEST_DIR")).join("target/release/bundle/nsis")
+}
+
 // The installer copies the exe with its build time, and the bundle step follows it by seconds, so a later build is newer.
 fn local_build() -> Option<Value> {
-    let folder = Path::new(env!("CARGO_MANIFEST_DIR")).join("target/release/bundle/nsis");
+    let folder = build_folder();
     let exe = std::env::current_exe().ok()?.metadata().ok()?.modified().ok()?;
     let (path, built) = std::fs::read_dir(folder)
         .ok()?
@@ -89,6 +94,25 @@ fn dirty(path: &str) -> Option<String> {
     (output.status.success() && !output.stdout.is_empty()).then(|| format!("The folder {path} has uncommitted changes. Commit or discard them, then try again."))
 }
 
+// The newest frugal its source offers (the folder's plugin.json, or the repository's on GitHub), whether it is newer than the
+// installed one, and whether the folder has uncommitted changes, which an update would refuse.
+fn frugal_latest(source: &Value, installed: &str) -> Value {
+    let manifest = match source["source"].as_str() {
+        Some("directory") => source["path"].as_str().and_then(|path| std::fs::read(Path::new(path).join(".claude-plugin/plugin.json")).ok()),
+        Some("github") => source["repo"].as_str().filter(|repo| repo.split('/').count() == 2 && repo.chars().all(|c| c.is_ascii_alphanumeric() || "/._-".contains(c))).and_then(|repo| {
+            // The API, not raw.githubusercontent.com: raw files stay cached for 5 minutes after a push.
+            let url = format!("https://api.github.com/repos/{repo}/contents/.claude-plugin/plugin.json");
+            let output = curl().args(["-fsSL", "--max-time", "15", "-A", "frugal-deck", "-H", "Accept: application/vnd.github.raw", &url]).output().ok()?;
+            output.status.success().then_some(output.stdout)
+        }),
+        _ => None,
+    };
+    // plugin.json may start with a byte order mark, which serde_json rejects.
+    let version = manifest.and_then(|bytes| serde_json::from_str::<Value>(String::from_utf8_lossy(&bytes).trim_start_matches('\u{feff}')).ok()).map_or(Value::Null, |manifest| manifest["version"].clone());
+    let changed = source["source"] == "directory" && source["path"].as_str().and_then(dirty).is_some();
+    json!({ "version": version, "newer": version.as_str().is_some_and(|version| newer(version, installed)), "dirty": changed })
+}
+
 // `claude plugin` commands on the main account.
 fn claude_plugin(app: &AppHandle) -> Result<(Value, impl Fn(&[&str]) -> Result<Vec<u8>, String>), String> {
     let (main, env, home) = main_account(app).ok_or("The main account is not set up.")?;
@@ -105,7 +129,10 @@ pub async fn update_check(app: AppHandle) -> Value {
     tauri::async_runtime::spawn_blocking(move || {
         let remote = latest_release();
         let (frugal, source) = main_account(&app).map_or((Value::Null, Value::Null), |(main, _, _)| (accounts::frugal_install(&main)["version"].clone(), frugal_source(config_dir(&main))));
-        json!({ "version": env!("CARGO_PKG_VERSION"), "local": local_build(), "remote": remote.as_ref().ok().cloned().flatten(), "error": remote.err(), "frugal": frugal, "frugalSource": source })
+        let latest = frugal.as_str().map_or(Value::Null, |installed| frugal_latest(&source, installed));
+        let folder = Some(build_folder()).filter(|folder| folder.is_dir());
+        json!({ "version": env!("CARGO_PKG_VERSION"), "local": local_build(), "remote": remote.as_ref().ok().cloned().flatten(), "error": remote.err(), "buildFolder": folder,
+                "frugal": frugal, "frugalSource": source, "frugalLatest": latest })
     })
     .await
     .unwrap_or_default()
