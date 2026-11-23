@@ -11,8 +11,10 @@ use tauri::{AppHandle, Manager};
 
 // A transcript written to within this window still reads as running.
 const RUNNING_MS: f64 = 30_000.0;
-// A job whose server was killed never logs its end; past delegate's longest timeout it is no longer running.
-const STALE_S: f64 = 2100.0;
+// A job whose server was killed never logs its end; past delegate's longest job it is no longer running.
+// "start" is the job's, not the try's: up to 3 tries, and a timeout moves the next to max (heavy 1200 s, then 1800 s twice).
+// At 2100 s, Grok retries of heavy jobs still running read as failed (2026-11-23).
+const STALE_S: f64 = 5400.0;
 
 #[derive(Default)]
 struct Cache {
