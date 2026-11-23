@@ -794,7 +794,7 @@ function drawInfo(chat) {
     ['Elapsed', elapsed(chat)],
     ['Context', context],
     ['Tokens', tokens],
-    ['Cost', chat.cost != null ? '$' + chat.cost.toFixed(2) : ''],
+    ['Cost', chat.cost > 0 ? '$' + chat.cost.toFixed(2) : ''],  // Claude Code may report 0 for a chat it did not price
   ];
   $('info-details').replaceChildren(...rows.filter(([, value]) => value != null && value !== '').map(([label, value]) => {
     const row = node('div', 'info-panel__row');
@@ -1023,7 +1023,7 @@ function drawBadge(chat) {
   drawInfo(chat);
   if (!chat.badge) return;
   const running = chat.state === 'running' || chat.state === 'starting';
-  const parts = [chat.model, chat.effort && `${chat.effort} effort`, chat.context != null && `${Math.round(chat.context)}% ctx`, chat.cost != null && `$${chat.cost.toFixed(2)}`].filter(Boolean);
+  const parts = [chat.model, chat.effort && `${chat.effort} effort`, chat.context != null && `${Math.round(chat.context)}% ctx`, chat.cost > 0 && `$${chat.cost.toFixed(2)}`].filter(Boolean);
   const text = parts.join(' · ');
   const info = chat.badge.querySelector('.term-badge__info');
   info.textContent = text;
