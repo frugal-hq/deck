@@ -3415,7 +3415,7 @@ function mcpSection(title, rows, empty, collapsed) {
 function deckRow(name, config, checked, signedIn) {
   const remote = config.type !== 'stdio';
   return { name, deck: true, checked, status: remote ? (signedIn ? 'Signed in' : 'Checked in chats') : 'Local command', title: remote ? config.url : undefined,
-    signIn: remote && !signedIn ? 'Sign in' : null, signInOn: [], removable: true, access: true };
+    signIn: remote && !signedIn ? 'Sign in' : null, signInOn: [], removable: true, access: !name.startsWith('plugin:frugal:'), delegable: true };
 }
 
 function drawMcp(result) {

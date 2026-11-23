@@ -380,9 +380,12 @@ fn launch(app: &AppHandle, id: &str, place: &str, folder: PathBuf, size: (u16, u
     env.insert("DECK_EDIT_URL".into(), status["editUrl"].as_str().unwrap_or_default().into());
     // Read by frugal's commits skill to offer a per-group or per-workspace choice.
     env.insert("FRUGAL_DECK".into(), "1".into());
-    // frugal's delegate hands a task only this chat's servers: the account's own that these lists pass, plus the Deck's.
-    let deck_servers = deck_mcp.as_ref().map_or(json!({}), |config| config["mcpServers"].clone());
-    env.insert("FRUGAL_DECK_MCP".into(), json!({ "mcpServers": deck_servers, "allowed": allowed, "denied": denied }).to_string());
+    // Delegates also get delegate-only Deck configs, while the chat's --mcp-config stays limited to its own servers.
+    let mut deck_servers = deck_mcp.as_ref().map_or(json!({}), |config| config["mcpServers"].clone());
+    for (name, config) in accounts.lock().unwrap().deck_servers().as_object().into_iter().flatten() {
+        if delegate_only.contains(&json!(name)) { deck_servers[name] = config.clone(); }
+    }
+    env.insert("FRUGAL_DECK_MCP".into(), json!({ "mcpServers": deck_servers, "allowed": allowed, "denied": denied, "delegateOnly": delegate_only }).to_string());
     if let Some(group) = deck_group {
         env.insert("DECK_GROUP".into(), group);
     }

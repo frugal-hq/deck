@@ -489,6 +489,27 @@
     <button id="mcp-save" class="btn btn--primary" type="button">Save</button>
   </div>
 </dialog>
+<dialog id="mcp-access-dialog" class="organize access" closedby="any" aria-labelledby="mcp-access-title">
+  <form method="dialog">
+    <h2 id="mcp-access-title" class="organize__title"></h2>
+    <fieldset class="access__group">
+      <legend class="access__legend">In chats</legend>
+      <label class="access__choice"><input type="radio" name="mcp-access-mode" value="checked"><span>As checked<small>On where its box is checked.</small></span></label>
+      <label class="access__choice"><input type="radio" name="mcp-access-mode" value="auto"><span>Auto<small>Frugal picks it per folder when a new chat starts.</small></span></label>
+      <label class="access__choice"><input type="radio" name="mcp-access-mode" value="delegates"><span>Delegates only<small>Not loaded in chats. Delegated tasks still get it.</small></span></label>
+    </fieldset>
+    <fieldset id="mcp-access-kinds" class="access__group">
+      <legend class="access__legend">Account kinds</legend>
+      <p class="settings__hint">Delegates of the checked kinds may use it when frugal delegates a task.</p>
+      <div class="access__list"></div>
+    </fieldset>
+    <div id="mcp-access-move" class="access__group"></div>
+    <div class="organize__actions">
+      <button class="btn" type="submit" value="cancel">Cancel</button>
+      <button class="btn btn--primary" type="submit" value="ok">Done</button>
+    </div>
+  </form>
+</dialog>
 <dialog id="plugins-dialog" class="organize settings" closedby="any" aria-labelledby="plugins-title">
   <div class="settings__frame">
     <nav class="settings__nav" aria-label="Plugin sections">
