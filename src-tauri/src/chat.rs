@@ -338,7 +338,7 @@ fn launch(app: &AppHandle, id: &str, place: &str, folder: PathBuf, size: (u16, u
     let session = index.session(id).unwrap_or_default();
     let dir = Path::new(account["configDir"].as_str().unwrap_or_default());
     let group = group.as_str().filter(|group| !group.is_empty());
-    let prepared = (|| -> Result<(Vec<Value>, Vec<Value>, Option<Value>, Option<String>, Option<String>, Option<PathBuf>), Box<dyn std::error::Error>> {
+    let prepared = (|| -> Result<(Vec<Value>, Vec<Value>, Option<Value>, Vec<Value>, Option<String>, Option<String>, Option<PathBuf>, Value), Box<dyn std::error::Error>> {
         // A folder removed since its sessions ran comes back empty, so they resume and new chats start there.
         std::fs::create_dir_all(&folder)?;
         if account["id"] != MAIN {
@@ -355,13 +355,17 @@ fn launch(app: &AppHandle, id: &str, place: &str, folder: PathBuf, size: (u16, u
         let (chat_topic, space) = index.chat_place(place);
         let topic = group.or(chat_topic.as_deref());
         let workspaces = index.workspaces_of(&space, topic, &folder.to_string_lossy());
+        let picked = crate::plugins::auto_picks(app, &folder, topic, workspaces.first().map(String::as_str), prompt, resume);
         let accounts = accounts.lock().unwrap();
+        let settings = accounts.load();
+        let (auto_on, auto_delegates): (Vec<_>, Vec<_>) = accounts::array(&settings["mcpAuto"]).iter().filter_map(Value::as_str).filter(|name| !accounts::is_frugal(name)).map(str::to_owned)
+            .partition(|name| picked.as_ref().is_some_and(|picked| picked.contains(name)));
         crate::mcp::share_tokens(&accounts);
-        let (allowed, denied, mcp) = accounts.chat_mcp(account["id"].as_str().unwrap_or_default(), &folder, topic, &workspaces)?;
+        let (allowed, denied, mcp, delegate_only) = accounts.chat_mcp(account["id"].as_str().unwrap_or_default(), &folder, topic, &workspaces, (&auto_on, &auto_delegates))?;
         let plugin = accounts.claude_accounts().iter().find(|a| a["id"] == MAIN).and_then(accounts::frugal_dir);
-        Ok((allowed, denied, mcp, topic.map(str::to_owned), workspaces.first().map(|w| w.to_string()), plugin))
+        Ok((allowed, denied, mcp, delegate_only, topic.map(str::to_owned), workspaces.first().map(|w| w.to_string()), plugin, crate::plugins::enabled_plugins(&settings["pluginStates"], picked.as_deref())))
     })();
-    let (allowed, denied, deck_mcp, deck_group, deck_workspace, frugal_plugin) = match prepared {
+    let (allowed, denied, deck_mcp, delegate_only, deck_group, deck_workspace, frugal_plugin, enabled_plugins) = match prepared {
         Ok(prepared) => prepared,
         Err(error) => return json!({ "error": format!("Failed to start Claude: {error}") }),
     };
@@ -390,6 +394,7 @@ fn launch(app: &AppHandle, id: &str, place: &str, folder: PathBuf, size: (u16, u
     // Claude Code reads voice.enabled before voiceEnabled, and /voice off writes it to user settings. The mic button holds Space, so the mode is hold.
     // Always set: an empty allowlist turns every server off.
     let mut settings = json!({ "statusLine": status["statusLine"], "allowedMcpServers": allowed });
+    settings["enabledPlugins"] = enabled_plugins;
     if voice {
         settings["voice"] = json!({ "enabled": true, "mode": "hold" });
     }

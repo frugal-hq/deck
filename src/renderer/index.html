@@ -489,6 +489,57 @@
     <button id="mcp-save" class="btn btn--primary" type="button">Save</button>
   </div>
 </dialog>
+<dialog id="plugins-dialog" class="organize settings" closedby="any" aria-labelledby="plugins-title">
+  <div class="settings__frame">
+    <nav class="settings__nav" aria-label="Plugin sections">
+      <h2 id="plugins-title" class="settings__heading">Plugins</h2>
+      <button class="settings__tab" type="button" data-section="installed" aria-current="page"><svg class="icon" aria-hidden="true"><use href="#i-puzzle"/></svg>Installed</button>
+      <button class="settings__tab" type="button" data-section="recommend"><svg class="icon" aria-hidden="true"><use href="#i-tasks"/></svg>Recommend</button>
+      <button class="settings__tab" type="button" data-section="install"><svg class="icon" aria-hidden="true"><use href="#i-update"/></svg>Install</button>
+    </nav>
+    <div class="settings__pane">
+      <div class="settings__body">
+        <section class="settings__section" data-section="installed">
+          <h3 class="settings__title">Installed</h3>
+          <p class="settings__hint">On follows Claude Code's main account settings. Auto lets frugal pick per folder. Save applies to chats started or restarted afterward.</p>
+          <div id="plugins-list" class="mcp__list"></div>
+        </section>
+        <section class="settings__section" data-section="recommend" hidden>
+          <h3 class="settings__title">Recommend</h3>
+          <div class="settings__row">
+            <label class="organize__field">What will you work on? <textarea id="plugins-task" maxlength="2000" placeholder="Fix the login page, write the release notes..."></textarea></label>
+            <p class="settings__hint">Haiku sets each plugin to On, Auto or Off. Nothing is saved until Save.</p>
+            <div class="organize__actions"><button id="plugins-recommend" class="btn" type="button">Recommend</button></div>
+          </div>
+          <div class="settings__row">
+            <span class="organize__check">Auto picks</span>
+            <p class="settings__hint">Plugins set to Auto are picked per folder when its first new chat starts, and reused after that.</p>
+            <div class="organize__actions"><button id="plugins-forget-picks" class="btn" type="button" data-tip="The next new chat in each folder picks again">Forget picks</button></div>
+          </div>
+        </section>
+        <section class="settings__section" data-section="install" hidden>
+          <h3 class="settings__title">Install</h3>
+          <div class="settings__row">
+            <label class="organize__field">What should it do? <input id="plugins-request" type="text" maxlength="2000" autocomplete="off" placeholder="Review pull requests, work with Figma..."></label>
+            <div class="organize__actions"><button id="plugins-find" class="btn" type="button">Find</button></div>
+          </div>
+          <div id="plugins-confirm" class="settings__row mcp__form" hidden>
+            <p id="plugins-suggestion" class="organize__text"></p>
+            <div class="organize__actions">
+              <button id="plugins-install-cancel" class="btn" type="button">Cancel</button>
+              <button id="plugins-install" class="btn btn--primary" type="button">Install</button>
+            </div>
+          </div>
+        </section>
+      </div>
+      <div class="settings__footer">
+        <p id="plugins-error" class="settings__message" role="status"></p>
+        <button id="plugins-cancel" class="btn" type="button">Cancel</button>
+        <button id="plugins-save" class="btn btn--primary" type="button">Save</button>
+      </div>
+    </div>
+  </div>
+</dialog>
 <dialog id="mcp-login" class="organize mcp-login" closedby="none" aria-labelledby="mcp-login-title">
   <div class="mcp-login__head">
     <h2 id="mcp-login-title" class="organize__title"></h2>

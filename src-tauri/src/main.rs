@@ -9,6 +9,7 @@ mod handoff;
 mod index;
 mod mcp;
 mod organizer;
+mod plugins;
 mod os;
 mod statusline;
 mod tasks;
@@ -253,6 +254,12 @@ fn main() {
             mcp::mcp_restore,
             mcp::mcp_remove,
             mcp::mcp_access_set,
+            plugins::plugins_list,
+            plugins::plugins_set,
+            plugins::auto_picks_clear,
+            plugins::plugin_find,
+            plugins::plugin_install,
+            plugins::recommend,
             chat::mcp_login,
             organizer::topics_estimate,
             organizer::topics_run,

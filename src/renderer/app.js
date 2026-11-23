@@ -2991,20 +2991,30 @@ for (const radio of viewRadios) {
 }
 const debugConsole = $('debug-console');
 const DEBUG_KEEP = 2000;
-function showSettingsSection(name) {
-  if (!document.querySelector(`.settings__section[data-section="${name}"]`)) name = 'general';
-  for (const tab of document.querySelectorAll('.settings__tab')) {
+// Settings, MCP servers and Plugins share one layout: a nav of tabs and one section shown at a time.
+function showSection(dialog, name) {
+  const sections = [...dialog.querySelectorAll('.settings__section')];
+  if (!sections.some((section) => section.dataset.section === name)) name = sections[0].dataset.section;
+  for (const tab of dialog.querySelectorAll('.settings__tab')) {
     if (tab.dataset.section === name) tab.setAttribute('aria-current', 'page');
     else tab.removeAttribute('aria-current');
   }
-  for (const section of document.querySelectorAll('.settings__section')) section.hidden = section.dataset.section !== name;
+  for (const section of sections) section.hidden = section.dataset.section !== name;
+  return name;
+}
+for (const dialog of document.querySelectorAll('dialog.settings')) {
+  dialog.querySelector('.settings__nav').onclick = (event) => {
+    const tab = event.target.closest('.settings__tab');
+    if (!tab) return;
+    if (dialog.id === 'settings-dialog') showSettingsSection(tab.dataset.section);
+    else showSection(dialog, tab.dataset.section);
+  };
+}
+function showSettingsSection(name) {
+  name = showSection($('settings-dialog'), name);
   if (name === 'debug') debugConsole.scrollTop = debugConsole.scrollHeight;
   localStorage.setItem('settingsSection', name);
 }
-document.querySelector('.settings__nav').onclick = (event) => {
-  const tab = event.target.closest('.settings__tab');
-  if (tab) showSettingsSection(tab.dataset.section);
-};
 
 async function openSettings(section = localStorage.getItem('settingsSection')) {
   showSettingsSection(section);
@@ -3173,31 +3183,23 @@ function mcpRow(row) {
     };
     label.append(button);
   }
-  if (row.everywhere) {
-    const button = node('button', 'btn btn--bar', 'Use in every account');
-    button.type = 'button';
-    button.dataset.tip = `Moves it to the Deck as ${row.everywhere.target}, for every account and delegate; one sign-in serves all`;
-    button.onclick = (event) => {
-      event.preventDefault();
-      useEverywhere(row, button);
-    };
-    label.append(button);
-  }
   if (row.access) {
-    const button = node('button', 'btn btn--bar', 'Access');
+    const state = accessState(row);
+    mcpAccess.set(row.name, state);
+    const button = node('button', 'btn btn--bar');
     button.type = 'button';
-    button.setAttribute('aria-expanded', 'false');
-    button.dataset.tip = row.delegable ? 'Which accounts load it, and whether delegates get it' : 'Which accounts load it';
+    button.setAttribute('aria-haspopup', 'dialog');
+    button.dataset.tip = row.delegable ? 'How chats get it and which account kinds may use it' : 'How chats get it';
     button.onclick = (event) => {
       event.preventDefault();
-      const panel = label.nextElementSibling;
-      panel.hidden = !panel.hidden;
-      button.setAttribute('aria-expanded', String(!panel.hidden));
+      openAccess(state);
     };
+    state.button = button;
+    drawAccessButton(state);
     label.append(button);
   }
   if (row.removable) {
-    const button = node('button', 'btn btn--icon');
+    const button = node('button', 'btn btn--bar btn--icon');
     button.type = 'button';
     button.innerHTML = '<svg class="icon" aria-hidden="true"><use href="#i-trash"/></svg>';
     button.setAttribute('aria-label', `Remove ${row.name}`);
@@ -3208,31 +3210,67 @@ function mcpRow(row) {
     };
     label.append(button);
   }
-  if (!row.access) return label;
-  const fragment = document.createDocumentFragment();
-  fragment.append(label, accessPanel(row));
-  return fragment;
+  return label;
 }
 
-// Which accounts' chats load a server, and for an account's own server whether frugal may hand it to a delegate. Saved with Save.
-function accessPanel(row) {
-  const panel = node('div', 'mcp__access');
-  panel.hidden = true;
-  panel.dataset.server = row.name;
-  const off = new Set(mcpShown.accountsOff?.[row.name] ?? []);
-  const check = (text, checked, key, value) => {
+const MCP_KINDS = { claude: 'Claude', codex: 'Codex', grok: 'Grok', opencode: 'OpenCode' };
+const MCP_MODES = { checked: 'Access', auto: 'Auto', delegates: 'Delegates only' };
+// Per server: the accounts whose chats load it, its chat mode and the delegate kinds that may use it. The Access dialog edits it; Save writes it.
+const mcpAccess = new Map();
+
+function accessState(row) {
+  const ids = row.deck ? accountState.accounts.map((account) => account.id) : row.accountIds ?? [];
+  const mode = (mcpShown.delegateOnly ?? []).includes(row.name) ? 'delegates' : (mcpShown.auto ?? []).includes(row.name) ? 'auto' : 'checked';
+  const kinds = row.delegable ? ((mcpShown.noDelegate ?? []).includes(row.name) ? [] : mcpShown.kinds?.[row.name] ?? Object.keys(MCP_KINDS)) : null;
+  return { row, ids, off: new Set((mcpShown.accountsOff?.[row.name] ?? []).filter((id) => ids.includes(id))), mode, kinds, button: null };
+}
+
+function drawAccessButton(state) {
+  state.button.textContent = MCP_MODES[state.mode];
+  state.button.toggleAttribute('data-mode', state.mode !== 'checked');
+}
+
+function openAccess(state) {
+  const { row } = state;
+  const dialog = $('mcp-access-dialog');
+  $('mcp-access-title').textContent = `Access: ${row.name}`;
+  const box = (text, checked, value) => {
     const label = node('label', 'organize__check');
     const input = document.createElement('input');
     input.type = 'checkbox';
     input.checked = checked;
-    input.dataset[key] = value;
+    input.value = value;
     label.append(input, text);
-    panel.append(label);
+    return label;
   };
-  const ids = row.deck ? accountState.accounts.map((account) => account.id) : row.accountIds ?? [];
-  for (const id of ids) check(accountState.accounts.find((account) => account.id === id)?.name ?? id, !off.has(id), 'account', id);
-  if (row.delegable) check('Delegates', !(mcpShown.noDelegate ?? []).includes(row.name), 'delegates', '1');
-  return panel;
+  for (const radio of dialog.querySelectorAll('[name="mcp-access-mode"]')) radio.checked = radio.value === state.mode;
+  const kinds = $('mcp-access-kinds');
+  kinds.hidden = !state.kinds;
+  kinds.querySelector('.access__list').replaceChildren(...Object.entries(MCP_KINDS).map(([kind, label]) => box(label, Boolean(state.kinds?.includes(kind)), kind)));
+  // Moving a server to the Deck lets every account and delegate run it.
+  const move = $('mcp-access-move');
+  move.replaceChildren();
+  if (row.import || row.everywhere) {
+    const button = node('button', 'btn', row.import ? 'Add to the Deck' : 'Use in every account');
+    button.type = 'button';
+    button.onclick = () => {
+      dialog.close();
+      if (row.import) showMcpForm(row.import);
+      else useEverywhere(row, state.button);
+    };
+    move.append(node('span', 'access__legend', 'Every account'), node('p', 'settings__hint', row.import
+      ? `Only in ${row.accounts.join(', ')}. As a Deck server it runs on any account.`
+      : `Moves it to the Deck as ${row.everywhere.target}, for every account and delegate. One sign-in serves all.`), button);
+  }
+  dialog.returnValue = '';
+  dialog.onclose = () => {
+    if (dialog.returnValue !== 'ok') return;
+    mcpTouched = true;
+    state.mode = dialog.querySelector('[name="mcp-access-mode"]:checked')?.value ?? 'checked';
+    if (state.kinds) state.kinds = [...kinds.querySelectorAll('input:checked')].map((input) => input.value);
+    drawAccessButton(state);
+  };
+  dialog.showModal();
 }
 
 // A claude.ai connector lives in one Claude account; its URL as a Deck server reaches every account and delegate, and replaces the connector in chats.
@@ -3389,6 +3427,7 @@ function drawMcp(result) {
     return;
   }
   mcpShown = result;
+  mcpAccess.clear();
   const global = new Set(result.global ?? []);
   const off = new Set(result.off ?? []);
   const on = new Set(result.on ?? []);
@@ -3563,21 +3602,193 @@ $('mcp-save').onclick = async () => {
     else if (!checked && global.has(name)) off.add(name);
   }
   const scope = mcpScope.global ? { global: true } : { folder: mcpScope.folder, group: mcpScope.group, workspace: mcpScope.workspace };
-  await deck.mcpSet(scope, [...off], [...on]);
+  const saved = await deck.mcpSet(scope, [...off], [...on]).catch((error) => ({ error: String(error) }));
+  if (saved?.error) { $('mcp-error').textContent = saved.error; $('mcp-error').hidden = false; return; }
   // An account the list did not show keeps its setting.
   const access = {};
-  for (const panel of $('mcp-list').querySelectorAll('.mcp__access')) {
-    const boxes = [...panel.querySelectorAll('input[data-account]')];
-    const ids = new Set(boxes.map((input) => input.dataset.account));
-    const accountsOff = (mcpShown.accountsOff?.[panel.dataset.server] ?? []).filter((id) => !ids.has(id));
-    accountsOff.push(...boxes.filter((input) => !input.checked).map((input) => input.dataset.account));
-    const delegates = panel.querySelector('input[data-delegates]');
-    access[panel.dataset.server] = delegates ? { accountsOff, delegates: delegates.checked } : { accountsOff };
+  for (const [name, state] of mcpAccess) {
+    const accountsOff = (mcpShown.accountsOff?.[name] ?? []).filter((id) => !state.ids.includes(id));
+    accountsOff.push(...state.off);
+    access[name] = { accountsOff, delegateOnly: state.mode === 'delegates', auto: state.mode === 'auto' };
+    if (state.kinds) access[name].kinds = state.kinds;
   }
-  if (Object.keys(access).length) await deck.mcpAccessSet(access);
+  const applied = Object.keys(access).length ? await deck.mcpAccessSet(access).catch((error) => ({ error: String(error) })) : null;
+  if (applied?.error) { $('mcp-error').textContent = applied.error; $('mcp-error').hidden = false; return; }
   mcpCache.clear();
   $('mcp-dialog').close();
 };
+let pluginsShown = null;
+let pluginSuggestion = null;
+let pluginsVisit = 0;
+
+function drawPlugins(result, states = result.states) {
+  pluginsShown = result;
+  $('plugins-list').replaceChildren(...result.plugins.map((plugin, index) => {
+    const row = node('div', 'mcp__row');
+    row.dataset.plugin = plugin.id;
+    const info = node('div', 'mcp__info');
+    info.append(node('span', 'mcp__name', plugin.id));
+    if (plugin.description) {
+      const description = node('span', 'mcp__desc', plugin.description);
+      description.title = plugin.description;
+      info.append(description);
+    }
+    const group = node('div', 'segmented');
+    group.setAttribute('role', 'radiogroup');
+    group.setAttribute('aria-label', plugin.id);
+    const state = states?.[plugin.id] ?? 'on';
+    for (const [value, text] of [['on', 'On'], ['auto', 'Auto'], ['off', 'Off']]) {
+      const label = node('label');
+      const input = document.createElement('input');
+      input.type = 'radio';
+      input.name = `plugin-${index}`;
+      input.value = value;
+      input.checked = value === state;
+      label.append(input, text);
+      group.append(label);
+    }
+    row.append(info, group);
+    return row;
+  }));
+  if (!result.plugins.length) $('plugins-list').append(node('p', 'mcp__empty', 'No plugins installed.'));
+  $('plugins-save').disabled = false;
+}
+
+function pluginStates() {
+  const states = { ...pluginsShown.states };
+  for (const row of $('plugins-list').querySelectorAll('[data-plugin]')) {
+    const state = row.querySelector('input:checked')?.value ?? 'on';
+    if (state === 'on') delete states[row.dataset.plugin];
+    else states[row.dataset.plugin] = state;
+  }
+  return states;
+}
+
+async function openPluginsDialog() {
+  const visit = ++pluginsVisit;
+  pluginsShown = null;
+  pluginSuggestion = null;
+  $('plugins-save').disabled = true;
+  $('plugins-confirm').hidden = true;
+  $('plugins-error').hidden = true;
+  $('plugins-request').value = '';
+  $('plugins-task').value = '';
+  $('plugins-list').replaceChildren(node('p', 'mcp__empty', 'Loading...'));
+  showSection($('plugins-dialog'), 'installed');
+  $('plugins-dialog').showModal();
+  try {
+    const result = await deck.pluginsList();
+    if (visit === pluginsVisit) drawPlugins(result);
+  } catch (error) {
+    if (visit === pluginsVisit) { $('plugins-error').textContent = String(error); $('plugins-error').hidden = false; }
+  }
+}
+
+$('plugins-open').onclick = openPluginsDialog;
+$('plugins-cancel').onclick = () => $('plugins-dialog').close();
+$('plugins-save').onclick = async () => {
+  if (!pluginsShown) return;
+  $('plugins-save').disabled = true;
+  try {
+    await deck.pluginsSet(pluginStates());
+    $('plugins-dialog').close();
+  } catch (error) {
+    $('plugins-error').textContent = String(error);
+    $('plugins-error').hidden = false;
+  } finally { $('plugins-save').disabled = false; }
+};
+$('plugins-find').onclick = async () => {
+  const request = $('plugins-request').value.trim();
+  if (!request) return;
+  const visit = pluginsVisit;
+  $('plugins-find').disabled = true;
+  $('plugins-confirm').hidden = true;
+  pluginSuggestion = null;
+  try {
+    const result = await deck.pluginFind(request);
+    if (visit !== pluginsVisit || !$('plugins-dialog').open) return;
+    if (result.none) { $('plugins-error').textContent = result.none; $('plugins-error').hidden = false; return; }
+    pluginSuggestion = result.id;
+    $('plugins-suggestion').textContent = `Install ${result.id}? ${result.why}`;
+    $('plugins-confirm').hidden = false;
+  } catch (error) {
+    if (visit === pluginsVisit) { $('plugins-error').textContent = String(error); $('plugins-error').hidden = false; }
+  } finally { $('plugins-find').disabled = false; }
+};
+$('plugins-install-cancel').onclick = () => { pluginSuggestion = null; $('plugins-confirm').hidden = true; };
+$('plugins-install').onclick = async () => {
+  if (!pluginSuggestion || !pluginsShown) return;
+  const visit = pluginsVisit;
+  $('plugins-install').disabled = true;
+  $('plugins-save').disabled = true;
+  try {
+    const output = await deck.pluginInstall(pluginSuggestion);
+    const result = await deck.pluginsList();
+    if (visit !== pluginsVisit || !$('plugins-dialog').open) return;
+    drawPlugins(result, pluginStates());
+    showSection($('plugins-dialog'), 'installed');
+    pluginSuggestion = null;
+    $('plugins-confirm').hidden = true;
+    $('plugins-error').textContent = output;
+    $('plugins-error').hidden = false;
+  } catch (error) {
+    if (visit === pluginsVisit) { $('plugins-error').textContent = String(error); $('plugins-error').hidden = false; }
+  } finally { $('plugins-install').disabled = false; $('plugins-save').disabled = !pluginsShown; }
+};
+
+for (const prefix of ['mcp', 'plugins']) {
+  $(prefix + '-forget-picks').onclick = async () => {
+    const button = $(prefix + '-forget-picks');
+    button.disabled = true;
+    try {
+      await deck.autoPicksClear();
+    } catch (error) {
+      $(prefix + '-error').textContent = String(error);
+      $(prefix + '-error').hidden = false;
+    } finally { button.disabled = false; }
+  };
+  $(prefix + '-recommend').onclick = async () => {
+    const task = $(prefix + '-task').value.trim();
+    if (!task || (prefix === 'mcp' ? !mcpShown : !pluginsShown)) return;
+    const scope = mcpScope;
+    const visit = pluginsVisit;
+    const button = $(prefix + '-recommend');
+    const message = $(prefix + '-error');
+    button.disabled = true;
+    try {
+      const reply = await deck.recommend(task);
+      if (!$(prefix + '-dialog').open || (prefix === 'mcp' ? scope !== mcpScope : visit !== pluginsVisit)) return;
+      if (prefix === 'mcp') {
+        mcpTouched = true;
+        for (const input of $('mcp-dialog').querySelectorAll('.mcp__row input[data-name]')) {
+          const suggestion = reply.mcp[input.dataset.name];
+          if (!suggestion || input.disabled) continue;
+          input.checked = suggestion.state !== 'off';
+          input.closest('.mcp__row').dataset.tip = suggestion.why;
+          const state = mcpAccess.get(input.dataset.name);
+          if (!state) continue;
+          state.mode = ['auto', 'delegates'].includes(suggestion.state) ? suggestion.state : 'checked';
+          drawAccessButton(state);
+        }
+      } else {
+        for (const row of $('plugins-list').querySelectorAll('[data-plugin]')) {
+          const suggestion = reply.plugins[row.dataset.plugin];
+          if (!suggestion) continue;
+          const radio = row.querySelector(`input[value="${CSS.escape(suggestion.state)}"]`);
+          if (radio) radio.checked = true;
+          row.dataset.tip = suggestion.why;
+        }
+      }
+      showSection($(prefix + '-dialog'), prefix === 'mcp' ? 'servers' : 'installed');
+      message.textContent = 'Suggestions applied. Save to keep them.';
+      message.hidden = false;
+    } catch (error) {
+      message.textContent = String(error);
+      message.hidden = false;
+    } finally { button.disabled = false; }
+  };
+}
+
 $('mcp-cancel').onclick = () => $('mcp-dialog').close();
 
 $('mcp-servers').onclick = () => {

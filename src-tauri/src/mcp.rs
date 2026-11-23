@@ -247,13 +247,17 @@ pub fn share_tokens(a: &Accounts) -> serde_json::Map<String, Value> {
     best
 }
 
-// Which accounts load each server and whether delegates may get it: { name: { accountsOff: [ids], delegates?: bool } }.
+// Which accounts and delegate kinds load each server: { name: { accountsOff: [ids], delegates?: bool, kinds?: [kinds] } }.
 #[tauri::command]
 pub fn mcp_access_set(accounts: State<'_, Mutex<Accounts>>, changes: Value) -> Value {
     let id = |id: &Value| id.as_str().is_some_and(|id| !id.is_empty() && id.len() <= 100);
     let valid = |name: &String, change: &Value| !name.is_empty() && name.len() <= 200
         && change["accountsOff"].as_array().is_some_and(|ids| ids.len() <= 50 && ids.iter().all(id))
-        && change.get("delegates").is_none_or(Value::is_boolean);
+        && change.get("delegates").is_none_or(Value::is_boolean)
+        && change.get("delegateOnly").is_none_or(Value::is_boolean)
+        && change.get("auto").is_none_or(Value::is_boolean)
+        && change.get("kinds").is_none_or(|kinds| kinds.as_array().is_some_and(|kinds| kinds.len() <= 4
+            && kinds.iter().enumerate().all(|(i, kind)| matches!(kind.as_str(), Some("claude" | "codex" | "grok" | "opencode")) && !kinds[..i].contains(kind))));
     let Some(changes) = changes.as_object().filter(|changes| changes.len() <= 500 && changes.iter().all(|(name, change)| valid(name, change))) else { return json!({ "error": "Invalid request." }) };
     match accounts.lock().unwrap().set_mcp_access(changes) {
         Ok(()) => json!({ "ok": true }),
@@ -291,7 +295,7 @@ pub fn list(accounts: &Mutex<Accounts>, scope: &Value) -> Value {
     let global = scope["global"] == true;
     let signed;
     let plugin;
-    let (runs, folder, off, on, all, deck, sources, home, (accounts_off, no_delegate)) = {
+    let (runs, folder, off, on, all, deck, sources, home, (accounts_off, no_delegate, kinds, delegate_only, auto)) = {
         let a = accounts.lock().unwrap();
         let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_millis() as i64);
         signed = signed_in(&share_tokens(&a), &a.deck_servers(), now);
@@ -349,7 +353,7 @@ pub fn list(accounts: &Mutex<Accounts>, scope: &Value) -> Value {
     }
     if let (true, Some(error)) = (servers.is_empty(), error) { return json!({ "error": error }); }
     let _ = accounts.lock().unwrap().learn_mcp_targets(learned);
-    json!({ "servers": servers, "off": off, "on": on, "global": all, "deck": deck, "accounts": count, "removed": removed, "accountsOff": accounts_off, "noDelegate": no_delegate, "signedIn": signed })
+    json!({ "servers": servers, "off": off, "on": on, "global": all, "deck": deck, "accounts": count, "removed": removed, "accountsOff": accounts_off, "noDelegate": no_delegate, "kinds": kinds, "delegateOnly": delegate_only, "auto": auto, "signedIn": signed })
 }
 
 // Windows prints "√ Connected" and others "✓ Connected"; a failure says "Failed to connect".
