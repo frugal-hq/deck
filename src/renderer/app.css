@@ -229,6 +229,10 @@ body:has(.info-panel:not([hidden])) { grid-template-columns: var(--sidebar-width
 .group__name:focus-visible { outline-offset: -2px; }
 .group__name .icon { color: var(--color-muted); }
 
+.group--workspace > .group__name { color: var(--color-ink); font-weight: 600; }
+.group--workspace > .group__name > .icon:not(.group__chevron) { color: var(--color-accent); }
+.group--none > .group__name { color: var(--color-muted); font-style: italic; }
+#groups > .group--none { margin-top: var(--space-2xs); padding-top: var(--space-2xs); border-top: var(--rule-hair) solid var(--color-rule); }
 .group__chevron { width: 12px; height: 12px; transition: transform var(--dur-micro) var(--ease-out); }
 .group[open] > .group__name .group__chevron { transform: rotate(90deg); }
 

@@ -2285,8 +2285,9 @@ function groupElement(key, chats, byTopic) {
   count.textContent = chats.length;
   const chevron = icon('chevron');
   chevron.classList.add('group__chevron');
-  summary.append(chevron, icon(byTopic ? 'topic' : 'folder'), name, count);
-  if (key !== NO_TOPIC) {
+  summary.append(chevron, icon(key === NO_TOPIC ? 'inbox' : byTopic ? 'topic' : 'folder'), name, count);
+  if (key === NO_TOPIC) group.classList.add('group--none');
+  else {
     summary.append(newChatButton(chats, byTopic ? key : undefined, label));
     addMenu(summary, label, () => groupMenu(key, label, byTopic));
   }
@@ -2313,7 +2314,7 @@ function workspaceElement(workspace, byTopic) {
   count.textContent = workspaceCount(workspace);
   const chevron = icon('chevron');
   chevron.classList.add('group__chevron');
-  summary.append(chevron, icon('topic'), name, count);
+  summary.append(chevron, icon('workspace'), name, count);
   addMenu(summary, workspace.name, () => workspaceMenu(workspace.name));
   group.append(
     summary,
