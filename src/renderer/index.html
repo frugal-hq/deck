@@ -155,7 +155,7 @@
     <div id="others" class="others"></div>
   </details>
   <button id="usage-all" class="usage__all" type="button">All accounts</button>
-  <button id="account-add" class="btn" type="button" data-tip="Sign in to another Claude account">Add account</button>
+  <button id="account-add" class="btn" type="button" data-tip="Install and sign in to an account">Add account</button>
 </div>
 <dialog id="palette" class="palette" closedby="any" aria-label="Search sessions">
   <input id="palette-query" class="palette__query" type="text" role="combobox" aria-controls="palette-list" aria-expanded="true" aria-autocomplete="list" aria-label="Search sessions" placeholder="Search titles, folders and messages" autocomplete="off" spellcheck="false">
@@ -190,6 +190,35 @@
   <ul id="archived-list" class="archived"></ul>
 </dialog>
 <div id="menu" class="menu" popover="auto" role="menu" aria-label="Options"></div>
+<dialog id="account-dialog" class="organize" aria-labelledby="account-title">
+  <form id="account-form">
+    <h2 id="account-title" class="organize__title">Add account</h2>
+    <div class="segmented" role="radiogroup" aria-label="Account kind">
+      <label><input type="radio" name="account-kind" value="claude" checked>Claude</label>
+      <label><input type="radio" name="account-kind" value="codex">Codex</label>
+      <label><input type="radio" name="account-kind" value="grok">Grok</label>
+      <label><input type="radio" name="account-kind" value="opencode">OpenCode</label>
+      <label><input type="radio" name="account-kind" value="gemini">Gemini</label>
+    </div>
+    <label class="organize__field">Name<input id="account-name" required maxlength="40" pattern=".*\S.*" autocomplete="off" spellcheck="false"></label>
+    <label id="account-model-field" class="organize__field" hidden>Model<input id="account-model" placeholder="provider/model" autocomplete="off" spellcheck="false" disabled></label>
+    <label id="account-key-field" class="organize__field" hidden>API key<input id="account-key" type="password" maxlength="4096" autocomplete="off" spellcheck="false" disabled></label>
+    <label id="account-paid-field" class="organize__check" hidden><input id="account-paid" type="checkbox" disabled> Billing is on for this key</label>
+    <p id="account-key-hint" class="organize__text" hidden>Google trains on free-tier traffic; frugal only uses free-tier keys if you allow training.</p>
+    <ol id="account-steps" aria-label="Account setup steps" aria-live="polite">
+      <li data-state="pending">Install</li>
+      <li data-state="pending">Sign in</li>
+      <li data-state="pending">Ready</li>
+    </ol>
+    <progress id="account-progress" class="sort__progress" aria-label="Account setup progress" hidden></progress>
+    <pre id="account-log" aria-label="Account setup output"></pre>
+    <p id="account-error" class="sort__status" data-failed="true" role="alert"></p>
+    <div class="organize__actions">
+      <button id="account-cancel" class="btn" type="button">Cancel</button>
+      <button id="account-submit" class="btn btn--primary" type="submit">Add</button>
+    </div>
+  </form>
+</dialog>
 <dialog id="ask-dialog" class="organize" closedby="any" aria-labelledby="ask-title">
   <form id="ask-form" method="dialog">
     <h2 id="ask-title" class="organize__title"></h2>

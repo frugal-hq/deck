@@ -1254,19 +1254,205 @@ function resumeSession(session) {
   else openChat({ id: session.id, cwd: session.cwd, name: session.title, resume: true });
 }
 
-function addAccount() {
-  $('usage').hidePopover();
-  ask({
-    title: 'Add account',
-    text: 'Opens the Claude sign-in in a new tab. The account also joins Frugal as a secondary account.',
-    value: '',
-    names: accountState.accounts.map((account) => account.name),
-    action: 'Sign in',
-    run: (name) => openChat({ id: crypto.randomUUID(), cwd: `Sign in to ${name}`, name: `Sign in: ${name}`, login: name }),
-  });
+const accountDialog = $('account-dialog');
+const accountForm = $('account-form');
+let accountAdd = null;
+
+function accountStep(index, state) {
+  const step = $('account-steps').children[index];
+  step.dataset.state = state;
+  step.querySelector('svg')?.remove();
+  step.prepend(state === 'running' ? statusIcon('working') : icon(state === 'done' ? 'replied' : state === 'failed' ? 'x' : 'more'));
+  step.setAttribute('aria-label', `${['Install', 'Sign in', 'Ready'][index]}: ${state}`);
+  $('account-progress').hidden = ![...$('account-steps').children].some((li) => li.dataset.state === 'running');
 }
 
+function accountFields() {
+  const kind = accountForm.querySelector('[name="account-kind"]:checked').value;
+  const locked = Boolean(accountAdd?.busy || accountAdd?.registered);
+  for (const input of accountForm.querySelectorAll('input')) input.disabled = locked;
+  $('account-model-field').hidden = kind !== 'opencode';
+  $('account-model').disabled = locked || kind !== 'opencode';
+  $('account-model').required = kind === 'opencode';
+  for (const id of ['account-key-field', 'account-paid-field', 'account-key-hint']) $(id).hidden = kind !== 'gemini';
+  $('account-key').disabled = locked || kind !== 'gemini';
+  $('account-key').required = kind === 'gemini' && !accountAdd?.registered;
+  $('account-paid').disabled = locked || kind !== 'gemini';
+  if (kind !== 'gemini') $('account-key').value = '';
+  $('account-submit').disabled = Boolean(accountAdd?.busy);
+}
+
+function addAccount() {
+  $('usage').hidePopover();
+  if (!accountDialog.open) {
+    accountAdd = null;
+    accountForm.reset();
+    $('account-log').textContent = '';
+    $('account-error').textContent = '';
+    $('account-submit').textContent = 'Add';
+    $('account-cancel').textContent = 'Cancel';
+    $('account-cancel').disabled = false;
+    for (let i = 0; i < 3; i++) accountStep(i, 'pending');
+    accountFields();
+    accountDialog.showModal();
+    $('account-name').focus();
+  }
+}
+
+function accountResult(result, json = false) {
+  if (result.code !== 0) throw new Error($('account-log').textContent.trim().split('\n').at(-1) || result.last || `Command exited with code ${result.code}.`);
+  if (!json) return result;
+  try { return JSON.parse(result.last); }
+  catch { throw new Error('Update frugal to add this kind of account.'); }
+}
+
+async function accountReady(run) {
+  run.step = 2;
+  accountStep(2, 'running');
+  setAccounts(await deck.getAccounts());
+  if (accountAdd !== run) return;
+  drawAccounts();
+  drawOthers();
+  accountStep(2, 'done');
+  run.busy = false;
+  $('account-cancel').disabled = false;
+  $('account-cancel').textContent = 'Close';
+  setTimeout(() => {
+    if (accountAdd === run) { accountAdd = null; accountDialog.close(); }
+  }, 1000);
+}
+
+function cancelAccountAdd() {
+  if ($('account-cancel').disabled) return;
+  const run = accountAdd;
+  accountAdd = null;
+  run?.exit?.(1);
+  $('account-key').value = '';
+  accountDialog.close();
+  if (run?.tab) closeChat(run.tab, true);
+}
+
+accountForm.onchange = accountFields;
+accountDialog.oncancel = (event) => { event.preventDefault(); cancelAccountAdd(); };
+$('account-cancel').onclick = cancelAccountAdd;
 $('account-add').onclick = addAccount;
+deck.onAccountCliLine((line) => {
+  if (!accountAdd?.busy) return;
+  const log = $('account-log');
+  log.textContent = `${log.textContent}\n${line}`.trimStart().split('\n').slice(-12).join('\n');
+  log.scrollTop = log.scrollHeight;
+});
+deck.onAccountLoginFinished(({ id, error }) => {
+  if (accountAdd?.tab === id) accountAdd.loginError = error;
+});
+deck.onExit((id, code) => {
+  if (accountAdd?.tab !== id) return;
+  accountAdd.exitCode = code;
+  accountAdd.exit?.(code);
+});
+
+accountForm.onsubmit = async (event) => {
+  event.preventDefault();
+  if (accountAdd?.busy) return;
+  const name = $('account-name').value.trim();
+  const kind = accountForm.querySelector('[name="account-kind"]:checked').value;
+  const id = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 32);
+  $('account-error').textContent = '';
+  if (!id) { $('account-error').textContent = 'Use letters or numbers in the account name.'; return; }
+  if (!accountAdd?.registered && [...accountState.accounts, ...accountState.others].some((a) => a.id === id)) {
+    $('account-error').textContent = `An account named ${id} already exists.`;
+    return;
+  }
+  const run = accountAdd?.registered ? accountAdd : { kind, id, name, registered: false };
+  accountAdd = run;
+  run.busy = true;
+  run.step = 0;
+  run.exitCode = null;
+  run.loginError = null;
+  $('account-log').textContent = '';
+  $('account-cancel').disabled = true;
+  accountStep(2, 'pending');
+  accountFields();
+  try {
+    if (!run.registered) {
+      for (let i = 0; i < 3; i++) accountStep(i, 'pending');
+      accountStep(0, 'running');
+      if (kind === 'claude') {
+        const result = accountResult(await deck.installCli(kind));
+        accountStep(0, result.skipped ? 'skipped' : 'done');
+      } else {
+        const args = ['add', kind, id];
+        if (kind === 'opencode') args.push($('account-model').value.trim());
+        if (kind === 'gemini' && $('account-paid').checked) args.push('--paid');
+        // Clear the input immediately; the key lives only in this invocation's stdin.
+        let pending;
+        try { pending = deck.accountCli(args, kind === 'gemini' ? `${$('account-key').value}\n` : null); }
+        finally { $('account-key').value = ''; }
+        const result = accountResult(await pending, true);
+        if (result.ok !== true || result.id !== id || result.kind !== kind || typeof result.loggedIn !== 'boolean') throw new Error('Account registration failed.');
+        run.registered = true;
+        accountStep(0, 'done');
+      }
+    }
+    run.step = 1;
+    accountStep(1, 'running');
+    if (kind !== 'claude' || !run.registered) {
+      const command = kind === 'claude' ? null : accountResult(await deck.accountCli(['login-command', id]), true);
+      if (command && command.argv === null) accountStep(1, 'skipped');
+      else {
+        if (command && (!Array.isArray(command.argv) || !command.argv.length || !command.env || typeof command.env !== 'object')) {
+          throw new Error('Update frugal to add this kind of account.');
+        }
+        run.tab = crypto.randomUUID();
+        const exited = new Promise((resolve) => { run.exit = resolve; });
+        // Leave the progress dialog visible while allowing interaction with the login tab.
+        accountDialog.close();
+        accountDialog.show();
+        $('account-cancel').disabled = false;
+        const result = await openChat({ id: run.tab, cwd: `Sign in to ${name}`, name: `Sign in: ${name}`, login: name,
+          accountSetup: true, loginCommand: command });
+        if (accountAdd !== run) { await closeChat(run.tab, true); return; }
+        if (result.error) throw new Error(result.error);
+        if (kind === 'claude') {
+          const code = await exited;
+          if (accountAdd !== run) return;
+          const state = await deck.getAccounts();
+          if (code !== 0 || !state.accounts.some((a) => a.id === id && a.signedIn)) throw new Error(run.loginError || 'Sign-in did not finish.');
+          run.registered = true;
+        } else {
+          const deadline = Date.now() + 10 * 60 * 1000;
+          while (true) {
+            if (accountAdd !== run) return;
+            if (Date.now() >= deadline) throw new Error('Sign-in did not finish.');
+            const status = accountResult(await deck.accountCli(['status', id]), true);
+            if (accountAdd !== run) return;
+            if (status.id !== id || status.kind !== kind || typeof status.installed !== 'boolean' || typeof status.loggedIn !== 'boolean') {
+              throw new Error('Update frugal to add this kind of account.');
+            }
+            if (status.loggedIn) break;
+            if (run.exitCode != null && run.exitCode !== 0) throw new Error('Sign-in did not finish.');
+            await new Promise((resolve) => setTimeout(resolve, 2000));
+          }
+        }
+        if (accountAdd !== run) return;
+        await closeChat(run.tab, true);
+        run.tab = null;
+        accountStep(1, 'done');
+      }
+    } else accountStep(1, 'done');
+    if (accountAdd === run) await accountReady(run);
+  } catch (error) {
+    if (accountAdd !== run) return;
+    run.busy = false;
+    accountStep(run.step, 'failed');
+    $('account-error').textContent = error.message || String(error);
+    $('account-cancel').disabled = false;
+    $('account-cancel').textContent = 'Close';
+    $('account-submit').textContent = 'Retry';
+    accountFields();
+    if (run.tab) { await closeChat(run.tab, true); run.tab = null; }
+  }
+};
 
 // xterm reports a selection only on mouseup, so output during a drag would see it as stale and clear it.
 let mouseHeld = false;
@@ -1288,7 +1474,7 @@ const termOptions = () => ({
   },
 });
 
-async function openChat({ id, cwd, name, resume, group, login, accountId, handoff }) {
+async function openChat({ id, cwd, name, resume, group, login, accountId, handoff, loginCommand, accountSetup }) {
   const el = document.createElement('div');
   el.className = 'term';
   stage.append(el);
@@ -1297,7 +1483,7 @@ async function openChat({ id, cwd, name, resume, group, login, accountId, handof
   term.loadAddon(fit);
   term.open(el);
 
-  const chat = { id, cwd, name, el, term, fit, login, state: 'starting', trustUntil: null, status: null, busy: false, inputAt: 0 };
+  const chat = { id, cwd, name, el, term, fit, login, accountSetup, state: 'starting', trustUntil: null, status: null, busy: false, inputAt: 0 };
   chats.set(id, chat);
   activate(id);
   chat.cols = term.cols;
@@ -1320,7 +1506,7 @@ async function openChat({ id, cwd, name, resume, group, login, accountId, handof
   const size = { id, cols: term.cols, rows: term.rows };
   chat.bypassOn = !login && chatBypass(chat, handoff);
   chat.adminOn = !login && await confirmAdmin(chat.bypassOn, chatAdmin(chat, handoff));
-  const result = await (login ? deck.login({ ...size, name: login, accountId })
+  const result = await (login ? deck.login({ ...size, name: login, accountId, ...loginCommand })
     : handoff ? deck.continueIn({ ...size, ...handoff, bypass: chat.bypassOn, admin: chat.adminOn })
     : deck.start({ ...size, cwd, resume, group, bypass: chat.bypassOn, admin: chat.adminOn, frugal: !resume && startsWithFrugal() }));
   if (result.error) {
@@ -1580,11 +1766,11 @@ function askToClose(chat) {
   });
 }
 
-async function closeChat(id) {
+async function closeChat(id, force = false) {
   const chat = chats.get(id);
   if (!chat) return;
   const live = chat.state === 'starting' || chat.state === 'running';
-  if (live && confirmsClose() && !await askToClose(chat)) return;
+  if (live && !force && confirmsClose() && !await askToClose(chat)) return;
   if (live) deck.kill(id);
   stopCountdown(chat);
   chat.term.dispose();
@@ -1783,7 +1969,7 @@ deck.onExit((id, code) => {
   chat.exitCode = code;
   render();
   // A finished sign-in closes its tab after "Login successful" shows, and the panel opens on the account; a failed one stays to show why.
-  if (chat.login && code === 0) setTimeout(() => {
+  if (chat.login && !chat.accountSetup && code === 0) setTimeout(() => {
     if (!chats.has(id)) return;
     closeChat(id);
     $('usage').classList.add('usage--top');

@@ -3,7 +3,7 @@
 use serde_json::{json, Value};
 use std::collections::{HashMap, HashSet};
 use std::fs;
-use std::io::Read;
+use std::io::{BufRead, BufReader, Read, Write};
 use std::path::{Component, Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::{atomic::{AtomicBool, Ordering}, Arc, Mutex};
@@ -839,6 +839,102 @@ pub fn run(command: &mut Command, timeout: Duration) -> Result<Vec<u8>> {
     if overflow.load(Ordering::Relaxed) { return Err("Command output exceeded maxBuffer.".into()); }
     if !status?.success() { return Err(String::from_utf8_lossy(&err).into_owned().into()); }
     Ok(out)
+}
+
+fn cli_lines(app: &AppHandle, command: &mut Command, stdin: Option<String>, timeout: Duration) -> Result<Value> {
+    #[cfg(windows)]
+    { use std::os::windows::process::CommandExt; command.creation_flags(0x08000000); }
+    let mut child = command.stdin(if stdin.is_some() { Stdio::piped() } else { Stdio::null() })
+        .stdout(Stdio::piped()).stderr(Stdio::piped()).spawn()?;
+    let secret = Arc::new(stdin.unwrap_or_default());
+    let overflow = Arc::new(AtomicBool::new(false));
+    let reader = |pipe: Box<dyn Read + Send>| {
+        let (app, secret, overflow) = (app.clone(), secret.clone(), overflow.clone());
+        thread::spawn(move || -> std::io::Result<String> {
+            let mut last = String::new();
+            let mut bytes = 0;
+            for line in BufReader::new(pipe.take(1024 * 1024 + 1)).lines() {
+                let line = line?;
+                bytes += line.len() + 1;
+                if bytes > 1024 * 1024 { overflow.store(true, Ordering::Relaxed); break; }
+                last = if secret.is_empty() { line } else { line.replace(secret.trim_end(), "[redacted]") };
+                let _ = app.emit("account-cli-line", [&last]);
+            }
+            Ok(last)
+        })
+    };
+    let stdout = reader(Box::new(child.stdout.take().unwrap()));
+    let stderr = reader(Box::new(child.stderr.take().unwrap()));
+    let input = child.stdin.take().map(|mut pipe| pipe.write_all(secret.as_bytes())).transpose();
+    let start = Instant::now();
+    let status = loop {
+        if input.is_err() || start.elapsed() >= timeout || overflow.load(Ordering::Relaxed) {
+            let _ = child.kill(); break child.wait();
+        }
+        match child.try_wait() {
+            Ok(Some(status)) => break Ok(status),
+            Ok(None) => thread::sleep(Duration::from_millis(20)),
+            Err(error) => { let _ = child.kill(); let _ = child.wait(); break Err(error); },
+        }
+    };
+    let last = stdout.join().map_err(|_| "stdout reader failed")??;
+    stderr.join().map_err(|_| "stderr reader failed")??;
+    input?;
+    if start.elapsed() >= timeout { return Err("Command timed out.".into()); }
+    if overflow.load(Ordering::Relaxed) { return Err("Command output exceeded maxBuffer.".into()); }
+    Ok(json!({"code": status?.code().unwrap_or(1), "last": last}))
+}
+
+fn valid_cli_args(args: &[String], stdin: Option<&str>) -> bool {
+    let valid = match args.first().map(String::as_str) {
+        Some("add") if args.len() >= 3 && valid_id(&args[2]) => match args[1].as_str() {
+            "claude" | "codex" | "grok" => args.len() == 3 && stdin.is_none(),
+            "opencode" => args.len() == 4 && stdin.is_none() && args[3].split_once('/').is_some_and(|(p, m)|
+                !p.is_empty() && !m.is_empty() && !args[3].chars().any(|c| c.is_whitespace() || c.is_control())) && !args[3].starts_with('-'),
+            "gemini" => (args.len() == 3 || (args.len() == 4 && args[3] == "--paid")) && stdin.is_some_and(|s|
+                !s.trim().is_empty() && s.len() <= 4097 && !s.strip_suffix('\n').unwrap_or(s).contains(['\r', '\n', '\0'])),
+            _ => false,
+        },
+        Some("status" | "login-command") => args.len() == 2 && valid_id(&args[1]) && stdin.is_none(),
+        _ => false,
+    };
+    valid && args.iter().all(|s| !s.contains('\0'))
+}
+
+#[tauri::command]
+pub async fn account_cli(app: AppHandle, args: Vec<String>, stdin: Option<String>) -> std::result::Result<Value, String> {
+    if !valid_cli_args(&args, stdin.as_deref()) { return Err("Invalid request.".into()); }
+    tauri::async_runtime::spawn_blocking(move || { (|| -> Result<Value> {
+        let script = {
+            let accounts = app.state::<Mutex<Accounts>>();
+            let a = accounts.lock().unwrap();
+            let main = a.claude_accounts().into_iter().find(|a| a["id"] == MAIN).ok_or("Main account not found.")?;
+            frugal_dir(&main).ok_or("Install frugal on the Main account first.")?.join("accounts/server.py")
+        };
+        // Old add commands opened an external terminal; reject those before registration.
+        let source = fs::read_to_string(&script)?;
+        if !source.contains("login-command") || !source.contains("status") {
+            return Err("Update frugal to add this kind of account.".into());
+        }
+        let timeout = Duration::from_secs(if args[0] == "add" { 600 } else { 30 });
+        let mut command = Command::new("python");
+        command.arg("-u").arg(script).args(args);
+        cli_lines(&app, &mut command, stdin, timeout)
+    })().map_err(|e| e.to_string()) }).await.map_err(|e| e.to_string())?
+}
+
+#[tauri::command]
+pub async fn install_cli(app: AppHandle, kind: String) -> std::result::Result<Value, String> {
+    if kind != "claude" { return Err("Invalid request.".into()); }
+    tauri::async_runtime::spawn_blocking(move || { (|| -> Result<Value> {
+        if crate::chat::find_claude().is_some() || crate::chat::find_cli("claude").is_some() {
+            return Ok(json!({"code": 0, "last": "", "skipped": true}));
+        }
+        let npm = crate::chat::find_cli("npm").ok_or("Install Node.js (https://nodejs.org) first, then try again.")?;
+        let mut command = Command::new(npm);
+        command.args(["install", "-g", "@anthropic-ai/claude-code"]);
+        cli_lines(&app, &mut command, None, Duration::from_secs(600))
+    })().map_err(|e| e.to_string()) }).await.map_err(|e| e.to_string())?
 }
 
 pub fn publish(app: &AppHandle, accounts: &mut Accounts) -> Result<()> {

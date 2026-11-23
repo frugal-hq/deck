@@ -229,6 +229,8 @@ fn main() {
             index::joins_clear,
             index::topics_restore_titles,
             accounts::accounts_get,
+            accounts::account_cli,
+            accounts::install_cli,
             accounts::settings_roles,
             accounts::settings_set_roles,
             accounts::settings_mouse,

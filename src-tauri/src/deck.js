@@ -22,7 +22,7 @@
   // frugal: a call logs when it settles, so one that never returns leaves no line; log the start too if hangs need finding.
   const invoke = (channel, args) => {
     const call = window.__TAURI__.core.invoke(command(channel), args);
-    if (!debugOn || quietCalls.has(channel)) return call;
+    if (!debugOn || channel === 'account:cli' || quietCalls.has(channel)) return call;
     const started = performance.now();
     const took = () => `${channel} ${brief(args)} ${Math.round(performance.now() - started)} ms`;
     call.then((result) => log('call', `${took()}${result?.error ? ` error: ${result.error}` : ''}`), (error) => log('call', `${took()} failed: ${error}`));
@@ -153,6 +153,10 @@
     onVoiceProgress: (callback) => on('voice:progress', callback),
     setAttention: (count) => send('window:attention', { count }),
     login: (options) => invoke('accounts:login', { options, output: output(options.id) }),
+    accountCli: (args, stdin = null) => invoke('account:cli', { args, stdin }),
+    installCli: (kind) => invoke('install:cli', { kind }),
+    onAccountCliLine: (callback) => on('account-cli-line', callback),
+    onAccountLoginFinished: (callback) => on('account-login-finished', callback),
     logout: (id) => invoke('accounts:logout', { id }),
     removeAccount: (id) => invoke('accounts:remove', { id }),
     setPrimary: (id) => invoke('accounts:set-primary', { id }),

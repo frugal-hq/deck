@@ -135,6 +135,9 @@ pub struct LoginOptions {
     #[serde(default)]
     name: Value,
     account_id: Option<String>,
+    argv: Option<Vec<String>>,
+    #[serde(default)]
+    env: HashMap<String, String>,
     cols: u16,
     rows: u16,
 }
@@ -170,6 +173,14 @@ pub fn find_claude() -> Option<PathBuf> {
     })
 }
 
+pub(crate) fn find_cli(name: &str) -> Option<PathBuf> {
+    let path = std::env::var_os("PATH")?;
+    std::env::split_paths(&path).find_map(|dir| {
+        let names = if cfg!(windows) { vec![format!("{name}.exe"), format!("{name}.cmd"), format!("{name}.bat")] } else { vec![name.to_owned()] };
+        names.into_iter().map(|name| dir.join(name)).find(|path| path.is_file())
+    })
+}
+
 // Same keys Electron's cleanEnv drops, so claude.exe never inherits a parent Claude Code session.
 pub(crate) fn dropped(key: &str) -> bool {
     let key = key.to_ascii_uppercase();
@@ -198,6 +209,20 @@ fn command(claude: PathBuf, env: HashMap<String, String>, cwd: &Path) -> Command
     }
     command.cwd(cwd);
     command
+}
+
+fn login_command(exe: PathBuf, args: &[String], env: HashMap<String, String>, cwd: &Path) -> Result<CommandBuilder, Value> {
+    let shim = cfg!(windows) && exe.extension().is_some_and(|e| e.eq_ignore_ascii_case("cmd") || e.eq_ignore_ascii_case("bat"));
+    if shim && std::iter::once(exe.to_string_lossy().as_ref()).chain(args.iter().map(String::as_str))
+        .any(|s| s.contains(['&', '|', '<', '>', '^', '%', '!', '"', '\r', '\n'])) { return Err(invalid()); }
+    let mut cmd = if shim {
+        let mut cmd = command(PathBuf::from("cmd.exe"), env, cwd);
+        cmd.args(["/d", "/c", "call"]);
+        cmd.arg(exe);
+        cmd
+    } else { command(exe, env, cwd) };
+    cmd.args(args);
+    Ok(cmd)
 }
 
 // A bypass or administrator change restarts the chat too, so it waits like an account change; a chat not yet indexed never restarts.
@@ -570,7 +595,23 @@ pub fn accounts_login(app: AppHandle, chats: State<Chats>, accounts: State<Mutex
     if !is_uuid(&o.id) || chats.is_live(&o.id) || !is_size(o.cols) || !is_size(o.rows) {
         return invalid();
     }
-    let Some(claude) = find_claude() else {
+    if let Some(argv) = o.argv {
+        if !argv.first().is_some_and(|s| matches!(s.as_str(), "codex" | "grok" | "opencode" | "claude")) ||
+            argv.iter().any(|s| s.contains('\0')) || o.env.iter().any(|(key, value)|
+                !matches!(key.as_str(), "CLAUDE_CONFIG_DIR" | "CODEX_HOME" | "GROK_HOME" | "XDG_DATA_HOME" | "GEMINI_CLI_HOME") || value.contains('\0')) {
+            return invalid();
+        }
+        let Some(exe) = find_cli(&argv[0]) else { return json!({"error": format!("{} not found in PATH.", argv[0])}); };
+        let mut env = clean_env();
+        env.extend(o.env);
+        let cmd = match login_command(exe, &argv[1..], env, &accounts.lock().unwrap().home) {
+            Ok(cmd) => cmd,
+            Err(error) => return error,
+        };
+        return spawn(&app, &o.id, cmd, (o.cols, o.rows), None, output, "", |_, _| {})
+            .map_or_else(|error| error, |()| json!({"ok": true}));
+    }
+    let Some(claude) = find_claude().or_else(|| find_cli("claude")) else {
         return json!({ "error": NO_CLAUDE });
     };
     let a = accounts.lock().unwrap();
@@ -584,20 +625,32 @@ pub fn accounts_login(app: AppHandle, chats: State<Chats>, accounts: State<Mutex
             Err(error) => return json!({ "error": error.to_string() }),
         },
     };
-    let mut command = command(claude, account_env(&a, &account), &a.home);
+    let command = match login_command(claude, &["auth".into(), "login".into()], account_env(&a, &account), &a.home) {
+        Ok(command) => command,
+        Err(error) => return error,
+    };
     drop(a);
-    command.args(["auth", "login"]);
     let existing = o.account_id.is_some();
+    let login_id = o.id.clone();
     let result = spawn(&app, &o.id, command, (o.cols, o.rows), None, output, "", move |app, code| {
         let accounts = app.state::<Mutex<Accounts>>();
         let mut a = accounts.lock().unwrap();
         if existing {
             a.clear_emails();
             let _ = accounts::publish(app, &mut a);
-        } else if code == 0 && a.finish_account(&account).unwrap_or(false) {
-            let _ = accounts::publish(app, &mut a);
-            drop(a);
-            index::start(app.clone());
+        } else {
+            let result = if code == 0 { a.finish_account(&account).map_err(|e| e.to_string()) } else { Ok(false) };
+            let error = match result {
+                Ok(true) => {
+                    let _ = accounts::publish(app, &mut a);
+                    drop(a);
+                    index::start(app.clone());
+                    None
+                },
+                Ok(false) => Some("Sign-in did not finish.".to_owned()),
+                Err(error) => Some(error),
+            };
+            let _ = app.emit("account-login-finished", [json!({"id": login_id, "error": error})]);
         }
     });
     result.map_or_else(|error| error, |()| json!({ "ok": true }))
