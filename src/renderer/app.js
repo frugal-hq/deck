@@ -2528,7 +2528,7 @@ function workspaceElement(workspace, byTopic) {
 
 function indexStatus({ indexing, sessions, error, progress }) {
   if (error) return `Could not read the index: ${error}`;
-  if (indexing && progress?.total) return `Indexing sessions ${progress.done} of ${progress.total}`;
+  if (indexing && progress?.total) return `Indexing ${progress.done.toLocaleString()} of ${progress.total.toLocaleString()} sessions (${Math.floor(100 * progress.done / progress.total)}%)`;
   if (sessions.length) return '';
   return indexing ? 'Indexing sessions' : 'No sessions yet.';
 }

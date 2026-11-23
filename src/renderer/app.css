@@ -211,7 +211,10 @@ body:has(.info-panel:not([hidden])) { grid-template-columns: var(--sidebar-width
   font-size: var(--text-sm);
 }
 
-.index__progress { width: 100%; height: 4px; margin: var(--space-xs) 0; accent-color: var(--color-accent); }
+.index__progress { appearance: none; display: block; width: calc(100% - 2 * var(--space-md)); height: 6px; margin: 0 var(--space-md) var(--space-sm); overflow: hidden; border: 0; border-radius: var(--radius-pill); background: var(--color-rule); }
+.index__progress::-webkit-progress-bar { background: var(--color-rule); }
+.index__progress::-webkit-progress-value { border-radius: var(--radius-pill); background: var(--color-accent); transition: width var(--dur-short) var(--ease-out); }
+.sidebar__status:has(+ .index__progress:not([hidden])) { padding-bottom: var(--space-2xs); font-variant-numeric: tabular-nums; }
 .index__progress[hidden] { display: none; }
 
 .group__name {
