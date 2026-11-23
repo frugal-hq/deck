@@ -591,13 +591,18 @@ function drawAccounts() {
 const restartable = () => [...chats.values()].filter((chat) => !chat.login && chat.account && chat.state === 'running');
 const switchable = (account) => restartable().filter((chat) => chat.account !== account.id);
 const isWorking = (chat) => chat.status === 'working' || chat.status === 'waiting';
+// A delegate runs inside its chat's frugal server, so a restart ends it with no result: a chat waiting on one is busy too.
+async function busyChats(open) {
+  const delegating = new Set((await deck.allTasks()).filter((task) => task.running).map((task) => task.chat));
+  return open.filter((chat) => isWorking(chat) || delegating.has(chat.id));
+}
 
 // Switching accounts moves every open chat with --resume. Busy chats (working, or waiting for an answer) lose their
 // turn, so the dialog lists them: switch all, switch only the idle ones (busy ones stay on their account), or cancel.
 async function useAccount(account) {
   $('usage').hidePopover();
   const open = switchable(account);
-  const busy = open.filter(isWorking);
+  const busy = await busyChats(open);
   let moving = open;
   if (busy.length) {
     const name = account.email || account.id;
@@ -626,7 +631,7 @@ function askBusy(busy, someIdle, text) {
   $('switch-list').replaceChildren(...busy.map((chat) => {
     const item = node('button', 'switch__chat');
     item.type = 'button';
-    item.append(node('span', 'switch__name', chat.name), node('span', 'switch__status', STATUS_LABEL[chat.status]));
+    item.append(node('span', 'switch__name', chat.name), node('span', 'switch__status', isWorking(chat) ? STATUS_LABEL[chat.status] : 'Waiting on a delegate'));
     item.onclick = () => activate(chat.id);
     return item;
   }));
@@ -4162,7 +4167,7 @@ async function frugalChanged(text) {
 }
 async function restartChats(button) {
   const open = restartable();
-  const busy = open.filter(isWorking);
+  const busy = await busyChats(open);
   let restarting = open;
   if (busy.length) {
     const choice = await askBusy(busy, busy.length < open.length, {
