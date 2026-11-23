@@ -3166,13 +3166,6 @@ function mcpRow(row) {
     status.title = row.title ?? row.status;
     label.append(status);
   }
-  if (row.import) {
-    const button = node('button', 'btn btn--bar', 'Add to Deck');
-    button.type = 'button';
-    button.dataset.tip = `Only in ${row.accounts.join(', ')}. As a Deck server it runs on any account`;
-    button.onclick = () => showMcpForm(row.import);
-    label.append(button);
-  }
   if (row.signIn) {
     const button = node('button', 'btn btn--bar', row.signIn);
     button.type = 'button';
@@ -3306,9 +3299,8 @@ async function removeMcp(row, button) {
     return;
   }
   message.textContent = `Removed ${row.name}. Removed, below, can restore it.`;
-  const shown = button.closest('.mcp__row');
-  if (shown.nextElementSibling?.classList.contains('mcp__access')) shown.nextElementSibling.remove();
-  shown.remove();
+  button.closest('.mcp__row').remove();
+  mcpAccess.delete(row.name);
   refreshMcp();
 }
 
@@ -3402,9 +3394,9 @@ function removedRow(entry) {
   return row;
 }
 
-function mcpSection(title, rows, empty, collapsed) {
-  const section = node(collapsed ? 'details' : 'section', 'mcp__section');
-  section.append(node(collapsed ? 'summary' : 'h3', 'mcp__title', collapsed ? `${title} (${rows.length})` : title));
+function mcpSection(title, rows, empty) {
+  const section = node('section', 'mcp__section');
+  section.append(node('h4', 'mcp__title', title));
   if (rows.length) section.append(...rows.map(mcpRow));
   else section.append(node('p', 'mcp__empty', empty));
   return section;
@@ -3455,22 +3447,24 @@ function drawMcp(result) {
   });
   const listed = new Set([...rows.map((row) => row.name), ...deckServers.map(([name]) => name), ...moved]);
   const gone = new Set((result.removed ?? []).map((entry) => entry.name));
-  for (const name of new Set([...global, ...on, ...off])) if (!listed.has(name) && !gone.has(name)) rows.push({ name, status: 'Not listed', checked: checked(name), connected: true });
+  for (const name of new Set([...global, ...on, ...off])) if (!listed.has(name) && !gone.has(name)) rows.push({ name, status: 'Not listed', checked: checked(name), connected: true, access: !name.startsWith('plugin:frugal:') });
   const frugal = (row) => row.name.startsWith('plugin:frugal:');
   const sections = [
     ...(rows.some(frugal) ? [mcpSection('Frugal, always on', rows.filter(frugal), '')] : []),
     mcpSection('Account servers', rows.filter((row) => row.connected && !frugal(row)), 'None connected.'),
     Object.assign(mcpSection('Deck servers, any account', deckServers.map(([name, config]) => deckRow(name, config, checked(name), (result.signedIn ?? []).includes(name))), 'None yet. Add one below.'), { id: 'mcp-deck' }),
   ];
-  const failing = rows.filter((row) => !row.connected && !frugal(row));
-  if (failing.length) sections.push(mcpSection('Not connected', failing, '', true));
-  const removed = result.removed ?? [];
-  if (removed.length) {
-    const section = node('details', 'mcp__section');
-    section.append(node('summary', 'mcp__title', `Removed, can be restored (${removed.length})`), ...removed.map(removedRow));
-    sections.push(section);
-  }
   list.replaceChildren(...sections);
+  // Not connected and Removed get their own sections, shown in the nav only when they hold something.
+  const failing = rows.filter((row) => !row.connected && !frugal(row));
+  const removed = result.removed ?? [];
+  $('mcp-failing').replaceChildren(...failing.map(mcpRow));
+  $('mcp-removed').replaceChildren(...removed.map(removedRow));
+  for (const [tab, count] of [['mcp-tab-failing', failing.length], ['mcp-tab-removed', removed.length]]) {
+    $(tab).hidden = !count;
+    $(tab).querySelector('.settings__count').textContent = count;
+  }
+  if ($('mcp-dialog').querySelector('.settings__tab[aria-current][hidden]')) showSection($('mcp-dialog'), 'servers');
   const names = [...rows.map((row) => row.name), ...deckServers.map(([name]) => name)].map((name) => name.toLowerCase());
   drawMcpSuggestions(MCP_RECOMMENDED.filter((server) => !names.some((name) => name.includes(server.name))));
 }
@@ -3498,13 +3492,18 @@ async function openMcpDialog(scope) {
   mcpTouched = false;
   mcpShown = null;
   const kind = scope.workspace ? 'workspace' : scope.group ? 'group' : 'folder';
-  $('mcp-folder').textContent = scope.global ? 'All chats, every account' : scope.workspace ?? scope.group ?? scope.folder;
+  $('mcp-folder').textContent = $('mcp-folder').title = scope.global ? 'All chats, every account' : scope.workspace ?? scope.group ?? scope.folder;
+  showSection($('mcp-dialog'), 'servers');
+  mcpAccess.clear();
+  for (const id of ['mcp-failing', 'mcp-removed']) $(id).replaceChildren();
+  $('mcp-tab-failing').hidden = $('mcp-tab-removed').hidden = true;
   const signIn = 'Deck servers that sign in ask once per account: Sign in opens a window for it.';
   $('mcp-note').textContent = scope.global
     ? `On in every chat unless a folder, group or workspace turns it off. Every other server stays off. Applies to chats started or restarted after saving. ${signIn}`
     : `Applies to chats started or restarted in this ${kind}${kind === 'workspace' ? ' and the ones inside it' : ''}${kind === 'folder' ? '' : ', on top of their folder'}. Servers on in all chats (MCP servers in the menu) start checked. ${signIn}`;
   $('mcp-add-section').hidden = true;
   $('mcp-new').hidden = true;
+  $('mcp-task').value = '';
   $('mcp-ask').value = '';
   syncMcpAsk();
   $('mcp-list').replaceChildren(node('p', 'mcp__empty', 'Loading…'));
@@ -3532,10 +3531,11 @@ function showMcpForm(server) {
   $('mcp-new-target').value = server.target;
   syncMcpTarget();
   $('mcp-new').hidden = false;
+  showSection($('mcp-dialog'), 'add');
   (server.name ? $('mcp-new-add') : $('mcp-new-name')).focus();
 }
 
-$('mcp-list').onchange = () => { mcpTouched = true; };
+$('mcp-dialog').onchange = (event) => { if (event.target.matches('input[data-name]')) mcpTouched = true; };
 // One Haiku request at low effort, as mcp_from_prompt in organizer.rs sends it: ~1,400 tokens of overhead, ~110 of instructions, ~80 out, plus the description.
 const mcpAskTokens = (text) => 1590 + Math.ceil(text.length / 4);
 function syncMcpAsk() {
@@ -3583,14 +3583,15 @@ $('mcp-new-add').onclick = async () => {
   $('mcp-new').hidden = true;
   const section = $('mcp-deck');
   section?.querySelector('.mcp__empty')?.remove();
-  for (const input of $('mcp-list').querySelectorAll(`input[data-name="${CSS.escape(server.name)}"]`)) input.closest('label').remove();
+  for (const input of $('mcp-dialog').querySelectorAll(`input[data-name="${CSS.escape(server.name)}"]`)) input.closest('label').remove();
   section?.append(mcpRow(deckRow(server.name, server.transport === 'stdio' ? { type: 'stdio' } : { url: server.target }, true)));
+  showSection($('mcp-dialog'), 'servers');
   $('mcp-suggest').querySelector(`[data-name="${CSS.escape(server.name)}"]`)?.remove();
 };
 $('mcp-save').onclick = async () => {
   if (!mcpScope || !mcpShown) { $('mcp-dialog').close(); return; }
   // Only the difference from the global list is kept, and names this list did not show stay as they were.
-  const inputs = [...$('mcp-list').querySelectorAll('input[data-name]')];
+  const inputs = [...$('mcp-dialog').querySelectorAll('.mcp__row input[data-name]')];
   const shown = new Set(inputs.map((input) => input.dataset.name));
   const kept = (names) => new Set((names ?? []).filter((name) => !shown.has(name)));
   const global = new Set(mcpShown.global ?? []);

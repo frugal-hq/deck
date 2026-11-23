@@ -463,30 +463,74 @@
     <button class="btn btn--icon settings__close" type="submit" aria-label="Close settings" data-tip="Close settings"><svg class="icon" aria-hidden="true"><use href="#i-x"/></svg></button>
   </form>
 </dialog>
-<dialog id="mcp-dialog" class="organize mcp" closedby="any" aria-labelledby="mcp-title">
-  <h2 id="mcp-title" class="organize__title">MCP servers</h2>
-  <p id="mcp-folder" class="mcp__folder"></p>
-  <p id="mcp-error" class="mcp__message" role="status" hidden></p>
-  <div id="mcp-list" class="mcp__list"></div>
-  <section id="mcp-add-section" class="mcp__section" hidden>
-    <h3 class="mcp__title">Add to the Deck</h3>
-    <div id="mcp-suggest" class="mcp__chips"></div>
-    <label class="organize__field">Or describe one <input id="mcp-ask" type="text" maxlength="2000" autocomplete="off" placeholder="GitHub's official server, a local Postgres..."></label>
-    <div class="organize__actions"><span id="mcp-ask-cost" class="mcp__empty" aria-live="polite"></span><button id="mcp-ask-run" class="btn btn--bar" type="button" disabled>Fill in with Haiku</button></div>
-  </section>
-  <div id="mcp-new" class="mcp__form" hidden>
-    <label class="organize__field">Name <input id="mcp-new-name" type="text" maxlength="64" autocomplete="off" spellcheck="false" placeholder="Letters, digits, - and _"></label>
-    <label class="organize__field">Type <select id="mcp-new-transport"><option value="http">Remote (HTTP)</option><option value="sse">Remote (SSE)</option><option value="stdio">Local command (stdio)</option></select></label>
-    <label class="organize__field"><span id="mcp-new-target-label">URL</span> <input id="mcp-new-target" type="text" maxlength="2000" autocomplete="off" spellcheck="false"></label>
-    <div class="organize__actions">
-      <button id="mcp-new-cancel" class="btn" type="button">Cancel</button>
-      <button id="mcp-new-add" class="btn" type="button">Add</button>
+<dialog id="mcp-dialog" class="organize settings" closedby="any" aria-labelledby="mcp-title">
+  <div class="settings__frame">
+    <nav class="settings__nav" aria-label="MCP sections">
+      <h2 id="mcp-title" class="settings__heading">MCP servers</h2>
+      <p id="mcp-folder" class="settings__scope"></p>
+      <button class="settings__tab" type="button" data-section="servers" aria-current="page"><svg class="icon" aria-hidden="true"><use href="#i-plug"/></svg>Servers</button>
+      <button id="mcp-tab-failing" class="settings__tab" type="button" data-section="failing" hidden><svg class="icon" aria-hidden="true"><use href="#i-x"/></svg>Not connected<span class="settings__count"></span></button>
+      <button id="mcp-tab-removed" class="settings__tab" type="button" data-section="removed" hidden><svg class="icon" aria-hidden="true"><use href="#i-trash"/></svg>Removed<span class="settings__count"></span></button>
+      <button class="settings__tab" type="button" data-section="recommend"><svg class="icon" aria-hidden="true"><use href="#i-tasks"/></svg>Recommend</button>
+      <button class="settings__tab" type="button" data-section="add"><svg class="icon" aria-hidden="true"><use href="#i-plus"/></svg>Add server</button>
+    </nav>
+    <div class="settings__pane">
+      <div class="settings__body">
+        <section class="settings__section" data-section="servers">
+          <h3 class="settings__title">Servers</h3>
+          <p id="mcp-note" class="settings__hint"></p>
+          <div id="mcp-list" class="mcp__list"></div>
+        </section>
+        <section class="settings__section" data-section="failing" hidden>
+          <h3 class="settings__title">Not connected</h3>
+          <p class="settings__hint">Checked ones still load in chats. Sign in or Reconnect fixes most of them.</p>
+          <div id="mcp-failing" class="mcp__list"></div>
+        </section>
+        <section class="settings__section" data-section="removed" hidden>
+          <h3 class="settings__title">Removed</h3>
+          <p class="settings__hint">Restore puts the saved config back. It may need a new sign-in.</p>
+          <div id="mcp-removed" class="mcp__list"></div>
+        </section>
+        <section class="settings__section" data-section="recommend" hidden>
+          <h3 class="settings__title">Recommend</h3>
+          <div class="settings__row">
+            <label class="organize__field">What will you work on? <textarea id="mcp-task" maxlength="2000" placeholder="Fix the login page, write the release notes..."></textarea></label>
+            <p class="settings__hint">Haiku checks or unchecks each server and picks its mode. Nothing is saved until Save.</p>
+            <div class="organize__actions"><button id="mcp-recommend" class="btn" type="button">Recommend</button></div>
+          </div>
+          <div class="settings__row">
+            <span class="organize__check">Auto picks</span>
+            <p class="settings__hint">Servers set to Auto are picked per folder when its first new chat starts, and reused after that.</p>
+            <div class="organize__actions"><button id="mcp-forget-picks" class="btn" type="button" data-tip="The next new chat in each folder picks again">Forget picks</button></div>
+          </div>
+        </section>
+        <section class="settings__section" data-section="add" hidden>
+          <h3 class="settings__title">Add server</h3>
+          <div id="mcp-add-section" class="settings__row">
+            <span class="organize__check">Suggested</span>
+            <div id="mcp-suggest" class="mcp__chips"></div>
+          </div>
+          <div class="settings__row">
+            <label class="organize__field">Describe one <input id="mcp-ask" type="text" maxlength="2000" autocomplete="off" placeholder="GitHub's official server, a local Postgres..."></label>
+            <div class="organize__actions"><span id="mcp-ask-cost" class="settings__hint mcp__cost" aria-live="polite"></span><button id="mcp-ask-run" class="btn" type="button" disabled>Fill in with Haiku</button></div>
+          </div>
+          <div id="mcp-new" class="settings__row mcp__form" hidden>
+            <label class="organize__field">Name <input id="mcp-new-name" type="text" maxlength="64" autocomplete="off" spellcheck="false" placeholder="Letters, digits, - and _"></label>
+            <label class="organize__field">Type <select id="mcp-new-transport"><option value="http">Remote (HTTP)</option><option value="sse">Remote (SSE)</option><option value="stdio">Local command (stdio)</option></select></label>
+            <label class="organize__field"><span id="mcp-new-target-label">URL</span> <input id="mcp-new-target" type="text" maxlength="2000" autocomplete="off" spellcheck="false"></label>
+            <div class="organize__actions">
+              <button id="mcp-new-cancel" class="btn" type="button">Cancel</button>
+              <button id="mcp-new-add" class="btn btn--primary" type="button">Add to the Deck</button>
+            </div>
+          </div>
+        </section>
+      </div>
+      <div class="settings__footer">
+        <p id="mcp-error" class="settings__message" role="status"></p>
+        <button id="mcp-cancel" class="btn" type="button">Cancel</button>
+        <button id="mcp-save" class="btn btn--primary" type="button">Save</button>
+      </div>
     </div>
-  </div>
-  <p id="mcp-note" class="mcp__folder mcp__note"></p>
-  <div class="organize__actions">
-    <button id="mcp-cancel" class="btn" type="button">Cancel</button>
-    <button id="mcp-save" class="btn btn--primary" type="button">Save</button>
   </div>
 </dialog>
 <dialog id="mcp-access-dialog" class="organize access" closedby="any" aria-labelledby="mcp-access-title">
