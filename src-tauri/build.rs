@@ -1,4 +1,4 @@
-use std::{fs, path::Path};
+use std::{fs, io::Write, path::Path, process::{Command, Stdio}};
 
 // The renderer loads xterm and fonts from ../../node_modules, so dist keeps the repo layout for each file it ships, with node_modules renamed vendor.
 const FRONTEND: &[&str] = &[
@@ -34,11 +34,26 @@ fn copy(from: &Path, to: &Path) {
         // The Tauri CLI refuses a frontendDist holding a node_modules folder, so the renderer's paths point at vendor.
         if matches!(from.extension().and_then(|ext| ext.to_str()), Some("css" | "html" | "js")) && from.starts_with("../src/renderer") {
             let text = fs::read_to_string(from).unwrap();
+            if from.extension().is_some_and(|ext| ext == "js") {
+                check_syntax(from, &text);
+            }
             fs::write(to, text.replace("../../node_modules/", "../../vendor/")).unwrap();
         } else {
             fs::copy(from, to).unwrap_or_else(|error| panic!("{}: {error}", from.display()));
         }
     }
+}
+
+// A renderer script that fails to parse leaves the whole UI dead with no error, so the build refuses it.
+fn check_syntax(file: &Path, text: &str) {
+    let Ok(mut node) = Command::new("node").args(["--check", "--input-type=module"]).stdin(Stdio::piped()).stderr(Stdio::piped()).spawn() else {
+        println!("cargo:warning=node not found, {} was not syntax-checked", file.display());
+        return;
+    };
+    node.stdin.take().unwrap().write_all(text.as_bytes()).unwrap();
+    let out = node.wait_with_output().unwrap();
+    assert!(out.status.success(), "{} does not parse:
+{}", file.display(), String::from_utf8_lossy(&out.stderr));
 }
 
 fn main() {
