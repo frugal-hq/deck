@@ -800,7 +800,7 @@ function drawInfo(chat) {
   }));
 }
 
-const TASK_STATUS = { running: 'Running', done: 'Done', failed: 'Failed', 'not delegated': 'Not delegated' };
+const TASK_STATUS = { running: 'Running', done: 'Done', failed: 'Failed', cancelled: 'Cancelled', 'not delegated': 'Not delegated' };
 
 // Accounts go by the name the usage panel shows; a run job with no account ran its command here, with no model.
 const accountLabel = (id) => [...accountState.accounts, ...accountState.others].find((account) => account.id === id)?.name ?? id.replace(/^oc-/, '');
@@ -810,6 +810,15 @@ const taskAccount = (task) => (task.account ? accountLabel(task.account) : task.
 const taskSpan = (seconds) => (seconds == null ? '' : seconds < 60 ? `${seconds} s` : spanText(seconds * 1000));
 // A run job's command names it, without the cd, export and set steps around it.
 const commandTitle = (check) => check.split(/;|&&/).map((part) => part.trim()).filter((part) => part && !/^(set|export|cd|taskkill)\b|^\w+=/.test(part)).join(' && ') || check;
+
+const isFailed = (task) => task.status === 'failed' || task.status === 'not delegated';
+// Every failed try, from frugal 0.28.6 on; a job with no end logged was marked failed after 35 minutes.
+function whyFailed(task) {
+  if (!isFailed(task)) return '';
+  const tries = (task.failures ?? []).map((f) => `- ${accountLabel(f.account)}${f.model ? ` (${f.model})` : ''}, ${taskSpan(f.seconds)}, exit ${f.exit}: ${f.reason}`);
+  if (!tries.length && !task.result) tries.push('No end was logged: the delegate hung, or its chat closed while it ran.');
+  return tries.length ? `Why it failed:\n${tries.join('\n')}` : '';
+}
 
 function taskRow(task) {
   const row = node('div', 'info-panel__agent');
@@ -827,6 +836,7 @@ function taskRow(task) {
   row.dataset.tip = [
     task.check ? label('Command', task.check) : label('Task', task.description),
     label('Status', TASK_STATUS[task.status] ?? task.status),
+    whyFailed(task),
     label('Type', task.kind),
     label('Level', task.level),
     label('Account', task.kind === 'run' && !task.account ? 'ran here, with no model' : taskAccount(task)),
@@ -840,27 +850,26 @@ function taskRow(task) {
   return row;
 }
 
-// Delegate jobs and subagents of the active chat: running ones first, finished ones folded under Done.
+// Delegate jobs and subagents of the active chat: running ones first, then the last 20 that ended, folded by how they ended.
+// Delegated rows first, the chat's own (local) folded under them.
+function drawTaskGroup(name, tasks) {
+  const local = tasks.filter(isLocal);
+  $(`info-${name}`).hidden = !tasks.length;
+  const count = $(`info-${name}-count`);
+  if (count) count.textContent = tasks.length;
+  $(`info-${name}-list`).replaceChildren(...tasks.filter((task) => !isLocal(task)).map(taskRow));
+  $(`info-${name}-local`).hidden = !local.length;
+  $(`info-${name}-local-count`).textContent = local.length;
+  $(`info-${name}-local-list`).replaceChildren(...local.map(taskRow));
+}
 function drawSubagents(tasks) {
   tasks.sort((a, b) => b.updatedAt - a.updatedAt);
-  const running = tasks.filter((task) => task.running);
-  const done = tasks.filter((task) => !task.running).slice(0, 20);
-  const runningDelegated = running.filter((task) => !isLocal(task));
-  const runningLocal = running.filter((task) => isLocal(task));
-  const doneDelegated = done.filter((task) => !isLocal(task));
-  const doneLocal = done.filter((task) => isLocal(task));
+  const ended = tasks.filter((task) => !task.running).slice(0, 20);
   $('info-subagents').hidden = !tasks.length;
-  $('info-running').hidden = !running.length;
-  $('info-running-list').replaceChildren(...runningDelegated.map(taskRow));
-  $('info-running-local').hidden = !runningLocal.length;
-  $('info-running-local-count').textContent = runningLocal.length;
-  $('info-running-local-list').replaceChildren(...runningLocal.map(taskRow));
-  $('info-done').hidden = !done.length;
-  $('info-done-count').textContent = done.length;
-  $('info-done-list').replaceChildren(...doneDelegated.map(taskRow));
-  $('info-done-local').hidden = !doneLocal.length;
-  $('info-done-local-count').textContent = doneLocal.length;
-  $('info-done-local-list').replaceChildren(...doneLocal.map(taskRow));
+  drawTaskGroup('running', tasks.filter((task) => task.running));
+  drawTaskGroup('failed', ended.filter(isFailed));
+  drawTaskGroup('cancelled', ended.filter((task) => task.status === 'cancelled'));
+  drawTaskGroup('done', ended.filter((task) => !isFailed(task) && task.status !== 'cancelled'));
 }
 
 function syncInfoPanel() {

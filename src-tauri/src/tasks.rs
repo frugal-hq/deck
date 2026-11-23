@@ -189,7 +189,7 @@ fn job_task(job: &Value, now: f64) -> Value {
     let mut task = Map::new();
     task.insert("name".into(), job["id"].clone());
     // JSON.stringify drops undefined fields, so a field the job never logged stays out.
-    for (key, from) in [("description", "brief"), ("model", "model"), ("account", "account"), ("cost", "cost"), ("kind", "kind"), ("level", "level"), ("tokens", "tokens")] {
+    for (key, from) in [("description", "brief"), ("model", "model"), ("account", "account"), ("cost", "cost"), ("kind", "kind"), ("level", "level"), ("tokens", "tokens"), ("failures", "failures")] {
         if let Some(value) = job.get(from) {
             task.insert(key.into(), value.clone());
         }
@@ -239,6 +239,9 @@ fn save_history(saved: &mut Option<HashSet<String>>, chat: &str, cwd: &str, task
         let (Some(key), Some(at), Some(fields)) = (task["key"].as_str(), task["updatedAt"].as_f64(), task.as_object()) else { continue };
         if task["running"] == true || !saved.insert(key.to_owned()) {
             continue;
+        }
+        if task["status"] == "failed" || task["status"] == "not delegated" {
+            crate::debug_log!("tasks", "{key} {}: {} {}", task["status"], task["failures"], task["result"]);
         }
         let mut line = Map::new();
         line.insert("at".into(), json!(crate::elevated::iso(at as u64)));

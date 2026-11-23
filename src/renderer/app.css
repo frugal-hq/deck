@@ -202,6 +202,7 @@ body:has(.info-panel:not([hidden])) { grid-template-columns: var(--sidebar-width
 .info-panel__status.is-running { color: var(--color-cool); }
 .info-panel__status.is-failed, .info-panel__status.is-not-delegated { color: var(--color-bad); }
 .info-panel summary { padding: var(--space-xs); color: var(--color-ink-2); font-size: var(--text-sm); font-weight: 500; cursor: pointer; }
+#info-subagents > :not([hidden]) ~ :not([hidden]) { border-block-start: var(--rule-hair) solid var(--color-rule); }
 .info-panel__local > summary { padding: var(--space-2xs) var(--space-xs); color: var(--color-muted); font-size: var(--text-xs); font-weight: 500; cursor: pointer; }
 
 .sidebar__status {
