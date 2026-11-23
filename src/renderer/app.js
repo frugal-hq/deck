@@ -4046,6 +4046,7 @@ $('app-menu').onclick = () => {
     { label: 'Tasks', run: openTasks, icon: 'tasks' },
     { label: 'Settings', run: () => openSettings(), icon: 'settings' },
     { label: 'MCP servers', run: () => openMcpDialog({ global: true }), icon: 'plug' },
+    { label: 'Plugins', run: openPluginsDialog, icon: 'puzzle' },
     { label: 'Updates', run: openUpdates, icon: 'update' },
   ], $('app-menu'));
 };
