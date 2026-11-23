@@ -184,6 +184,7 @@
     onAccounts: (callback) => on('accounts:changed', callback),
     getSessions: () => invoke('sessions:get'),
     getAllSessions: () => invoke('sessions:all'),
+    importSessions: (ids) => invoke('import:sessions', { ids }),
     searchMessages: (query) => invoke('sessions:search', { query }),
     searchAi: (options, query) => invoke('search:ai', { options, query }),
     organize: (id, organization) => send('sessions:organize', { id, organization }),

@@ -413,6 +413,10 @@ fn launch(app: &AppHandle, id: &str, place: &str, folder: PathBuf, size: (u16, u
         command.args(["--mcp-config", &config.to_string()]);
     }
     command.args([if resume { "--resume" } else { "--session-id" }, id, "--settings", &settings.to_string()]);
+    // A chat opened in the Deck belongs to the Deck.
+    if let Err(error) = crate::index::mark_deck_session(id) {
+        crate::debug_log!("chat", "{id}: could not mark Deck session: {error}");
+    }
     // Every account runs the main account's frugal: --plugin-dir replaces its own install, so one update reaches them all.
     if let Some(dir) = frugal_plugin {
         command.arg("--plugin-dir");

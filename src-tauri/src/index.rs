@@ -238,6 +238,7 @@ pub fn open_index(file: &str) -> Result<Connection> {
     handoff_hash TEXT,
     handoff_goal TEXT
   )"#)?;
+    db.execute_batch("CREATE TABLE IF NOT EXISTS deck_sessions (id TEXT PRIMARY KEY)")?;
     db.execute_batch(r#"CREATE TABLE IF NOT EXISTS session_org (
     session_id TEXT PRIMARY KEY,
     pinned INTEGER NOT NULL,
@@ -267,6 +268,26 @@ pub fn open_index(file: &str) -> Result<Connection> {
     db.execute_batch(r#"CREATE VIRTUAL TABLE IF NOT EXISTS session_text USING fts5(session_id UNINDEXED, body, tokenize = 'unicode61 remove_diacritics 2')"#)?;
     if stale { db.execute_batch("PRAGMA user_version = 3")?; }
     Ok(db)
+}
+
+pub fn mark_deck_session(id: &str) -> Result<()> {
+    mark_deck_sessions(&[id.to_owned()])
+}
+
+pub fn mark_deck_sessions(ids: &[String]) -> Result<()> {
+    let home = PathBuf::from(std::env::var_os("USERPROFILE").ok_or("No user folder.")?);
+    let db = open_index(&home.join(".frugal-deck").join("deck.db").to_string_lossy())?;
+    save_deck_sessions(&db, ids)
+}
+
+fn save_deck_sessions(db: &Connection, ids: &[String]) -> Result<()> {
+    let tx = db.unchecked_transaction()?;
+    {
+        let mut save = tx.prepare("INSERT OR IGNORE INTO deck_sessions (id) VALUES (?1)")?;
+        for id in ids { save.execute([id])?; }
+    }
+    tx.commit()?;
+    Ok(())
 }
 
 fn read_lines(mut file: impl Read, start: u64, mut on_line: impl FnMut(&str)) -> std::io::Result<u64> {
@@ -513,7 +534,8 @@ pub fn list_index(db: &Connection) -> Result<Value> {
     let mut folders = HashMap::new();
     let mut sessions = Vec::new();
     for mut row in all(db, r#"SELECT id, file, cwd, COALESCE(NULLIF(custom_title, ''), NULLIF(a.title, ''), NULLIF(ai_title, ''), first_prompt, 'Untitled') AS title, last_at AS lastAt, started_at AS startedAt, turns, COALESCE(pinned, 0) AS pinned, space, COALESCE(tags, '[]') AS tags,
-      CASE WHEN g.name = '' THEN NULL ELSE COALESCE(g.name, a.topic) END AS topic, NULLIF(g.name, '') AS userGroup, COALESCE(g.name = '', 0) AS noGroup, a.title AS autoTitle, NULLIF(custom_title, '') AS customTitle, NULLIF(ai_title, '') AS aiTitle, first_prompt AS firstPrompt, ar.at AS archivedAt
+      CASE WHEN g.name = '' THEN NULL ELSE COALESCE(g.name, a.topic) END AS topic, NULLIF(g.name, '') AS userGroup, COALESCE(g.name = '', 0) AS noGroup, a.title AS autoTitle, NULLIF(custom_title, '') AS customTitle, NULLIF(ai_title, '') AS aiTitle, first_prompt AS firstPrompt, ar.at AS archivedAt,
+      EXISTS(SELECT 1 FROM deck_sessions d WHERE d.id = sessions.id) AS deck
     FROM sessions LEFT JOIN session_org o ON o.session_id = id LEFT JOIN session_auto a ON a.session_id = id LEFT JOIN session_group g ON g.session_id = id LEFT JOIN session_archived ar ON ar.session_id = id
     WHERE turns > 0 AND cwd IS NOT NULL AND last_at IS NOT NULL AND COALESCE(entrypoint, '') <> 'sdk-cli'
     ORDER BY last_at DESC"#, [])? {
@@ -523,6 +545,7 @@ pub fn list_index(db: &Connection) -> Result<Value> {
         if temporary { continue; }
         row["missing"] = json!(missing);
         row["pinned"] = json!(row["pinned"] == 1);
+        row["deck"] = json!(row["deck"] == 1);
         row["noGroup"] = json!(row["noGroup"] == 1);
         row["archived"] = json!(!row["archivedAt"].is_null());
         row["stored"] = json!(archive::is_copy(row["file"].as_str().unwrap()));
@@ -1063,6 +1086,16 @@ pub async fn sessions_search(query: String) -> std::result::Result<Vec<String>, 
 }
 
 #[tauri::command]
+pub fn import_sessions(index: State<Index>, ids: Vec<String>) -> std::result::Result<(), String> {
+    if ids.len() > 100000 || ids.iter().any(|id| id.is_empty()) {
+        return Err("Session ids must be non-empty strings, at most 100000.".into());
+    }
+    mark_deck_sessions(&ids).map_err(|e| e.to_string())?;
+    index.run(|_, _| Ok(true));
+    Ok(())
+}
+
+#[tauri::command]
 pub fn sessions_organize(index: State<Index>, id: String, organization: Value) {
     index.run(move |db, _| save_organization(db, &id, &organization));
 }
@@ -1257,6 +1290,40 @@ mod tests {
     }
 
     const HAND: &str = "Goal: Fix the deck\nDone: built\nPending: reviewed";
+
+    #[test]
+    fn deck_sessions_are_boolean_and_survive_scans() {
+        let f = Fixture::new();
+        f.short();
+        assert_eq!(f.session(1)["deck"], false);
+        save_deck_sessions(&f.db, &[id(1)]).unwrap();
+        f.scan();
+        assert_eq!(f.session(1)["deck"], true);
+        fs::remove_file(f.file(1)).unwrap();
+        f.scan();
+        f.write(1, &f.user("restored", "2026-02-01T00:00:00Z"));
+        f.scan();
+        assert_eq!(f.session(1)["deck"], true);
+        assert!(listed(&f.db, false).unwrap()["progress"].is_null());
+    }
+
+    #[test]
+    fn mark_deck_sessions_imports_two_ids() {
+        let f = Fixture::new();
+        f.write(1, &f.user("first", "2026-02-01T00:00:00Z"));
+        f.write(2, &f.user("second", "2026-02-02T00:00:00Z"));
+        f.scan();
+        assert_eq!(f.session(1)["deck"], false);
+        assert_eq!(f.session(2)["deck"], false);
+        save_deck_sessions(&f.db, &[id(1), id(2)]).unwrap();
+        save_deck_sessions(&f.db, &[id(1), id(2)]).unwrap();
+        assert_eq!(f.session(1)["deck"], true);
+        assert_eq!(f.session(2)["deck"], true);
+        assert_eq!(f.db.query_row("SELECT count(*) FROM deck_sessions", [], |r| r.get::<_, i64>(0)).unwrap(), 2);
+        f.db.execute_batch("CREATE TRIGGER reject_deck_session BEFORE INSERT ON deck_sessions WHEN NEW.id = 'reject' BEGIN SELECT RAISE(ABORT, 'rejected'); END").unwrap();
+        assert!(save_deck_sessions(&f.db, &[id(3), "reject".into()]).is_err());
+        assert_eq!(f.db.query_row("SELECT count(*) FROM deck_sessions", [], |r| r.get::<_, i64>(0)).unwrap(), 2);
+    }
 
     #[test]
     fn read_beside_other_instance_lock() {
@@ -1872,7 +1939,7 @@ mod tests {
             "sessions": [{"id": id(1), "file": f.file(1), "cwd": f.cwd, "title": "original", "lastAt": "2026-01-01T00:00:00Z",
                 "startedAt": "2026-01-01T00:00:00Z", "turns": 1, "missing": false, "pinned": false, "space": null, "tags": [], "topic": null,
                 "userGroup": null, "noGroup": false, "autoTitle": null, "customTitle": null, "aiTitle": null, "firstPrompt": "original",
-                "archivedAt": null, "archived": false, "stored": false, "parentId": null, "chatId": id(1)}]}));
+                "archivedAt": null, "archived": false, "stored": false, "deck": false, "parentId": null, "chatId": id(1)}]}));
         for value in [Value::Null, json!(false), json!(0), json!("")] {
             f.append(1, &f.user_extra("count", "2026-01-02T00:00:00Z", json!({"toolUseResult": value, "isMeta": value, "isSidechain": value})));
         }

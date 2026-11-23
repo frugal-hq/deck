@@ -197,6 +197,7 @@ fn main() {
             debug::debug_reveal,
             index::sessions_get,
             index::sessions_all,
+            index::import_sessions,
             index::sessions_search,
             index::sessions_organize,
             index::sessions_set_group,

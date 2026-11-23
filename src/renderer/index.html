@@ -303,9 +303,13 @@
           <label class="organize__check"><input id="settings-confirm-close" type="checkbox"> Ask before closing a running chat</label>
           <p class="settings__hint">Asks when Claude is still working in the chat.</p>
         </div>
-        <div class="settings__row" data-tip="Claude Code CLI and Claude Desktop sessions in your accounts folders. Off lists only chats started here.">
-          <label class="organize__check"><input id="settings-show-external" type="checkbox"> Show sessions started outside Frugal Deck</label>
-          <p class="settings__hint">Claude Code CLI and Claude Desktop sessions in your accounts folders. Off lists only chats started here.</p>
+        <div class="settings__row">
+          <span class="organize__check">Sessions started outside Frugal Deck</span>
+          <p class="settings__hint">Claude Code CLI and Claude Desktop sessions in your accounts folders. Chats you open here are added on their own.</p>
+          <div class="debug__actions">
+            <span id="settings-external-count" class="settings__hint"></span>
+            <button id="settings-import-external" class="btn" type="button">Import</button>
+          </div>
         </div>
         <div class="settings__row" data-tip="The chime tells you a chat finished or needs you while you look elsewhere">
           <label class="organize__check">Notification volume

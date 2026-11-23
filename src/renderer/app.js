@@ -2371,18 +2371,29 @@ let groupNames = [];
 
 function renderSessions(index) {
   currentIndex = index;
+  if (!index.indexing && !index.error && localStorage.getItem('externalImported') === null) {
+    localStorage.setItem('externalImported', 'true');
+    const ids = index.sessions.filter((s) => !s.deck).map((s) => s.id);
+    if (localStorage.getItem('showExternal') !== 'false' && ids.length) {
+      deck.importSessions(ids).catch((error) => deck.debugLog('index', `Could not import external sessions: ${error}`));
+    }
+  }
   if (!restored && !index.indexing) restoreChats(index);
   const status = indexStatus(index);
   $('index-status').hidden = !status;
   $('index-status').textContent = status;
 
   // Transcripts change every second during a turn; rebuilding only when the list changes keeps focus and scroll.
-  const signature = `${sessionView}\n${index.indexing}\n${$('space-filter').value}\n${index.modelJoins}\n${index.modelWorkspaces}\n${JSON.stringify(index.workspaces ?? {})}\n${JSON.stringify(index.workspaceParents ?? {})}\n${index.ambiguous.length}\n${index.sessions.map((s) => `${s.id}\n${s.chatId}\n${s.title}\n${s.cwd}\n${shortDate.format(new Date(s.lastAt))}\n${s.pinned}\n${s.space}\n${s.tags}\n${s.topic}\n${s.userGroup ?? ''}`).join('\n')}`;
-  if (signature === drawnSignature) return;
+  const signature = `${sessionView}\n${index.indexing}\n${$('space-filter').value}\n${index.modelJoins}\n${index.modelWorkspaces}\n${JSON.stringify(index.workspaces ?? {})}\n${JSON.stringify(index.workspaceParents ?? {})}\n${index.ambiguous.length}\n${index.sessions.map((s) => `${s.id}\n${s.chatId}\n${s.title}\n${s.cwd}\n${shortDate.format(new Date(s.lastAt))}\n${s.pinned}\n${s.deck}\n${s.space}\n${s.tags}\n${s.topic}\n${s.userGroup ?? ''}`).join('\n')}`;
+  if (signature === drawnSignature) {
+    updateExternalCount();
+    return;
+  }
   drawnSignature = signature;
   if (sortDialog.open) drawSortEstimate();
 
-  const allChats = groupChats(index.sessions);
+  const sessions = index.sessions.filter((s) => s.deck);
+  const allChats = groupChats(sessions);
   chatsById.clear();
   for (const chat of allChats) chatsById.set(chat.chatId, chat);
 
@@ -2413,6 +2424,7 @@ function renderSessions(index) {
   markActiveSession();
   if (focused) $('groups').querySelector(`[data-session="${focused}"]`)?.focus();
   render();
+  updateExternalCount();
 }
 
 const palette = $('palette');
@@ -3017,6 +3029,12 @@ function showSettingsSection(name) {
   localStorage.setItem('settingsSection', name);
 }
 
+function updateExternalCount() {
+  const n = currentIndex?.sessions.filter((s) => !s.deck).length ?? 0;
+  $('settings-external-count').textContent = n ? `${n} not imported` : 'All imported';
+  $('settings-import-external').disabled = n === 0;
+}
+
 async function openSettings(section = localStorage.getItem('settingsSection')) {
   showSettingsSection(section);
   $('settings-confirm-close').checked = confirmsClose();
@@ -3031,6 +3049,7 @@ async function openSettings(section = localStorage.getItem('settingsSection')) {
   $('settings-mouse').checked = await deck.getMouse();
   $('settings-keep-transcripts').checked = await deck.getKeepTranscripts();
   $('settings-frugal').checked = startsWithFrugal();
+  updateExternalCount();
   $('settings-ai-excerpts').checked = sendsExcerpts();
   $('settings-mic').checked = allowsMic();
   $('settings-clipboard').checked = allowsClipboard();
@@ -3863,6 +3882,15 @@ $('settings-volume').onchange = (event) => {
 checkVoice();
 $('settings-voice-language').onchange = (event) => localStorage.setItem('voiceLanguage', event.target.value);
 $('settings-frugal').onchange = (event) => localStorage.setItem('startWithFrugal', event.target.checked);
+$('settings-import-external').onclick = async () => {
+  const ids = currentIndex?.sessions.filter((s) => !s.deck).map((s) => s.id) ?? [];
+  $('settings-import-external').disabled = true;
+  try {
+    await deck.importSessions(ids);
+  } catch (error) {
+    askConfirm('Could not import external sessions', String(error), 'OK');
+  } finally { updateExternalCount(); }
+};
 $('settings-ai-excerpts').onchange = (event) => localStorage.setItem('aiSearchExcerpts', event.target.checked);
 $('settings-reopen').onchange = (event) => localStorage.setItem('reopenChats', event.target.checked);
 $('settings-tooltips').onchange = (event) => localStorage.setItem('tooltipPlacement', event.target.value);
