@@ -51,178 +51,178 @@
 </svg>
 <header class="bar" data-tauri-drag-region>
   <span class="mark" data-tauri-drag-region><svg class="mark__logo" aria-hidden="true"><use href="#i-logo"/></svg>Frugal Deck</span>
-  <nav id="tabs" class="tabs" data-tauri-drag-region aria-label="Open chats"></nav>
+  <nav id="tabs" class="tabs" data-tauri-drag-region aria-label="Open chats" data-i18n-aria-label="bar.tabs.label"></nav>
   <div class="bar__actions">
-    <button id="new" class="btn btn--bar btn--icon" type="button" aria-label="New chat" data-tip="Start a new chat in the default folder"><svg class="icon" aria-hidden="true"><use href="#i-plus"/></svg></button>
-    <button id="app-menu" class="btn btn--bar btn--icon" type="button" aria-label="Menu" aria-haspopup="menu" data-tip="Accounts, settings and a chat in another folder"><svg class="icon" aria-hidden="true"><use href="#i-menu"/></svg></button>
+    <button id="new" class="btn btn--bar btn--icon" type="button" aria-label="New chat" data-tip="Start a new chat in the default folder" data-i18n-aria-label="bar.new.label" data-i18n-tip="bar.new.tip"><svg class="icon" aria-hidden="true"><use href="#i-plus"/></svg></button>
+    <button id="app-menu" class="btn btn--bar btn--icon" type="button" aria-label="Menu" aria-haspopup="menu" data-tip="Accounts, settings and a chat in another folder" data-i18n-aria-label="bar.menu.label" data-i18n-tip="bar.menu.tip"><svg class="icon" aria-hidden="true"><use href="#i-menu"/></svg></button>
   </div>
-  <div class="window-controls" role="group" aria-label="Window">
-    <button class="window-control" type="button" data-window-action="minimize" aria-label="Minimize" data-tip="Minimize the window"><svg class="icon" aria-hidden="true"><use href="#i-window-minimize"/></svg></button>
+  <div class="window-controls" role="group" aria-label="Window" data-i18n-aria-label="bar.window.label">
+    <button class="window-control" type="button" data-window-action="minimize" aria-label="Minimize" data-tip="Minimize the window" data-i18n-aria-label="bar.minimize.label" data-i18n-tip="bar.minimize.tip"><svg class="icon" aria-hidden="true"><use href="#i-window-minimize"/></svg></button>
     <button id="window-maximize" class="window-control" type="button" data-window-action="maximize" aria-label="Maximize" data-tip="Maximize the window"><svg class="icon" aria-hidden="true"><use href="#i-window-maximize"/></svg></button>
-    <button class="window-control window-control--close" type="button" data-window-action="close" aria-label="Close" data-tip="Close Frugal Deck"><svg class="icon" aria-hidden="true"><use href="#i-x"/></svg></button>
+    <button class="window-control window-control--close" type="button" data-window-action="close" aria-label="Close" data-tip="Close Frugal Deck" data-i18n-aria-label="common.close" data-i18n-tip="bar.close.tip"><svg class="icon" aria-hidden="true"><use href="#i-x"/></svg></button>
   </div>
 </header>
-<aside class="sidebar" aria-label="Chats">
+<aside class="sidebar" aria-label="Chats" data-i18n-aria-label="sidebar.label">
   <div class="sidebar__tools">
-    <button id="search" class="btn" type="button" aria-label="Search" data-tip="Find a chat by title, folder or message (Ctrl+Shift+K)"><svg class="icon" aria-hidden="true"><use href="#i-search"/></svg><span class="btn__label">Search</span></button>
-    <button id="sort" class="btn" type="button" aria-label="Organize" data-tip="Group your chats by folder or topic"><svg class="icon" aria-hidden="true"><use href="#i-sort"/></svg><span class="btn__label">Organize</span></button>
-    <button id="archived" class="btn" type="button" aria-label="Archived" data-tip="Archived chats and the chat each came from"><svg class="icon" aria-hidden="true"><use href="#i-archive"/></svg><span class="btn__label">Archived</span></button>
+    <button id="search" class="btn" type="button" aria-label="Search" data-tip="Find a chat by title, folder or message (Ctrl+Shift+K)" data-i18n-aria-label="sidebar.search.label" data-i18n-tip="sidebar.search.tip"><svg class="icon" aria-hidden="true"><use href="#i-search"/></svg><span class="btn__label" data-i18n="sidebar.search.label">Search</span></button>
+    <button id="sort" class="btn" type="button" aria-label="Organize" data-tip="Group your chats by folder or topic" data-i18n-aria-label="sidebar.organize.label" data-i18n-tip="sidebar.organize.tip"><svg class="icon" aria-hidden="true"><use href="#i-sort"/></svg><span class="btn__label" data-i18n="sidebar.organize.label">Organize</span></button>
+    <button id="archived" class="btn" type="button" aria-label="Archived" data-tip="Archived chats and the chat each came from" data-i18n-aria-label="sidebar.archived.label" data-i18n-tip="sidebar.archived.tip"><svg class="icon" aria-hidden="true"><use href="#i-archive"/></svg><span class="btn__label" data-i18n="sidebar.archived.label">Archived</span></button>
   </div>
   <p id="index-status" class="sidebar__status" role="status" hidden></p>
   <progress id="index-progress" class="index__progress" hidden></progress>
-  <select id="space-filter" class="space-filter" aria-label="Filter by workspace" hidden></select>
+  <select id="space-filter" class="space-filter" aria-label="Filter by workspace" hidden data-i18n-aria-label="sidebar.space-filter.label"></select>
   <div id="groups"></div>
 </aside>
-<div id="sidebar-resize" class="sidebar__resize" role="separator" aria-orientation="vertical" aria-label="Resize the sidebar" tabindex="0" data-tip="Drag to resize. Double-click to reset"></div>
+<div id="sidebar-resize" class="sidebar__resize" role="separator" aria-orientation="vertical" aria-label="Resize the sidebar" tabindex="0" data-tip="Drag to resize. Double-click to reset" data-i18n-aria-label="sidebar.resize.label" data-i18n-tip="common.resize.tip"></div>
 <main id="stage" class="stage">
   <section id="empty" class="empty">
-    <h1>Start a chat</h1>
-    <p>New chats open in Frugal Deck/Sessions in your home folder. Choose a folder to work on a project.</p>
+    <h1 data-i18n="empty.title">Start a chat</h1>
+    <p data-i18n="empty.text">New chats open in Frugal Deck/Sessions in your home folder. Choose a folder to work on a project.</p>
     <div class="empty__actions">
-      <button id="start" class="btn btn--primary" type="button" data-tip="Start a new chat in the default folder"><svg class="icon" aria-hidden="true"><use href="#i-plus"/></svg>New chat</button>
-      <button id="pick" class="btn" type="button" data-tip="Choose a folder and start a chat there"><svg class="icon" aria-hidden="true"><use href="#i-folder"/></svg>Choose folder…</button>
+      <button id="start" class="btn btn--primary" type="button" data-tip="Start a new chat in the default folder" data-i18n-tip="empty.start.tip" data-i18n="empty.start.label"><svg class="icon" aria-hidden="true"><use href="#i-plus"/></svg>New chat</button>
+      <button id="pick" class="btn" type="button" data-tip="Choose a folder and start a chat there" data-i18n-tip="empty.pick.tip" data-i18n="empty.pick.label"><svg class="icon" aria-hidden="true"><use href="#i-folder"/></svg>Choose folder…</button>
     </div>
   </section>
   <p id="notice" class="notice" role="alert" hidden></p>
   <section id="handoff" class="handoff" aria-labelledby="handoff-title" hidden>
-    <h2 id="handoff-title" class="handoff__title">Handoff ready</h2>
+    <h2 id="handoff-title" class="handoff__title" data-i18n="handoff.title">Handoff ready</h2>
     <p id="handoff-status" class="handoff__status" role="status"></p>
-    <textarea id="handoff-text" class="handoff__text" spellcheck="false" aria-label="Prompt for the new chat"></textarea>
-    <textarea id="handoff-note" class="handoff__text handoff__note" placeholder="Add a note for the new chat. Typing pauses the countdown" aria-label="Note for the new chat"></textarea>
+    <textarea id="handoff-text" class="handoff__text" spellcheck="false" aria-label="Prompt for the new chat" data-i18n-aria-label="handoff.text.label"></textarea>
+    <textarea id="handoff-note" class="handoff__text handoff__note" placeholder="Add a note for the new chat. Typing pauses the countdown" aria-label="Note for the new chat" data-i18n-placeholder="handoff.note.placeholder" data-i18n-aria-label="handoff.note.label"></textarea>
     <div class="handoff__actions">
       <button id="handoff-stop" class="btn" type="button"></button>
-      <button id="handoff-save" class="btn" type="button" data-tip="Keep your changes and resume the countdown" hidden>Save and wait</button>
-      <button id="handoff-continue" class="btn btn--primary" type="button" data-tip="Start a new chat with this prompt, in the same folder and account">Continue in new chat</button>
+      <button id="handoff-save" class="btn" type="button" data-tip="Keep your changes and resume the countdown" hidden data-i18n-tip="handoff.save.tip" data-i18n="handoff.save.label">Save and wait</button>
+      <button id="handoff-continue" class="btn btn--primary" type="button" data-tip="Start a new chat with this prompt, in the same folder and account" data-i18n-tip="handoff.continue.tip" data-i18n="handoff.continue.label">Continue in new chat</button>
     </div>
   </section>
 </main>
 <aside id="info-panel" class="info-panel" aria-labelledby="info-heading" hidden>
-  <h2 id="info-heading">Chat details</h2>
+  <h2 id="info-heading" data-i18n="info.title">Chat details</h2>
   <dl id="info-details"></dl>
   <section id="info-subagents" aria-labelledby="info-subagents-heading" hidden>
     <div id="info-running">
-      <h2 id="info-subagents-heading">In progress</h2>
+      <h2 id="info-subagents-heading" data-i18n="info.running.title">In progress</h2>
       <div id="info-running-list"></div>
       <details class="info-panel__local" id="info-running-local" hidden>
-        <summary>Local <span id="info-running-local-count" class="info-panel__muted"></span></summary>
+        <summary data-i18n="info.local.label">Local <span id="info-running-local-count" class="info-panel__muted"></span></summary>
         <div id="info-running-local-list"></div>
       </details>
     </div>
     <details id="info-failed" hidden>
-      <summary>Failed <span id="info-failed-count" class="info-panel__muted"></span></summary>
+      <summary data-i18n="info.failed.label">Failed <span id="info-failed-count" class="info-panel__muted"></span></summary>
       <div id="info-failed-list"></div>
       <details class="info-panel__local" id="info-failed-local" hidden>
-        <summary>Local <span id="info-failed-local-count" class="info-panel__muted"></span></summary>
+        <summary data-i18n="info.local.label">Local <span id="info-failed-local-count" class="info-panel__muted"></span></summary>
         <div id="info-failed-local-list"></div>
       </details>
     </details>
     <details id="info-cancelled" hidden>
-      <summary>Cancelled <span id="info-cancelled-count" class="info-panel__muted"></span></summary>
+      <summary data-i18n="info.cancelled.label">Cancelled <span id="info-cancelled-count" class="info-panel__muted"></span></summary>
       <div id="info-cancelled-list"></div>
       <details class="info-panel__local" id="info-cancelled-local" hidden>
-        <summary>Local <span id="info-cancelled-local-count" class="info-panel__muted"></span></summary>
+        <summary data-i18n="info.local.label">Local <span id="info-cancelled-local-count" class="info-panel__muted"></span></summary>
         <div id="info-cancelled-local-list"></div>
       </details>
     </details>
     <details id="info-done">
-      <summary>Done <span id="info-done-count" class="info-panel__muted"></span></summary>
+      <summary data-i18n="info.done.label">Done <span id="info-done-count" class="info-panel__muted"></span></summary>
       <div id="info-done-list"></div>
       <details class="info-panel__local" id="info-done-local" hidden>
-        <summary>Local <span id="info-done-local-count" class="info-panel__muted"></span></summary>
+        <summary data-i18n="info.local.label">Local <span id="info-done-local-count" class="info-panel__muted"></span></summary>
         <div id="info-done-local-list"></div>
       </details>
     </details>
   </section>
 </aside>
-<div id="info-resize" class="sidebar__resize info-panel__resize" role="separator" aria-orientation="vertical" aria-label="Resize the details panel" tabindex="0" data-tip="Drag to resize. Double-click to reset" hidden></div>
+<div id="info-resize" class="sidebar__resize info-panel__resize" role="separator" aria-orientation="vertical" aria-label="Resize the details panel" tabindex="0" data-tip="Drag to resize. Double-click to reset" hidden data-i18n-aria-label="info.resize.label" data-i18n-tip="common.resize.tip"></div>
 <footer id="readout" class="readout" hidden>
   <svg class="icon" aria-hidden="true"><use href="#i-folder"/></svg>
   <span id="path" class="measured readout__path"></span>
   <button id="chat-history" class="btn btn--bar" type="button" hidden><svg class="icon" aria-hidden="true"><use href="#i-topic"/></svg><span class="measured"></span></button>
-  <button id="attach" class="btn btn--bar btn--icon" type="button" aria-label="Attach files" data-tip="Attach files to this chat. You can also drop files and folders on it" hidden><svg class="icon" aria-hidden="true"><use href="#i-attach"/></svg></button>
+  <button id="attach" class="btn btn--bar btn--icon" type="button" aria-label="Attach files" data-tip="Attach files to this chat. You can also drop files and folders on it" hidden data-i18n-aria-label="readout.attach.label" data-i18n-tip="readout.attach.tip"><svg class="icon" aria-hidden="true"><use href="#i-attach"/></svg></button>
   <button id="link-chat" class="btn btn--bar" type="button" hidden><svg class="icon" aria-hidden="true"><use href="#i-link"/></svg><span></span></button>
   <button id="usage-open" class="btn" type="button" popovertarget="usage" hidden>Usage</button>
   <button id="info-toggle" class="btn btn--bar btn--icon" type="button" aria-label="Show details" aria-controls="info-panel" aria-expanded="false" data-tip="Show details"><svg class="icon" aria-hidden="true"><use href="#i-more"/></svg></button>
-  <button id="mcp-servers" class="btn btn--bar btn--icon" type="button" aria-label="MCP servers for this folder" data-tip="MCP servers for this folder"><svg class="icon" aria-hidden="true"><use href="#i-plug"/></svg></button>
-  <button id="plugins-open" class="btn btn--bar btn--icon" type="button" aria-label="Plugins" data-tip="Plugins"><svg class="icon" aria-hidden="true"><use href="#i-puzzle"/></svg></button>
+  <button id="mcp-servers" class="btn btn--bar btn--icon" type="button" aria-label="MCP servers for this folder" data-tip="MCP servers for this folder" data-i18n-aria-label="readout.mcp.label" data-i18n-tip="readout.mcp.label"><svg class="icon" aria-hidden="true"><use href="#i-plug"/></svg></button>
+  <button id="plugins-open" class="btn btn--bar btn--icon" type="button" aria-label="Plugins" data-tip="Plugins" data-i18n-aria-label="readout.plugins.label" data-i18n-tip="readout.plugins.label"><svg class="icon" aria-hidden="true"><use href="#i-puzzle"/></svg></button>
 </footer>
-<div id="usage" class="usage" popover="auto" aria-label="Usage">
-  <div id="meter-context" class="meter" hidden>Context <meter aria-label="Context used" min="0" max="100" low="60" high="80" optimum="0"></meter><span class="measured"></span></div>
-  <div id="usage-tokens" class="meter" hidden>Chat tokens <span class="measured"></span></div>
+<div id="usage" class="usage" popover="auto" aria-label="Usage" data-i18n-aria-label="usage.label">
+  <div id="meter-context" class="meter" hidden data-i18n="usage.context.label">Context <meter aria-label="Context used" min="0" max="100" low="60" high="80" optimum="0" data-i18n-aria-label="usage.context.meter.label"></meter><span class="measured"></span></div>
+  <div id="usage-tokens" class="meter" hidden data-i18n="usage.tokens.label">Chat tokens <span class="measured"></span></div>
   <div id="accounts-state" class="empty" hidden>
     <p id="accounts-status" role="status"></p>
-    <button id="accounts-retry" class="btn" type="button" hidden>Retry</button>
+    <button id="accounts-retry" class="btn" type="button" hidden data-i18n="common.retry">Retry</button>
   </div>
   <div id="accounts" class="accounts"></div>
   <details id="usage-others" class="usage__others" hidden>
-    <summary>Delegates <span id="others-count" class="usage__count"></span></summary>
+    <summary data-i18n="usage.delegates.label">Delegates <span id="others-count" class="usage__count"></span></summary>
     <div id="others" class="others"></div>
   </details>
-  <button id="usage-all" class="usage__all" type="button">All accounts</button>
-  <button id="account-add" class="btn" type="button" data-tip="Install and sign in to an account">Add account…</button>
+  <button id="usage-all" class="usage__all" type="button" data-i18n="usage.all.label">All accounts</button>
+  <button id="account-add" class="btn" type="button" data-tip="Install and sign in to an account" data-i18n-tip="usage.add-account.tip" data-i18n="usage.add-account.label">Add account…</button>
 </div>
-<dialog id="palette" class="palette" closedby="any" aria-label="Search chats">
-  <input id="palette-query" class="palette__query" type="text" role="combobox" aria-controls="palette-list" aria-expanded="true" aria-autocomplete="list" aria-label="Search chats" placeholder="Search titles, folders and messages" autocomplete="off" spellcheck="false">
+<dialog id="palette" class="palette" closedby="any" aria-label="Search chats" data-i18n-aria-label="palette.label">
+  <input id="palette-query" class="palette__query" type="text" role="combobox" aria-controls="palette-list" aria-expanded="true" aria-autocomplete="list" aria-label="Search chats" placeholder="Search titles, folders and messages" autocomplete="off" spellcheck="false" data-i18n-aria-label="palette.label" data-i18n-placeholder="palette.query.placeholder">
   <div id="palette-ai" class="palette__ai" hidden>
-    <select id="palette-model" aria-label="Model for AI search"><option value="haiku" selected>Haiku</option><option value="sonnet">Sonnet</option><option value="opus">Opus</option></select>
-    <select id="palette-effort" aria-label="Effort for AI search"><option value="low" selected>Low</option><option value="medium">Medium</option><option value="high">High</option></select>
-    <button id="palette-ask" class="btn" type="button" data-tip="Describe the chat you are looking for and Claude finds it in your messages (Ctrl+Enter)">Ask AI</button>
+    <select id="palette-model" aria-label="Model for AI search" data-i18n-aria-label="palette.model.label"><option value="haiku" selected>Haiku</option><option value="sonnet">Sonnet</option><option value="opus">Opus</option></select>
+    <select id="palette-effort" aria-label="Effort for AI search" data-i18n-aria-label="palette.effort.label"><option value="low" selected data-i18n="common.effort.low">Low</option><option value="medium" data-i18n="common.effort.medium">Medium</option><option value="high" data-i18n="common.effort.high">High</option></select>
+    <button id="palette-ask" class="btn" type="button" data-tip="Describe the chat you are looking for and Claude finds it in your messages (Ctrl+Enter)" data-i18n-tip="palette.ask.tip" data-i18n="palette.ask.label">Ask AI</button>
   </div>
   <p id="palette-sends" class="palette__note" hidden></p>
-  <div id="palette-list" class="palette__list" role="listbox" aria-label="Chats"></div>
+  <div id="palette-list" class="palette__list" role="listbox" aria-label="Chats" data-i18n-aria-label="palette.list.label"></div>
   <div id="palette-state" class="empty palette__empty" hidden>
     <p id="palette-empty" role="status"></p>
-    <button id="palette-retry" class="btn" type="button" hidden>Retry</button>
+    <button id="palette-retry" class="btn" type="button" hidden data-i18n="common.retry">Retry</button>
   </div>
 </dialog>
 <dialog id="organize" class="organize" closedby="any" aria-labelledby="organize-title">
   <form id="organize-form" method="dialog">
     <h2 id="organize-title" class="organize__title"></h2>
-    <label class="organize__check"><input id="organize-pinned" type="checkbox"> Pin to top</label>
-    <label class="organize__field" data-tip="Places this chat directly in a workspace, outside its group">Workspace<input id="organize-space" placeholder="No workspace" autocomplete="off" spellcheck="false"></label>
-    <label class="organize__field" data-tip="Pick a workspace to place this chat in it outside any group, or a group under it">Group<input id="organize-group" placeholder="No group" autocomplete="off" spellcheck="false"></label>
-    <label class="organize__field">Tags<input id="organize-tags" placeholder="Comma-separated" autocomplete="off" spellcheck="false"></label>
+    <label class="organize__check" data-i18n="organize.pin.label"><input id="organize-pinned" type="checkbox"> Pin to top</label>
+    <label class="organize__field" data-tip="Places this chat directly in a workspace, outside its group" data-i18n-tip="organize.workspace.tip" data-i18n="organize.workspace.label">Workspace<input id="organize-space" placeholder="No workspace" autocomplete="off" spellcheck="false" data-i18n-placeholder="organize.workspace.placeholder"></label>
+    <label class="organize__field" data-tip="Pick a workspace to place this chat in it outside any group, or a group under it" data-i18n-tip="organize.group.tip" data-i18n="organize.group.label">Group<input id="organize-group" placeholder="No group" autocomplete="off" spellcheck="false" data-i18n-placeholder="organize.group.placeholder"></label>
+    <label class="organize__field" data-i18n="organize.tags.label">Tags<input id="organize-tags" placeholder="Comma-separated" autocomplete="off" spellcheck="false" data-i18n-placeholder="organize.tags.placeholder"></label>
     <div class="organize__actions">
-      <button id="organize-link" class="btn sort__restore" type="button" data-tip="Join this chat to another chat, as if it came from its handoff">Link to chat…</button>
-      <button id="organize-unlink" class="btn sort__restore" type="button" data-tip="Move this session and the later ones out of this chat" hidden>Unlink from chat</button>
-      <button id="organize-archive" class="btn sort__restore" type="button" data-tip="Move this chat and its sessions to Archived. Nothing is deleted">Archive</button>
-      <button id="organize-cancel" class="btn" type="button" data-tip="Close without saving">Cancel</button>
-      <button class="btn btn--primary" type="submit" data-tip="Save the pin, space and tags">Save</button>
+      <button id="organize-link" class="btn sort__restore" type="button" data-tip="Join this chat to another chat, as if it came from its handoff" data-i18n-tip="organize.link.tip" data-i18n="organize.link.label">Link to chat…</button>
+      <button id="organize-unlink" class="btn sort__restore" type="button" data-tip="Move this session and the later ones out of this chat" hidden data-i18n-tip="organize.unlink.tip" data-i18n="organize.unlink.label">Unlink from chat</button>
+      <button id="organize-archive" class="btn sort__restore" type="button" data-tip="Move this chat and its sessions to Archived. Nothing is deleted" data-i18n-tip="organize.archive.tip" data-i18n="organize.archive.label">Archive</button>
+      <button id="organize-cancel" class="btn" type="button" data-tip="Close without saving" data-i18n-tip="organize.cancel.tip" data-i18n="common.cancel">Cancel</button>
+      <button class="btn btn--primary" type="submit" data-tip="Save the pin, space and tags" data-i18n-tip="organize.save.tip" data-i18n="common.save">Save</button>
     </div>
   </form>
 </dialog>
 <dialog id="archived-dialog" class="organize" closedby="any" aria-labelledby="archived-title">
-  <h2 id="archived-title" class="organize__title">Archived</h2>
-  <p id="archived-empty" class="sidebar__status">No archived chats.</p>
+  <h2 id="archived-title" class="organize__title" data-i18n="dialog.archived.title">Archived</h2>
+  <p id="archived-empty" class="sidebar__status" data-i18n="dialog.archived.empty">No archived chats.</p>
   <ul id="archived-list" class="archived"></ul>
 </dialog>
-<div id="menu" class="menu" popover="auto" role="menu" aria-label="Options"></div>
+<div id="menu" class="menu" popover="auto" role="menu" aria-label="Options" data-i18n-aria-label="menu.label"></div>
 <dialog id="account-dialog" class="organize" aria-labelledby="account-title">
   <form id="account-form">
-    <h2 id="account-title" class="organize__title">Add account</h2>
-    <div class="segmented" role="radiogroup" aria-label="Account kind">
+    <h2 id="account-title" class="organize__title" data-i18n="account.title">Add account</h2>
+    <div class="segmented" role="radiogroup" aria-label="Account kind" data-i18n-aria-label="account.kind.label">
       <label><input type="radio" name="account-kind" value="claude" checked>Claude</label>
       <label><input type="radio" name="account-kind" value="codex">Codex</label>
       <label><input type="radio" name="account-kind" value="grok">Grok</label>
       <label><input type="radio" name="account-kind" value="opencode">OpenCode</label>
       <label><input type="radio" name="account-kind" value="gemini">Gemini</label>
     </div>
-    <label class="organize__field">Name<input id="account-name" required maxlength="40" pattern=".*\S.*" autocomplete="off" spellcheck="false"></label>
-    <label id="account-model-field" class="organize__field" hidden>Model<input id="account-model" placeholder="provider/model" autocomplete="off" spellcheck="false" disabled></label>
-    <label id="account-key-field" class="organize__field" hidden>API key<input id="account-key" type="password" maxlength="4096" autocomplete="off" spellcheck="false" disabled></label>
-    <label id="account-paid-field" class="organize__check" hidden><input id="account-paid" type="checkbox" disabled> Billing is on for this key</label>
-    <p id="account-key-hint" class="organize__text" hidden>Google trains on free-tier traffic; frugal only uses free-tier keys if you allow training.</p>
-    <ol id="account-steps" aria-label="Account setup steps" aria-live="polite">
-      <li data-state="pending">Install</li>
-      <li data-state="pending">Sign in</li>
-      <li data-state="pending">Ready</li>
+    <label class="organize__field" data-i18n="account.name.label">Name<input id="account-name" required maxlength="40" pattern=".*\S.*" autocomplete="off" spellcheck="false"></label>
+    <label id="account-model-field" class="organize__field" hidden data-i18n="account.model.label">Model<input id="account-model" placeholder="provider/model" autocomplete="off" spellcheck="false" disabled></label>
+    <label id="account-key-field" class="organize__field" hidden data-i18n="account.key.label">API key<input id="account-key" type="password" maxlength="4096" autocomplete="off" spellcheck="false" disabled></label>
+    <label id="account-paid-field" class="organize__check" hidden data-i18n="account.paid.label"><input id="account-paid" type="checkbox" disabled> Billing is on for this key</label>
+    <p id="account-key-hint" class="organize__text" hidden data-i18n="account.key-hint">Google trains on free-tier traffic; frugal only uses free-tier keys if you allow training.</p>
+    <ol id="account-steps" aria-label="Account setup steps" aria-live="polite" data-i18n-aria-label="account.steps.label">
+      <li data-state="pending" data-i18n="account.steps.install">Install</li>
+      <li data-state="pending" data-i18n="account.steps.sign-in">Sign in</li>
+      <li data-state="pending" data-i18n="account.steps.ready">Ready</li>
     </ol>
-    <progress id="account-progress" class="sort__progress" aria-label="Account setup progress" hidden></progress>
-    <pre id="account-log" aria-label="Account setup output"></pre>
+    <progress id="account-progress" class="sort__progress" aria-label="Account setup progress" hidden data-i18n-aria-label="account.progress.label"></progress>
+    <pre id="account-log" aria-label="Account setup output" data-i18n-aria-label="account.log.label"></pre>
     <p id="account-error" class="sort__status" data-failed="true" role="alert"></p>
     <div class="organize__actions">
-      <button id="account-cancel" class="btn" type="button">Cancel</button>
-      <button id="account-submit" class="btn btn--primary" type="submit">Add</button>
+      <button id="account-cancel" class="btn" type="button" data-i18n="common.cancel">Cancel</button>
+      <button id="account-submit" class="btn btn--primary" type="submit" data-i18n="common.add">Add</button>
     </div>
   </form>
 </dialog>
@@ -230,9 +230,9 @@
   <form id="ask-form" method="dialog">
     <h2 id="ask-title" class="organize__title"></h2>
     <p id="ask-text" class="organize__text"></p>
-    <label id="ask-field" class="organize__field">Name<input id="ask-value" required maxlength="40" pattern=".*\S.*" autocomplete="off" spellcheck="false"></label>
+    <label id="ask-field" class="organize__field" data-i18n="dialog.ask.name.label">Name<input id="ask-value" required maxlength="40" pattern=".*\S.*" autocomplete="off" spellcheck="false"></label>
     <div class="organize__actions">
-      <button id="ask-cancel" class="btn" type="button" data-tip="Close without changing anything">Cancel</button>
+      <button id="ask-cancel" class="btn" type="button" data-tip="Close without changing anything" data-i18n-tip="dialog.ask.cancel.tip" data-i18n="common.cancel">Cancel</button>
       <button id="ask-submit" class="btn btn--primary" type="submit"></button>
     </div>
   </form>
@@ -240,52 +240,52 @@
 <dialog id="workspace-dialog" class="organize" closedby="any" aria-labelledby="workspace-title">
   <form id="workspace-form" method="dialog">
     <h2 id="workspace-title" class="organize__title"></h2>
-    <label class="organize__field">Workspace<input id="workspace-name" placeholder="No workspace" autocomplete="off" spellcheck="false"></label>
+    <label class="organize__field" data-i18n="dialog.workspace.name.label">Workspace<input id="workspace-name" placeholder="No workspace" autocomplete="off" spellcheck="false" data-i18n-placeholder="organize.workspace.placeholder"></label>
     <div class="organize__actions">
-      <button id="workspace-cancel" class="btn" type="button" data-tip="Close without saving">Cancel</button>
-      <button class="btn btn--primary" type="submit" data-tip="Move this group into a workspace">Save</button>
+      <button id="workspace-cancel" class="btn" type="button" data-tip="Close without saving" data-i18n-tip="dialog.workspace.cancel.tip" data-i18n="common.cancel">Cancel</button>
+      <button class="btn btn--primary" type="submit" data-tip="Move this group into a workspace" data-i18n-tip="dialog.workspace.save.tip" data-i18n="common.save">Save</button>
     </div>
   </form>
 </dialog>
 <dialog id="sort-dialog" class="organize" closedby="any" aria-labelledby="sort-title">
   <form method="dialog">
     <div class="sort__head">
-      <h2 id="sort-title" class="organize__title">Organize chats</h2>
-      <div class="segmented" role="radiogroup" aria-label="Group by">
-        <label data-tip="Group chats by project folder"><input type="radio" name="session-view" value="folders">Folders</label>
-        <label data-tip="Group chats by subject"><input type="radio" name="session-view" value="topics">Topics</label>
+      <h2 id="sort-title" class="organize__title" data-i18n="sort.title">Organize chats</h2>
+      <div class="segmented" role="radiogroup" aria-label="Group by" data-i18n-aria-label="sort.view.label">
+        <label data-tip="Group chats by project folder" data-i18n-tip="sort.view.folders.tip" data-i18n="sort.view.folders.label"><input type="radio" name="session-view" value="folders">Folders</label>
+        <label data-tip="Group chats by subject" data-i18n-tip="sort.view.topics.tip" data-i18n="sort.view.topics.label"><input type="radio" name="session-view" value="topics">Topics</label>
       </div>
     </div>
-    <label class="organize__field">Sort with Claude<select id="sort-scope">
-      <option value="new" selected>Chats without a topic</option>
-      <option value="groups">Groups I choose</option>
-      <option value="all">Every chat</option>
+    <label class="organize__field" data-i18n="sort.scope.label">Sort with Claude<select id="sort-scope">
+      <option value="new" selected data-i18n="sort.scope.new">Chats without a topic</option>
+      <option value="groups" data-i18n="sort.scope.groups">Groups I choose</option>
+      <option value="all" data-i18n="sort.scope.all">Every chat</option>
     </select></label>
-    <fieldset id="sort-groups" class="sort__groups" hidden><legend class="sort__legend">Sorted again. Groups you set by hand stay</legend><div id="sort-group-list" class="sort__group-list"></div></fieldset>
-    <label class="organize__field">What you work on<textarea id="sort-notes" rows="2" maxlength="2000" placeholder="Your projects and how to split them, such as one group per product or client" spellcheck="false"></textarea></label>
+    <fieldset id="sort-groups" class="sort__groups" hidden><legend class="sort__legend" data-i18n="sort.groups.legend">Sorted again. Groups you set by hand stay</legend><div id="sort-group-list" class="sort__group-list"></div></fieldset>
+    <label class="organize__field" data-i18n="sort.notes.label">What you work on<textarea id="sort-notes" rows="2" maxlength="2000" placeholder="Your projects and how to split them, such as one group per product or client" spellcheck="false" data-i18n-placeholder="sort.notes.placeholder"></textarea></label>
     <div class="sort__options">
-      <label class="organize__check"><input id="sort-rename" type="checkbox"> Rewrite titles</label>
-      <label class="organize__check" data-tip="After sorting, Claude moves your groups into workspaces. Workspaces you set by hand stay"><input id="sort-nest" type="checkbox"> Move groups into workspaces</label>
+      <label class="organize__check" data-i18n="sort.rename.label"><input id="sort-rename" type="checkbox"> Rewrite titles</label>
+      <label class="organize__check" data-tip="After sorting, Claude moves your groups into workspaces. Workspaces you set by hand stay" data-i18n-tip="sort.nest.tip" data-i18n="sort.nest.label"><input id="sort-nest" type="checkbox"> Move groups into workspaces</label>
     </div>
     <div class="sort__options">
-      <label class="organize__field sort__pick" data-tip="Token counts are rough, from one measured run. Opus uses your plan limits faster per token than Sonnet, and Haiku slower">Model<select id="sort-model"><option value="opus">Opus</option><option value="sonnet" selected>Sonnet</option><option value="haiku">Haiku</option></select></label>
-      <label class="organize__field sort__pick">Effort<select id="sort-effort"><option value="low">Low</option><option value="medium" selected>Medium</option><option value="high">High</option></select></label>
+      <label class="organize__field sort__pick" data-tip="Token counts are rough, from one measured run. Opus uses your plan limits faster per token than Sonnet, and Haiku slower" data-i18n-tip="sort.model.tip" data-i18n="sort.model.label">Model<select id="sort-model"><option value="opus">Opus</option><option value="sonnet" selected>Sonnet</option><option value="haiku">Haiku</option></select></label>
+      <label class="organize__field sort__pick" data-i18n="sort.effort.label">Effort<select id="sort-effort"><option value="low" data-i18n="common.effort.low">Low</option><option value="medium" selected data-i18n="common.effort.medium">Medium</option><option value="high" data-i18n="common.effort.high">High</option></select></label>
     </div>
     <p id="sort-warning" class="organize__text" role="note"></p>
     <p id="sort-status" class="sort__status" role="status" hidden></p>
-    <progress id="sort-progress" class="sort__progress" aria-label="Sorting progress" hidden></progress>
+    <progress id="sort-progress" class="sort__progress" aria-label="Sorting progress" hidden data-i18n-aria-label="sort.progress.label"></progress>
     <details id="sort-more" class="sort__more">
-      <summary>More tools</summary>
-      <div id="join-row" class="sort__joins" hidden><p id="join-text" class="organize__text"></p><button id="join-run" class="btn" type="button" data-tip="Let Claude choose the origin of these sessions">Resolve with Claude</button></div>
+      <summary data-i18n="sort.more.label">More tools</summary>
+      <div id="join-row" class="sort__joins" hidden><p id="join-text" class="organize__text"></p><button id="join-run" class="btn" type="button" data-tip="Let Claude choose the origin of these sessions" data-i18n-tip="sort.join.tip" data-i18n="sort.join.label">Resolve with Claude</button></div>
       <div class="sort__undo">
-        <button id="sort-restore" class="btn" type="button" data-tip="Put back the original session titles">Restore titles</button>
-        <button id="join-undo" class="btn" type="button" data-tip="Remove the joins Claude chose" hidden>Undo Claude's joins</button>
-        <button id="workspace-undo" class="btn" type="button" data-tip="Remove the workspaces Claude chose" hidden>Undo Claude's workspaces</button>
+        <button id="sort-restore" class="btn" type="button" data-tip="Put back the original session titles" data-i18n-tip="sort.restore.tip" data-i18n="sort.restore.label">Restore titles</button>
+        <button id="join-undo" class="btn" type="button" data-tip="Remove the joins Claude chose" hidden data-i18n-tip="sort.join-undo.tip" data-i18n="sort.join-undo.label">Undo Claude's joins</button>
+        <button id="workspace-undo" class="btn" type="button" data-tip="Remove the workspaces Claude chose" hidden data-i18n-tip="sort.workspace-undo.tip" data-i18n="sort.workspace-undo.label">Undo Claude's workspaces</button>
       </div>
     </details>
     <div class="organize__actions">
-      <button id="sort-close" class="btn" type="button" data-tip="Close this menu">Close</button>
-      <button id="sort-run" class="btn btn--primary" type="button" data-tip="Let Claude sort your chats into topics">Find topics</button>
+      <button id="sort-close" class="btn" type="button" data-tip="Close this menu" data-i18n-tip="sort.close.tip" data-i18n="common.close">Close</button>
+      <button id="sort-run" class="btn btn--primary" type="button" data-tip="Let Claude sort your chats into topics" data-i18n-tip="sort.run.tip" data-i18n="sort.run.label">Find topics</button>
     </div>
   </form>
 </dialog>
@@ -295,7 +295,7 @@
     <p id="switch-message" class="organize__text"></p>
     <div id="switch-list" class="switch__list"></div>
     <div class="organize__actions">
-      <button id="switch-cancel" class="btn" value="cancel">Cancel</button>
+      <button id="switch-cancel" class="btn" value="cancel" data-i18n="common.cancel">Cancel</button>
       <button id="switch-idle" class="btn" value="idle"></button>
       <button id="switch-all" class="btn btn--danger" value="all"></button>
     </div>
@@ -303,309 +303,309 @@
 </dialog>
 <dialog id="close-dialog" class="organize" closedby="any" aria-labelledby="close-title" aria-describedby="close-message">
   <form method="dialog">
-    <h2 id="close-title" class="organize__title">Close this chat?</h2>
+    <h2 id="close-title" class="organize__title" data-i18n="dialog.close.title">Close this chat?</h2>
     <p id="close-message" class="organize__text"></p>
-    <label class="organize__check"><input id="close-skip" type="checkbox"> Don't ask again (change it in Settings)</label>
+    <label class="organize__check" data-i18n="dialog.close.skip.label"><input id="close-skip" type="checkbox"> Don't ask again (change it in Settings)</label>
     <div class="organize__actions">
-      <button class="btn" type="submit" value="cancel" autofocus data-tip="Keep this chat open">Cancel</button>
-      <button class="btn btn--primary" type="submit" value="close" data-tip="Stop Claude and close this chat">Close chat</button>
+      <button class="btn" type="submit" value="cancel" autofocus data-tip="Keep this chat open" data-i18n-tip="dialog.close.cancel.tip" data-i18n="common.cancel">Cancel</button>
+      <button class="btn btn--primary" type="submit" value="close" data-tip="Stop Claude and close this chat" data-i18n-tip="dialog.close.confirm.tip" data-i18n="dialog.close.confirm.label">Close chat</button>
     </div>
   </form>
 </dialog>
 <dialog id="tasks-dialog" class="organize tasks" closedby="any" aria-labelledby="tasks-title">
   <form method="dialog">
-    <h2 id="tasks-title" class="organize__title">Delegate tasks</h2>
+    <h2 id="tasks-title" class="organize__title" data-i18n="dialog.tasks.title">Delegate tasks</h2>
     <p id="tasks-summary" class="organize__text" role="status"></p>
     <div id="tasks-list" class="tasks__list"></div>
     <div class="organize__actions">
-      <button id="tasks-retry" class="btn" type="button" hidden>Retry</button>
-      <button class="btn" type="submit" data-tip="Close tasks">Close</button>
+      <button id="tasks-retry" class="btn" type="button" hidden data-i18n="common.retry">Retry</button>
+      <button class="btn" type="submit" data-tip="Close tasks" data-i18n-tip="dialog.tasks.close.tip" data-i18n="common.close">Close</button>
     </div>
   </form>
 </dialog>
 <dialog id="update-dialog" class="organize" closedby="any" aria-labelledby="update-title">
   <form method="dialog">
-    <h2 id="update-title" class="organize__title">Updates</h2>
+    <h2 id="update-title" class="organize__title" data-i18n="dialog.update.title">Updates</h2>
     <p id="update-status" class="organize__text" role="status"></p>
     <div id="update-list" class="update__list"></div>
     <div class="organize__actions">
-      <button class="btn" type="submit" data-tip="Close updates">Close</button>
+      <button class="btn" type="submit" data-tip="Close updates" data-i18n-tip="dialog.update.close.tip" data-i18n="common.close">Close</button>
     </div>
   </form>
 </dialog>
 <dialog id="settings-dialog" class="organize settings" closedby="any" aria-labelledby="settings-title">
   <form method="dialog">
-    <nav class="settings__nav" aria-label="Settings sections">
-      <h2 id="settings-title" class="settings__heading">Settings</h2>
-      <button class="settings__tab" type="button" data-section="general" aria-current="page"><svg class="icon" aria-hidden="true"><use href="#i-settings"/></svg>General</button>
-      <button class="settings__tab" type="button" data-section="appearance"><svg class="icon" aria-hidden="true"><use href="#i-palette"/></svg>Appearance</button>
-      <button class="settings__tab" type="button" data-section="chats"><svg class="icon" aria-hidden="true"><use href="#i-terminal"/></svg>Chats</button>
-      <button class="settings__tab" type="button" data-section="handoff"><svg class="icon" aria-hidden="true"><use href="#i-handoff"/></svg>Handoff</button>
-      <button class="settings__tab" type="button" data-section="permissions"><svg class="icon" aria-hidden="true"><use href="#i-shield"/></svg>Permissions</button>
-      <button class="settings__tab" type="button" data-section="accounts"><svg class="icon" aria-hidden="true"><use href="#i-user"/></svg>Accounts</button>
-      <button class="settings__tab" type="button" data-section="voice"><svg class="icon" aria-hidden="true"><use href="#i-mic"/></svg>Voice</button>
-      <button class="settings__tab" type="button" data-section="privacy"><svg class="icon" aria-hidden="true"><use href="#i-lock"/></svg>Privacy</button>
-      <button class="settings__tab" type="button" data-section="activity"><svg class="icon" aria-hidden="true"><use href="#i-tasks"/></svg>Activity</button>
-      <button class="settings__tab" type="button" data-section="debug"><svg class="icon" aria-hidden="true"><use href="#i-bug"/></svg>Debug</button>
+    <nav class="settings__nav" aria-label="Settings sections" data-i18n-aria-label="settings.nav.label">
+      <h2 id="settings-title" class="settings__heading" data-i18n="settings.title">Settings</h2>
+      <button class="settings__tab" type="button" data-section="general" aria-current="page" data-i18n="settings.general.title"><svg class="icon" aria-hidden="true"><use href="#i-settings"/></svg>General</button>
+      <button class="settings__tab" type="button" data-section="appearance" data-i18n="settings.appearance.title"><svg class="icon" aria-hidden="true"><use href="#i-palette"/></svg>Appearance</button>
+      <button class="settings__tab" type="button" data-section="chats" data-i18n="settings.chats.title"><svg class="icon" aria-hidden="true"><use href="#i-terminal"/></svg>Chats</button>
+      <button class="settings__tab" type="button" data-section="handoff" data-i18n="settings.handoff.title"><svg class="icon" aria-hidden="true"><use href="#i-handoff"/></svg>Handoff</button>
+      <button class="settings__tab" type="button" data-section="permissions" data-i18n="settings.permissions.title"><svg class="icon" aria-hidden="true"><use href="#i-shield"/></svg>Permissions</button>
+      <button class="settings__tab" type="button" data-section="accounts" data-i18n="settings.accounts.title"><svg class="icon" aria-hidden="true"><use href="#i-user"/></svg>Accounts</button>
+      <button class="settings__tab" type="button" data-section="voice" data-i18n="settings.voice.title"><svg class="icon" aria-hidden="true"><use href="#i-mic"/></svg>Voice</button>
+      <button class="settings__tab" type="button" data-section="privacy" data-i18n="settings.privacy.title"><svg class="icon" aria-hidden="true"><use href="#i-lock"/></svg>Privacy</button>
+      <button class="settings__tab" type="button" data-section="activity" data-i18n="settings.activity.title"><svg class="icon" aria-hidden="true"><use href="#i-tasks"/></svg>Activity</button>
+      <button class="settings__tab" type="button" data-section="debug" data-i18n="settings.debug.title"><svg class="icon" aria-hidden="true"><use href="#i-bug"/></svg>Debug</button>
     </nav>
     <div class="settings__body">
       <section class="settings__section" data-section="general">
-        <h3 class="settings__title">General</h3>
-        <div class="settings__row" data-tip="Saves the chats you leave open, so closing the Deck does not lose your place">
-          <label class="organize__check"><input id="settings-reopen" type="checkbox"> Reopen chats on start</label>
-          <p class="settings__hint">Chats with at least one message reopen where they were.</p>
+        <h3 class="settings__title" data-i18n="settings.general.title">General</h3>
+        <div class="settings__row" data-tip="Saves the chats you leave open, so closing the Deck does not lose your place" data-i18n-tip="settings.general.reopen.tip">
+          <label class="organize__check" data-i18n="settings.general.reopen.label"><input id="settings-reopen" type="checkbox"> Reopen chats on start</label>
+          <p class="settings__hint" data-i18n="settings.general.reopen.hint">Chats with at least one message reopen where they were.</p>
         </div>
-        <div class="settings__row" data-tip="Closing a chat while Claude works stops the turn in the middle">
-          <label class="organize__check"><input id="settings-confirm-close" type="checkbox"> Ask before closing a running chat</label>
-          <p class="settings__hint">Asks when Claude is still working in the chat.</p>
+        <div class="settings__row" data-tip="Closing a chat while Claude works stops the turn in the middle" data-i18n-tip="settings.general.confirm-close.tip">
+          <label class="organize__check" data-i18n="settings.general.confirm-close.label"><input id="settings-confirm-close" type="checkbox"> Ask before closing a running chat</label>
+          <p class="settings__hint" data-i18n="settings.general.confirm-close.hint">Asks when Claude is still working in the chat.</p>
         </div>
         <div class="settings__row">
-          <span class="organize__check">Sessions started outside Frugal Deck</span>
-          <p class="settings__hint">Claude Code CLI and Claude Desktop sessions in your accounts folders. Chats you open here are added on their own.</p>
+          <span class="organize__check" data-i18n="settings.general.external.label">Sessions started outside Frugal Deck</span>
+          <p class="settings__hint" data-i18n="settings.general.external.hint">Claude Code CLI and Claude Desktop sessions in your accounts folders. Chats you open here are added on their own.</p>
           <div class="debug__actions">
             <span id="settings-external-count" class="settings__hint"></span>
-            <button id="settings-import-external" class="btn" type="button">Import</button>
+            <button id="settings-import-external" class="btn" type="button" data-i18n="settings.general.external.import">Import</button>
           </div>
           <p id="import-status" class="sort__status" role="status" hidden></p>
         </div>
-        <div class="settings__row" data-tip="The chime tells you a chat finished or needs you while you look elsewhere">
-          <label class="organize__check">Notification volume
+        <div class="settings__row" data-tip="The chime tells you a chat finished or needs you while you look elsewhere" data-i18n-tip="settings.general.volume.tip">
+          <label class="organize__check" data-i18n="settings.general.volume.label">Notification volume
             <input id="settings-volume" class="settings__range" type="range" min="0" max="100" step="5">
             <output id="settings-volume-value" for="settings-volume"></output>
           </label>
-          <p class="settings__hint">Plays the notification sound when you let go.</p>
+          <p class="settings__hint" data-i18n="settings.general.volume.hint">Plays the notification sound when you let go.</p>
         </div>
       </section>
       <section class="settings__section" data-section="appearance" hidden>
-        <h3 class="settings__title">Appearance</h3>
+        <h3 class="settings__title" data-i18n="settings.appearance.title">Appearance</h3>
         <div class="settings__row settings__accent" role="group" aria-labelledby="settings-accent-label">
-          <span id="settings-accent-label" class="organize__check">Accent color</span>
+          <span id="settings-accent-label" class="organize__check" data-i18n="settings.appearance.accent.label">Accent color</span>
           <div id="settings-accent" class="settings__swatches"></div>
-          <p class="settings__hint">Buttons, selection and highlights take this color.</p>
+          <p class="settings__hint" data-i18n="settings.appearance.accent.hint">Buttons, selection and highlights take this color.</p>
         </div>
-        <div class="settings__row" data-tip="Below keeps tooltips from covering the row above the pointer">
-          <label class="organize__check">Show tooltips
+        <div class="settings__row" data-tip="Below keeps tooltips from covering the row above the pointer" data-i18n-tip="settings.appearance.tooltips.tip">
+          <label class="organize__check" data-i18n="settings.appearance.tooltips.label">Show tooltips
             <select id="settings-tooltips" class="settings__select">
-              <option value="above">Above the pointer</option>
-              <option value="below">Below the pointer</option>
+              <option value="above" data-i18n="settings.appearance.tooltips.above">Above the pointer</option>
+              <option value="below" data-i18n="settings.appearance.tooltips.below">Below the pointer</option>
             </select>
           </label>
-          <p class="settings__hint">Where help like this appears.</p>
+          <p class="settings__hint" data-i18n="settings.appearance.tooltips.hint">Where help like this appears.</p>
         </div>
-        <div class="settings__row" data-tip="Long groups stay short, so other groups stay in view">
-          <label class="organize__check">Chats shown per group
+        <div class="settings__row" data-tip="Long groups stay short, so other groups stay in view" data-i18n-tip="settings.appearance.group-limit.tip">
+          <label class="organize__check" data-i18n="settings.appearance.group-limit.label">Chats shown per group
             <input id="settings-group-limit" class="settings__select" type="number" min="1" max="500" step="1">
           </label>
-          <p class="settings__hint">A longer group shows a row that reveals the rest.</p>
+          <p class="settings__hint" data-i18n="settings.appearance.group-limit.hint">A longer group shows a row that reveals the rest.</p>
         </div>
       </section>
       <section class="settings__section" data-section="chats" hidden>
-        <h3 class="settings__title">Chats</h3>
-        <div class="settings__row" data-tip="Frugal keeps replies short and context small, so limits last longer">
-          <label class="organize__check"><input id="settings-frugal" type="checkbox"> Start new chats with Frugal</label>
-          <p class="settings__hint">Needs the Frugal plugin in the account. Applies to chats started after the change.</p>
+        <h3 class="settings__title" data-i18n="settings.chats.title">Chats</h3>
+        <div class="settings__row" data-tip="Frugal keeps replies short and context small, so limits last longer" data-i18n-tip="settings.chats.frugal.tip">
+          <label class="organize__check" data-i18n="settings.chats.frugal.label"><input id="settings-frugal" type="checkbox"> Start new chats with Frugal</label>
+          <p class="settings__hint" data-i18n="settings.chats.frugal.hint">Needs the Frugal plugin in the account. Applies to chats started after the change.</p>
         </div>
-        <div class="settings__row" data-tip="Lets you click menus and questions in Claude Code instead of using the keyboard">
-          <label class="organize__check"><input id="settings-mouse" type="checkbox"> Mouse clicks in chats</label>
-          <p class="settings__hint">Uses Claude Code's fullscreen renderer. Applies to chats started after the change.</p>
-          <p class="settings__warn">May not work as expected. It overrides Claude Code's fallback to the classic renderer after failed starts. Turn it off if chats fail to start, flicker or draw wrong.</p>
+        <div class="settings__row" data-tip="Lets you click menus and questions in Claude Code instead of using the keyboard" data-i18n-tip="settings.chats.mouse.tip">
+          <label class="organize__check" data-i18n="settings.chats.mouse.label"><input id="settings-mouse" type="checkbox"> Mouse clicks in chats</label>
+          <p class="settings__hint" data-i18n="settings.chats.mouse.hint">Uses Claude Code's fullscreen renderer. Applies to chats started after the change.</p>
+          <p class="settings__warn" data-i18n="settings.chats.mouse.warn">May not work as expected. It overrides Claude Code's fallback to the classic renderer after failed starts. Turn it off if chats fail to start, flicker or draw wrong.</p>
         </div>
       </section>
       <section class="settings__section" data-section="handoff" hidden>
-        <h3 class="settings__title">Handoff</h3>
-        <div class="settings__row" data-tip="A fresh chat costs less per turn than one with a full context">
-          <label class="organize__check"><input id="settings-handoff-auto" type="checkbox"> Start handoffs on their own</label>
-          <p class="settings__hint">From 150K tokens of context, a handoff opens a new chat after the delay. Off, it waits for Continue in new chat.</p>
+        <h3 class="settings__title" data-i18n="settings.handoff.title">Handoff</h3>
+        <div class="settings__row" data-tip="A fresh chat costs less per turn than one with a full context" data-i18n-tip="settings.handoff.auto.tip">
+          <label class="organize__check" data-i18n="settings.handoff.auto.label"><input id="settings-handoff-auto" type="checkbox"> Start handoffs on their own</label>
+          <p class="settings__hint" data-i18n="settings.handoff.auto.hint">From 150K tokens of context, a handoff opens a new chat after the delay. Off, it waits for Continue in new chat.</p>
         </div>
-        <div class="settings__row" data-tip="Time to read or cancel the handoff before it starts">
-          <label class="organize__check">Handoff delay in seconds
+        <div class="settings__row" data-tip="Time to read or cancel the handoff before it starts" data-i18n-tip="settings.handoff.delay.tip">
+          <label class="organize__check" data-i18n="settings.handoff.delay.label">Handoff delay in seconds
             <input id="settings-handoff-delay" class="settings__select" type="number" min="0" max="600" step="1">
           </label>
-          <p class="settings__hint">0 starts the new chat as soon as the handoff is ready, with no countdown.</p>
+          <p class="settings__hint" data-i18n="settings.handoff.delay.hint">0 starts the new chat as soon as the handoff is ready, with no countdown.</p>
         </div>
-        <div class="settings__row" data-tip="Adds what the handoff left out before the new chat reads it">
-          <label class="organize__check"><input id="settings-handoff-note" type="checkbox"> Add a note box to handoffs</label>
-          <p class="settings__hint">A box under the handoff for more context. Typing in it pauses the countdown.</p>
+        <div class="settings__row" data-tip="Adds what the handoff left out before the new chat reads it" data-i18n-tip="settings.handoff.note.tip">
+          <label class="organize__check" data-i18n="settings.handoff.note.label"><input id="settings-handoff-note" type="checkbox"> Add a note box to handoffs</label>
+          <p class="settings__hint" data-i18n="settings.handoff.note.hint">A box under the handoff for more context. Typing in it pauses the countdown.</p>
         </div>
       </section>
       <section class="settings__section" data-section="permissions" hidden>
-        <h3 class="settings__title">Permissions</h3>
-        <div class="settings__row" data-tip="Saves the trust question in every new folder">
-          <label class="organize__check"><input id="settings-always-trust" type="checkbox"> Always trust folders</label>
-          <p class="settings__hint">Accepts Claude Code's trust check in every folder you open here.</p>
-          <p class="settings__warn">A folder's own settings and hooks can run commands as soon as the chat starts. Only for folders you know.</p>
+        <h3 class="settings__title" data-i18n="settings.permissions.title">Permissions</h3>
+        <div class="settings__row" data-tip="Saves the trust question in every new folder" data-i18n-tip="settings.permissions.always-trust.tip">
+          <label class="organize__check" data-i18n="settings.permissions.always-trust.label"><input id="settings-always-trust" type="checkbox"> Always trust folders</label>
+          <p class="settings__hint" data-i18n="settings.permissions.always-trust.hint">Accepts Claude Code's trust check in every folder you open here.</p>
+          <p class="settings__warn" data-i18n="settings.permissions.always-trust.warn">A folder's own settings and hooks can run commands as soon as the chat starts. Only for folders you know.</p>
         </div>
-        <div class="settings__row" data-tip="Long tasks run without stopping at every command">
-          <label class="organize__check"><input id="settings-bypass" type="checkbox"> Bypass permissions in all chats</label>
-          <p class="settings__hint">Claude runs commands and edits files without asking. Applies to chats started after the change.</p>
-          <p class="settings__warn settings__warn--danger">An error or a malicious instruction in a file or page can cause damage before you can stop it. Anthropic recommends it only in isolated containers or virtual machines.</p>
+        <div class="settings__row" data-tip="Long tasks run without stopping at every command" data-i18n-tip="settings.permissions.bypass.tip">
+          <label class="organize__check" data-i18n="settings.permissions.bypass.label"><input id="settings-bypass" type="checkbox"> Bypass permissions in all chats</label>
+          <p class="settings__hint" data-i18n="settings.permissions.bypass.hint">Claude runs commands and edits files without asking. Applies to chats started after the change.</p>
+          <p class="settings__warn settings__warn--danger" data-i18n="settings.permissions.bypass.warn">An error or a malicious instruction in a file or page can cause damage before you can stop it. Anthropic recommends it only in isolated containers or virtual machines.</p>
         </div>
-        <div class="settings__row" data-tip="For tasks that change services, drivers or system settings">
-          <label class="organize__check"><input id="settings-admin" type="checkbox"> Run all chats as administrator</label>
-          <p class="settings__hint">Windows asks for permission the first time. Applies to chats started after the change.</p>
-          <p class="settings__warn settings__warn--danger">Claude can change system configuration, services, programs and any user's files. Those changes can leave Windows unstable or insecure.</p>
+        <div class="settings__row" data-tip="For tasks that change services, drivers or system settings" data-i18n-tip="settings.permissions.admin.tip">
+          <label class="organize__check" data-i18n="settings.permissions.admin.label"><input id="settings-admin" type="checkbox"> Run all chats as administrator</label>
+          <p class="settings__hint" data-i18n="settings.permissions.admin.hint">Windows asks for permission the first time. Applies to chats started after the change.</p>
+          <p class="settings__warn settings__warn--danger" data-i18n="settings.permissions.admin.warn">Claude can change system configuration, services, programs and any user's files. Those changes can leave Windows unstable or insecure.</p>
         </div>
       </section>
       <section class="settings__section" data-section="accounts" hidden>
-        <h3 class="settings__title">Accounts</h3>
-        <div class="settings__row" data-tip="Delegated work then spends another account's limits, not the one already in use">
-          <label class="organize__check"><input id="settings-roles" type="checkbox"> Never delegate to the account a chat runs on</label>
-          <p class="settings__hint">Applies to chats started after the change.</p>
+        <h3 class="settings__title" data-i18n="settings.accounts.title">Accounts</h3>
+        <div class="settings__row" data-tip="Delegated work then spends another account's limits, not the one already in use" data-i18n-tip="settings.accounts.roles.tip">
+          <label class="organize__check" data-i18n="settings.accounts.roles.label"><input id="settings-roles" type="checkbox"> Never delegate to the account a chat runs on</label>
+          <p class="settings__hint" data-i18n="settings.accounts.roles.hint">Applies to chats started after the change.</p>
         </div>
-        <div class="settings__row" data-tip="Old sessions stay available to resume and search">
-          <label class="organize__check"><input id="settings-keep-transcripts" type="checkbox"> Keep transcripts in all accounts</label>
-          <p class="settings__hint">Sets cleanupPeriodDays to 3650 in every Claude account, so Claude Code stops deleting transcripts idle for 30 days. Off removes only that value.</p>
+        <div class="settings__row" data-tip="Old sessions stay available to resume and search" data-i18n-tip="settings.accounts.keep-transcripts.tip">
+          <label class="organize__check" data-i18n="settings.accounts.keep-transcripts.label"><input id="settings-keep-transcripts" type="checkbox"> Keep transcripts in all accounts</label>
+          <p class="settings__hint" data-i18n="settings.accounts.keep-transcripts.hint">Sets cleanupPeriodDays to 3650 in every Claude account, so Claude Code stops deleting transcripts idle for 30 days. Off removes only that value.</p>
           <p id="transcripts-status" class="sort__status" role="status" hidden></p>
         </div>
       </section>
       <section class="settings__section" data-section="voice" hidden>
-        <h3 class="settings__title">Voice</h3>
-        <div class="settings__row" data-tip="Speaking is faster than typing long prompts">
-          <label class="organize__check">Voice input
+        <h3 class="settings__title" data-i18n="settings.voice.title">Voice</h3>
+        <div class="settings__row" data-tip="Speaking is faster than typing long prompts" data-i18n-tip="settings.voice.input.tip">
+          <label class="organize__check" data-i18n="settings.voice.input.label">Voice input
             <select id="settings-voice" class="settings__select">
-              <option value="off">Off</option>
-              <option value="local">Local model (whisper.cpp)</option>
-              <option value="anthropic">Anthropic (/voice in Claude Code)</option>
+              <option value="off" data-i18n="settings.voice.input.off">Off</option>
+              <option value="local" data-i18n="settings.voice.input.local">Local model (whisper.cpp)</option>
+              <option value="anthropic" data-i18n="settings.voice.input.anthropic">Anthropic (/voice in Claude Code)</option>
             </select>
           </label>
-          <p class="settings__hint">Win+H starts Windows dictation in any app, with no download.</p>
+          <p class="settings__hint" data-i18n="settings.voice.input.hint">Win+H starts Windows dictation in any app, with no download.</p>
         </div>
-        <div class="settings__row settings__voice" data-tip="Larger models get more words right and take longer">
-          <label class="organize__check">Voice model
+        <div class="settings__row settings__voice" data-tip="Larger models get more words right and take longer" data-i18n-tip="settings.voice.model.tip">
+          <label class="organize__check" data-i18n="settings.voice.model.label">Voice model
             <select id="settings-voice-model" class="settings__select">
-              <option value="small">Small, 488 MB, fastest</option>
-              <option value="medium">Medium, 1.5 GB</option>
-              <option value="large-v3">large-v3, 3.1 GB, most accurate</option>
+              <option value="small" data-i18n="settings.voice.model.small">Small, 488 MB, fastest</option>
+              <option value="medium" data-i18n="settings.voice.model.medium">Medium, 1.5 GB</option>
+              <option value="large-v3" data-i18n="settings.voice.model.large-v3">large-v3, 3.1 GB, most accurate</option>
             </select>
           </label>
-          <p class="settings__hint">Downloads on first use, after showing its size.</p>
+          <p class="settings__hint" data-i18n="settings.voice.model.hint">Downloads on first use, after showing its size.</p>
         </div>
-        <div class="settings__row settings__voice" data-tip="A fixed language transcribes better than detection">
-          <label class="organize__check">Dictation language
+        <div class="settings__row settings__voice" data-tip="A fixed language transcribes better than detection" data-i18n-tip="settings.voice.language.tip">
+          <label class="organize__check" data-i18n="settings.voice.language.label">Dictation language
             <select id="settings-voice-language" class="settings__select">
-              <option value="en">English</option>
-              <option value="es">Spanish</option>
-              <option value="auto">Detect</option>
+              <option value="en" data-i18n="settings.voice.language.en">English</option>
+              <option value="es" data-i18n="settings.voice.language.es">Spanish</option>
+              <option value="auto" data-i18n="settings.voice.language.auto">Detect</option>
             </select>
           </label>
-          <p class="settings__hint">The language you speak in.</p>
+          <p class="settings__hint" data-i18n="settings.voice.language.hint">The language you speak in.</p>
         </div>
       </section>
       <section class="settings__section" data-section="privacy" hidden>
-        <h3 class="settings__title">Privacy</h3>
-        <div class="settings__row" data-tip="Matching message text helps the model pick the right chat">
-          <label class="organize__check"><input id="settings-ai-excerpts" type="checkbox"> Send message excerpts with Ask AI</label>
-          <p class="settings__hint">Ask AI (Ctrl+Shift+K) also sends Anthropic up to 200 characters of a matching message from each of up to 40 chats.</p>
-          <p class="settings__warn">Parts of your conversations leave this computer.</p>
+        <h3 class="settings__title" data-i18n="settings.privacy.title">Privacy</h3>
+        <div class="settings__row" data-tip="Matching message text helps the model pick the right chat" data-i18n-tip="settings.privacy.ai-excerpts.tip">
+          <label class="organize__check" data-i18n="settings.privacy.ai-excerpts.label"><input id="settings-ai-excerpts" type="checkbox"> Send message excerpts with Ask AI</label>
+          <p class="settings__hint" data-i18n="settings.privacy.ai-excerpts.hint">Ask AI (Ctrl+Shift+K) also sends Anthropic up to 200 characters of a matching message from each of up to 40 chats.</p>
+          <p class="settings__warn" data-i18n="settings.privacy.ai-excerpts.warn">Parts of your conversations leave this computer.</p>
         </div>
-        <div class="settings__row" data-tip="Blocks recording when you never dictate">
-          <label class="organize__check"><input id="settings-mic" type="checkbox"> Allow the microphone</label>
-          <p class="settings__hint">Local dictation records with it. Off, it stays blocked.</p>
+        <div class="settings__row" data-tip="Blocks recording when you never dictate" data-i18n-tip="settings.privacy.mic.tip">
+          <label class="organize__check" data-i18n="settings.privacy.mic.label"><input id="settings-mic" type="checkbox"> Allow the microphone</label>
+          <p class="settings__hint" data-i18n="settings.privacy.mic.hint">Local dictation records with it. Off, it stays blocked.</p>
         </div>
-        <div class="settings__row" data-tip="Blocks the Deck from reading copied text you did not paste">
-          <label class="organize__check"><input id="settings-clipboard" type="checkbox"> Allow reading the clipboard</label>
-          <p class="settings__hint">Ctrl+V in a chat reads it. Off, Ctrl+V pastes only images.</p>
+        <div class="settings__row" data-tip="Blocks the Deck from reading copied text you did not paste" data-i18n-tip="settings.privacy.clipboard.tip">
+          <label class="organize__check" data-i18n="settings.privacy.clipboard.label"><input id="settings-clipboard" type="checkbox"> Allow reading the clipboard</label>
+          <p class="settings__hint" data-i18n="settings.privacy.clipboard.hint">Ctrl+V in a chat reads it. Off, Ctrl+V pastes only images.</p>
         </div>
       </section>
       <section class="settings__section" data-section="activity" hidden>
-        <h3 class="settings__title">Activity</h3>
-        <p class="settings__hint">Account sign-ins and sign-outs, MCP servers that ask to sign in, plugins added or updated in the Deck's store, Import and clean results, and chats left on their old settings. Saved to ~/.frugal-deck/activity.jsonl.</p>
+        <h3 class="settings__title" data-i18n="settings.activity.title">Activity</h3>
+        <p class="settings__hint" data-i18n="settings.activity.hint">Account sign-ins and sign-outs, MCP servers that ask to sign in, plugins added or updated in the Deck's store, Import and clean results, and chats left on their old settings. Saved to ~/.frugal-deck/activity.jsonl.</p>
         <div class="settings__row">
           <div id="activity-state" class="empty">
             <p id="activity-status" class="sort__status" role="status">Loading activity…</p>
-            <button id="activity-retry" class="btn" type="button" hidden>Retry</button>
+            <button id="activity-retry" class="btn" type="button" hidden data-i18n="common.retry">Retry</button>
           </div>
-          <pre id="activity-log" class="debug__console" role="log" tabindex="0" aria-label="Activity" hidden></pre>
+          <pre id="activity-log" class="debug__console" role="log" tabindex="0" aria-label="Activity" hidden data-i18n-aria-label="settings.activity.title"></pre>
         </div>
       </section>
       <section class="settings__section" data-section="debug" hidden>
-        <h3 class="settings__title">Debug</h3>
-        <div class="settings__row" data-tip="Shows what the Deck did when something fails, like a handoff that never started">
-          <label class="organize__check"><input id="settings-debug" type="checkbox"> Record a debug log</label>
-          <p class="settings__hint">Records chat starts and exits, handoffs, calls between the window and the Deck, events, clicks and errors. Also saved to ~/.frugal-deck/debug.log, so it survives a restart. Times are UTC.</p>
-          <p class="settings__warn">Uses some extra CPU and disk while on. The log holds folder paths and the start of prompts; it stays on this computer.</p>
+        <h3 class="settings__title" data-i18n="settings.debug.title">Debug</h3>
+        <div class="settings__row" data-tip="Shows what the Deck did when something fails, like a handoff that never started" data-i18n-tip="settings.debug.record.tip">
+          <label class="organize__check" data-i18n="settings.debug.record.label"><input id="settings-debug" type="checkbox"> Record a debug log</label>
+          <p class="settings__hint" data-i18n="settings.debug.record.hint">Records chat starts and exits, handoffs, calls between the window and the Deck, events, clicks and errors. Also saved to ~/.frugal-deck/debug.log, so it survives a restart. Times are UTC.</p>
+          <p class="settings__warn" data-i18n="settings.debug.record.warn">Uses some extra CPU and disk while on. The log holds folder paths and the start of prompts; it stays on this computer.</p>
         </div>
         <div class="settings__row">
-          <pre id="debug-console" class="debug__console" role="log" tabindex="0" aria-label="Debug log"></pre>
+          <pre id="debug-console" class="debug__console" role="log" tabindex="0" aria-label="Debug log" data-i18n-aria-label="settings.debug.console.label"></pre>
           <div class="debug__actions">
-            <button id="debug-copy" class="btn btn--bar" type="button" data-tip="Copy every line shown">Copy</button>
-            <button id="debug-reveal" class="btn btn--bar" type="button" data-tip="Show debug.log in File Explorer">Show file</button>
-            <button id="debug-clear" class="btn btn--bar" type="button" data-tip="Empty this console and debug.log">Clear</button>
+            <button id="debug-copy" class="btn btn--bar" type="button" data-tip="Copy every line shown" data-i18n-tip="settings.debug.copy.tip" data-i18n="common.copy">Copy</button>
+            <button id="debug-reveal" class="btn btn--bar" type="button" data-tip="Show debug.log in File Explorer" data-i18n-tip="settings.debug.reveal.tip" data-i18n="settings.debug.reveal.label">Show file</button>
+            <button id="debug-clear" class="btn btn--bar" type="button" data-tip="Empty this console and debug.log" data-i18n-tip="settings.debug.clear.tip" data-i18n="common.clear">Clear</button>
             <p id="debug-status" class="sort__status" role="status" hidden></p>
           </div>
         </div>
       </section>
     </div>
-    <button class="btn btn--icon settings__close" type="submit" aria-label="Close settings" data-tip="Close settings"><svg class="icon" aria-hidden="true"><use href="#i-x"/></svg></button>
+    <button class="btn btn--icon settings__close" type="submit" aria-label="Close settings" data-tip="Close settings" data-i18n-aria-label="settings.close.label" data-i18n-tip="settings.close.label"><svg class="icon" aria-hidden="true"><use href="#i-x"/></svg></button>
   </form>
 </dialog>
 <dialog id="mcp-dialog" class="organize settings" closedby="any" aria-labelledby="mcp-title">
   <div class="settings__frame">
-    <nav class="settings__nav" aria-label="MCP sections">
-      <h2 id="mcp-title" class="settings__heading">MCP servers</h2>
+    <nav class="settings__nav" aria-label="MCP sections" data-i18n-aria-label="mcp.nav.label">
+      <h2 id="mcp-title" class="settings__heading" data-i18n="mcp.title">MCP servers</h2>
       <p id="mcp-folder" class="settings__scope"></p>
-      <button class="settings__tab" type="button" data-section="servers" aria-current="page"><svg class="icon" aria-hidden="true"><use href="#i-plug"/></svg>Servers</button>
-      <button id="mcp-tab-failing" class="settings__tab" type="button" data-section="failing" hidden><svg class="icon" aria-hidden="true"><use href="#i-x"/></svg>Not connected<span class="settings__count"></span></button>
-      <button id="mcp-tab-removed" class="settings__tab" type="button" data-section="removed" hidden><svg class="icon" aria-hidden="true"><use href="#i-trash"/></svg>Removed<span class="settings__count"></span></button>
-      <button class="settings__tab" type="button" data-section="recommend"><svg class="icon" aria-hidden="true"><use href="#i-tasks"/></svg>Recommend</button>
-      <button class="settings__tab" type="button" data-section="add"><svg class="icon" aria-hidden="true"><use href="#i-plus"/></svg>Add server</button>
+      <button class="settings__tab" type="button" data-section="servers" aria-current="page" data-i18n="mcp.servers.title"><svg class="icon" aria-hidden="true"><use href="#i-plug"/></svg>Servers</button>
+      <button id="mcp-tab-failing" class="settings__tab" type="button" data-section="failing" hidden data-i18n="mcp.failing.title"><svg class="icon" aria-hidden="true"><use href="#i-x"/></svg>Not connected<span class="settings__count"></span></button>
+      <button id="mcp-tab-removed" class="settings__tab" type="button" data-section="removed" hidden data-i18n="mcp.removed.title"><svg class="icon" aria-hidden="true"><use href="#i-trash"/></svg>Removed<span class="settings__count"></span></button>
+      <button class="settings__tab" type="button" data-section="recommend" data-i18n="mcp.recommend.title"><svg class="icon" aria-hidden="true"><use href="#i-tasks"/></svg>Recommend</button>
+      <button class="settings__tab" type="button" data-section="add" data-i18n="mcp.add.title"><svg class="icon" aria-hidden="true"><use href="#i-plus"/></svg>Add server</button>
     </nav>
     <div class="settings__pane">
       <div class="settings__body">
         <section class="settings__section" data-section="servers">
-          <h3 class="settings__title">Servers</h3>
+          <h3 class="settings__title" data-i18n="mcp.servers.title">Servers</h3>
           <p id="mcp-note" class="settings__hint"></p>
           <div id="mcp-list" class="mcp__list"></div>
         </section>
         <section class="settings__section" data-section="failing" hidden>
-          <h3 class="settings__title">Not connected</h3>
-          <p class="settings__hint">Checked ones still load in chats. Sign in or Reconnect fixes most of them.</p>
+          <h3 class="settings__title" data-i18n="mcp.failing.title">Not connected</h3>
+          <p class="settings__hint" data-i18n="mcp.failing.hint">Checked ones still load in chats. Sign in or Reconnect fixes most of them.</p>
           <div id="mcp-failing" class="mcp__list"></div>
         </section>
         <section class="settings__section" data-section="removed" hidden>
-          <h3 class="settings__title">Removed</h3>
-          <p class="settings__hint">Restore puts the saved config back. It may need a new sign-in.</p>
+          <h3 class="settings__title" data-i18n="mcp.removed.title">Removed</h3>
+          <p class="settings__hint" data-i18n="mcp.removed.hint">Restore puts the saved config back. It may need a new sign-in.</p>
           <div id="mcp-removed" class="mcp__list"></div>
         </section>
         <section class="settings__section" data-section="recommend" hidden>
-          <h3 class="settings__title">Recommend</h3>
+          <h3 class="settings__title" data-i18n="mcp.recommend.title">Recommend</h3>
           <div class="settings__row">
-            <label class="organize__field">What will you work on? <textarea id="mcp-task" maxlength="2000" placeholder="Fix the login page, write the release notes"></textarea></label>
-            <p class="settings__hint">Haiku checks or unchecks each server and picks its mode. Nothing is saved until Save.</p>
-            <div class="organize__actions"><button id="mcp-recommend" class="btn" type="button">Recommend</button></div>
+            <label class="organize__field" data-i18n="common.task.label">What will you work on? <textarea id="mcp-task" maxlength="2000" placeholder="Fix the login page, write the release notes" data-i18n-placeholder="common.task.placeholder"></textarea></label>
+            <p class="settings__hint" data-i18n="mcp.recommend.hint">Haiku checks or unchecks each server and picks its mode. Nothing is saved until Save.</p>
+            <div class="organize__actions"><button id="mcp-recommend" class="btn" type="button" data-i18n="common.recommend">Recommend</button></div>
           </div>
           <div class="settings__row">
-            <span class="organize__check">Auto picks</span>
-            <p class="settings__hint">Servers set to Auto are picked per folder when its first new chat starts, and reused after that.</p>
-            <div class="organize__actions"><button id="mcp-forget-picks" class="btn" type="button" data-tip="The next new chat in each folder picks again">Forget picks</button></div>
+            <span class="organize__check" data-i18n="common.auto-picks.label">Auto picks</span>
+            <p class="settings__hint" data-i18n="mcp.auto-picks.hint">Servers set to Auto are picked per folder when its first new chat starts, and reused after that.</p>
+            <div class="organize__actions"><button id="mcp-forget-picks" class="btn" type="button" data-tip="The next new chat in each folder picks again" data-i18n-tip="common.forget-picks.tip" data-i18n="common.forget-picks.label">Forget picks</button></div>
           </div>
         </section>
         <section class="settings__section" data-section="add" hidden>
-          <h3 class="settings__title">Add server</h3>
+          <h3 class="settings__title" data-i18n="mcp.add.title">Add server</h3>
           <div id="mcp-add-section" class="settings__row">
-            <span class="organize__check">Suggested</span>
+            <span class="organize__check" data-i18n="mcp.add.suggested.label">Suggested</span>
             <div id="mcp-suggest" class="mcp__chips"></div>
           </div>
           <div class="settings__row">
-            <label class="organize__field">Describe one <input id="mcp-ask" type="text" maxlength="2000" autocomplete="off" placeholder="GitHub's official server, a local Postgres"></label>
-            <div class="organize__actions"><span id="mcp-ask-cost" class="settings__hint mcp__cost" aria-live="polite"></span><button id="mcp-ask-run" class="btn" type="button" disabled>Fill in with Haiku</button></div>
+            <label class="organize__field" data-i18n="mcp.add.describe.label">Describe one <input id="mcp-ask" type="text" maxlength="2000" autocomplete="off" placeholder="GitHub's official server, a local Postgres" data-i18n-placeholder="mcp.add.describe.placeholder"></label>
+            <div class="organize__actions"><span id="mcp-ask-cost" class="settings__hint mcp__cost" aria-live="polite"></span><button id="mcp-ask-run" class="btn" type="button" disabled data-i18n="mcp.add.fill.label">Fill in with Haiku</button></div>
           </div>
           <div id="mcp-new" class="settings__row mcp__form" hidden>
-            <label class="organize__field">Name <input id="mcp-new-name" type="text" maxlength="64" autocomplete="off" spellcheck="false" placeholder="Letters, digits, - and _"></label>
-            <label class="organize__field">Type <select id="mcp-new-transport"><option value="http">Remote (HTTP)</option><option value="sse">Remote (SSE)</option><option value="stdio">Local command (stdio)</option></select></label>
+            <label class="organize__field" data-i18n="mcp.add.name.label">Name <input id="mcp-new-name" type="text" maxlength="64" autocomplete="off" spellcheck="false" placeholder="Letters, digits, - and _" data-i18n-placeholder="mcp.add.name.placeholder"></label>
+            <label class="organize__field" data-i18n="mcp.add.type.label">Type <select id="mcp-new-transport"><option value="http" data-i18n="mcp.add.type.http">Remote (HTTP)</option><option value="sse" data-i18n="mcp.add.type.sse">Remote (SSE)</option><option value="stdio" data-i18n="mcp.add.type.stdio">Local command (stdio)</option></select></label>
             <label class="organize__field"><span id="mcp-new-target-label">URL</span> <input id="mcp-new-target" type="text" maxlength="2000" autocomplete="off" spellcheck="false"></label>
             <div class="organize__actions">
-              <button id="mcp-new-cancel" class="btn" type="button">Cancel</button>
-              <button id="mcp-new-add" class="btn btn--primary" type="button">Add to the Deck</button>
+              <button id="mcp-new-cancel" class="btn" type="button" data-i18n="common.cancel">Cancel</button>
+              <button id="mcp-new-add" class="btn btn--primary" type="button" data-i18n="mcp.add.submit.label">Add to the Deck</button>
             </div>
           </div>
         </section>
       </div>
       <div class="settings__footer">
         <p id="mcp-error" class="settings__message" role="status"></p>
-        <button id="mcp-clean" class="btn" type="button" data-tip="Find plugins and MCP servers in every account, bring them into the Deck store and remove old copies, with a backup">Import and clean…</button>
-        <button id="mcp-cancel" class="btn" type="button">Cancel</button>
-        <button id="mcp-save" class="btn btn--primary" type="button">Save</button>
+        <button id="mcp-clean" class="btn" type="button" data-tip="Find plugins and MCP servers in every account, bring them into the Deck store and remove old copies, with a backup" data-i18n-tip="common.import-clean.tip" data-i18n="common.import-clean.label">Import and clean…</button>
+        <button id="mcp-cancel" class="btn" type="button" data-i18n="common.cancel">Cancel</button>
+        <button id="mcp-save" class="btn btn--primary" type="button" data-i18n="common.save">Save</button>
       </div>
     </div>
   </div>
@@ -614,113 +614,113 @@
   <form method="dialog">
     <h2 id="mcp-access-title" class="organize__title"></h2>
     <fieldset class="access__group">
-      <legend class="access__legend">In chats</legend>
-      <label class="access__choice"><input type="radio" name="mcp-access-mode" value="checked"><span>As checked<small>On where its box is checked.</small></span></label>
-      <label class="access__choice"><input type="radio" name="mcp-access-mode" value="auto"><span>Auto<small>Frugal picks it per folder when a new chat starts.</small></span></label>
-      <label class="access__choice"><input type="radio" name="mcp-access-mode" value="delegates"><span>Delegates only<small>Not loaded in chats. Delegated tasks still get it.</small></span></label>
+      <legend class="access__legend" data-i18n="mcp.access.chats.legend">In chats</legend>
+      <label class="access__choice"><input type="radio" name="mcp-access-mode" value="checked"><span data-i18n="mcp.access.checked.label">As checked<small data-i18n="mcp.access.checked.hint">On where its box is checked.</small></span></label>
+      <label class="access__choice"><input type="radio" name="mcp-access-mode" value="auto"><span data-i18n="mcp.access.auto.label">Auto<small data-i18n="mcp.access.auto.hint">Frugal picks it per folder when a new chat starts.</small></span></label>
+      <label class="access__choice"><input type="radio" name="mcp-access-mode" value="delegates"><span data-i18n="mcp.access.delegates.label">Delegates only<small data-i18n="mcp.access.delegates.hint">Not loaded in chats. Delegated tasks still get it.</small></span></label>
     </fieldset>
     <fieldset id="mcp-access-kinds" class="access__group">
-      <legend class="access__legend">Account kinds</legend>
-      <p class="settings__hint">Delegates of the checked kinds may use it when frugal delegates a task.</p>
+      <legend class="access__legend" data-i18n="mcp.access.kinds.legend">Account kinds</legend>
+      <p class="settings__hint" data-i18n="mcp.access.kinds.hint">Delegates of the checked kinds may use it when frugal delegates a task.</p>
       <div class="access__list"></div>
     </fieldset>
     <div id="mcp-access-move" class="access__group"></div>
     <div class="organize__actions">
-      <button class="btn" type="submit" value="cancel">Cancel</button>
-      <button class="btn btn--primary" type="submit" value="ok">Apply</button>
+      <button class="btn" type="submit" value="cancel" data-i18n="common.cancel">Cancel</button>
+      <button class="btn btn--primary" type="submit" value="ok" data-i18n="common.apply">Apply</button>
     </div>
   </form>
 </dialog>
 <dialog id="plugins-dialog" class="organize settings" closedby="any" aria-labelledby="plugins-title">
   <div class="settings__frame">
-    <nav class="settings__nav" aria-label="Plugin sections">
-      <h2 id="plugins-title" class="settings__heading">Plugins</h2>
-      <button class="settings__tab" type="button" data-section="installed" aria-current="page"><svg class="icon" aria-hidden="true"><use href="#i-puzzle"/></svg>Installed</button>
-      <button class="settings__tab" type="button" data-section="recommend"><svg class="icon" aria-hidden="true"><use href="#i-tasks"/></svg>Recommend</button>
-      <button class="settings__tab" type="button" data-section="install"><svg class="icon" aria-hidden="true"><use href="#i-update"/></svg>Install</button>
+    <nav class="settings__nav" aria-label="Plugin sections" data-i18n-aria-label="plugins.nav.label">
+      <h2 id="plugins-title" class="settings__heading" data-i18n="plugins.title">Plugins</h2>
+      <button class="settings__tab" type="button" data-section="installed" aria-current="page" data-i18n="plugins.installed.title"><svg class="icon" aria-hidden="true"><use href="#i-puzzle"/></svg>Installed</button>
+      <button class="settings__tab" type="button" data-section="recommend" data-i18n="plugins.recommend.title"><svg class="icon" aria-hidden="true"><use href="#i-tasks"/></svg>Recommend</button>
+      <button class="settings__tab" type="button" data-section="install" data-i18n="plugins.install.title"><svg class="icon" aria-hidden="true"><use href="#i-update"/></svg>Install</button>
     </nav>
     <div class="settings__pane">
       <div class="settings__body">
         <section class="settings__section" data-section="installed">
-          <h3 class="settings__title">Installed</h3>
-          <p class="settings__hint">On follows the Deck store's plugin settings. Auto lets frugal pick per folder. Save applies to chats started or restarted afterward.</p>
+          <h3 class="settings__title" data-i18n="plugins.installed.title">Installed</h3>
+          <p class="settings__hint" data-i18n="plugins.installed.hint">On follows the Deck store's plugin settings. Auto lets frugal pick per folder. Save applies to chats started or restarted afterward.</p>
           <div id="plugins-list" class="mcp__list"></div>
         </section>
         <section class="settings__section" data-section="recommend" hidden>
-          <h3 class="settings__title">Recommend</h3>
+          <h3 class="settings__title" data-i18n="plugins.recommend.title">Recommend</h3>
           <div class="settings__row">
-            <label class="organize__field">What will you work on? <textarea id="plugins-task" maxlength="2000" placeholder="Fix the login page, write the release notes"></textarea></label>
-            <p class="settings__hint">Haiku sets each plugin to On, Auto or Off. Nothing is saved until Save.</p>
-            <div class="organize__actions"><button id="plugins-recommend" class="btn" type="button">Recommend</button></div>
+            <label class="organize__field" data-i18n="common.task.label">What will you work on? <textarea id="plugins-task" maxlength="2000" placeholder="Fix the login page, write the release notes" data-i18n-placeholder="common.task.placeholder"></textarea></label>
+            <p class="settings__hint" data-i18n="plugins.recommend.hint">Haiku sets each plugin to On, Auto or Off. Nothing is saved until Save.</p>
+            <div class="organize__actions"><button id="plugins-recommend" class="btn" type="button" data-i18n="common.recommend">Recommend</button></div>
           </div>
           <div class="settings__row">
-            <span class="organize__check">Auto picks</span>
-            <p class="settings__hint">Plugins set to Auto are picked per folder when its first new chat starts, and reused after that.</p>
-            <div class="organize__actions"><button id="plugins-forget-picks" class="btn" type="button" data-tip="The next new chat in each folder picks again">Forget picks</button></div>
+            <span class="organize__check" data-i18n="common.auto-picks.label">Auto picks</span>
+            <p class="settings__hint" data-i18n="plugins.auto-picks.hint">Plugins set to Auto are picked per folder when its first new chat starts, and reused after that.</p>
+            <div class="organize__actions"><button id="plugins-forget-picks" class="btn" type="button" data-tip="The next new chat in each folder picks again" data-i18n-tip="common.forget-picks.tip" data-i18n="common.forget-picks.label">Forget picks</button></div>
           </div>
         </section>
         <section class="settings__section" data-section="install" hidden>
-          <h3 class="settings__title">Install</h3>
+          <h3 class="settings__title" data-i18n="plugins.install.title">Install</h3>
           <div class="settings__row">
-            <label class="organize__field">What should it do? <input id="plugins-request" type="text" maxlength="2000" autocomplete="off" placeholder="Review pull requests, work with Figma"></label>
-            <div class="organize__actions"><button id="plugins-find" class="btn" type="button">Find</button></div>
+            <label class="organize__field" data-i18n="plugins.install.request.label">What should it do? <input id="plugins-request" type="text" maxlength="2000" autocomplete="off" placeholder="Review pull requests, work with Figma" data-i18n-placeholder="plugins.install.request.placeholder"></label>
+            <div class="organize__actions"><button id="plugins-find" class="btn" type="button" data-i18n="plugins.install.find.label">Find</button></div>
           </div>
           <div id="plugins-confirm" class="settings__row mcp__form" hidden>
             <p id="plugins-suggestion" class="organize__text"></p>
             <div class="organize__actions">
-              <button id="plugins-install-cancel" class="btn" type="button">Cancel</button>
-              <button id="plugins-install" class="btn btn--primary" type="button">Install</button>
+              <button id="plugins-install-cancel" class="btn" type="button" data-i18n="common.cancel">Cancel</button>
+              <button id="plugins-install" class="btn btn--primary" type="button" data-i18n="common.install">Install</button>
             </div>
           </div>
         </section>
       </div>
       <div class="settings__footer">
         <p id="plugins-error" class="settings__message" role="status"></p>
-        <button id="plugins-clean" class="btn" type="button" data-tip="Find plugins and MCP servers in every account, bring them into the Deck store and remove old copies, with a backup">Import and clean…</button>
-        <button id="plugins-cancel" class="btn" type="button">Cancel</button>
-        <button id="plugins-save" class="btn btn--primary" type="button">Save</button>
+        <button id="plugins-clean" class="btn" type="button" data-tip="Find plugins and MCP servers in every account, bring them into the Deck store and remove old copies, with a backup" data-i18n-tip="common.import-clean.tip" data-i18n="common.import-clean.label">Import and clean…</button>
+        <button id="plugins-cancel" class="btn" type="button" data-i18n="common.cancel">Cancel</button>
+        <button id="plugins-save" class="btn btn--primary" type="button" data-i18n="common.save">Save</button>
       </div>
     </div>
   </div>
 </dialog>
 <dialog id="clean-dialog" class="organize settings" closedby="any" aria-labelledby="clean-title">
   <div class="settings__frame">
-    <nav class="settings__nav" aria-label="Import and clean">
-      <h2 id="clean-title" class="settings__heading">Import and clean</h2>
+    <nav class="settings__nav" aria-label="Import and clean" data-i18n-aria-label="clean.title">
+      <h2 id="clean-title" class="settings__heading" data-i18n="clean.title">Import and clean</h2>
     </nav>
     <div class="settings__pane">
       <div class="settings__body">
         <section class="settings__section">
-          <p class="settings__hint">Frugal Deck keeps one copy of each plugin and MCP server and shares it with every Claude account. Pick what to import, keep or remove. Everything changed is backed up first, except old plugin copies: Claude Code downloads them again if needed. Chats started or restarted afterward pick up the changes.</p>
+          <p class="settings__hint" data-i18n="clean.hint">Frugal Deck keeps one copy of each plugin and MCP server and shares it with every Claude account. Pick what to import, keep or remove. Everything changed is backed up first, except old plugin copies: Claude Code downloads them again if needed. Chats started or restarted afterward pick up the changes.</p>
           <div id="clean-busy" class="clean__busy" hidden>
             <p id="clean-step" class="settings__hint"></p>
             <progress id="clean-progress" class="sort__progress" aria-labelledby="clean-step"></progress>
           </div>
-          <p id="clean-empty" class="settings__hint" hidden>Every account already uses the Deck store.</p>
+          <p id="clean-empty" class="settings__hint" hidden data-i18n="clean.empty">Every account already uses the Deck store.</p>
           <fieldset id="clean-choices" class="clean__choices">
             <div class="organize__actions">
-              <button id="clean-recommended" class="btn" type="button">Recommended</button>
-              <button id="clean-keep" class="btn" type="button">Keep everything</button>
+              <button id="clean-recommended" class="btn" type="button" data-i18n="clean.recommended.label">Recommended</button>
+              <button id="clean-keep" class="btn" type="button" data-i18n="clean.keep.label">Keep everything</button>
             </div>
             <table id="clean-plugins" class="inventory" hidden>
-              <caption>Plugins <span id="clean-plugins-count" class="settings__hint"></span></caption>
-              <thead><tr><th scope="col">Name</th><th scope="col">Where</th><th scope="col">Store version</th><th scope="col">Status</th><th scope="col">Action</th></tr></thead>
+              <caption data-i18n="clean.plugins.caption">Plugins <span id="clean-plugins-count" class="settings__hint"></span></caption>
+              <thead><tr><th scope="col" data-i18n="clean.col.name">Name</th><th scope="col" data-i18n="clean.col.where">Where</th><th scope="col" data-i18n="clean.col.store-version">Store version</th><th scope="col" data-i18n="clean.col.status">Status</th><th scope="col" data-i18n="clean.col.action">Action</th></tr></thead>
               <tbody></tbody>
             </table>
             <table id="clean-mcp" class="inventory" hidden>
-              <caption>MCP servers <span id="clean-mcp-count" class="settings__hint"></span></caption>
-              <thead><tr><th scope="col">Name</th><th scope="col">Where</th><th scope="col">Status</th><th scope="col">Action</th></tr></thead>
+              <caption data-i18n="clean.mcp.caption">MCP servers <span id="clean-mcp-count" class="settings__hint"></span></caption>
+              <thead><tr><th scope="col" data-i18n="clean.col.name">Name</th><th scope="col" data-i18n="clean.col.where">Where</th><th scope="col" data-i18n="clean.col.status">Status</th><th scope="col" data-i18n="clean.col.action">Action</th></tr></thead>
               <tbody></tbody>
             </table>
             <table id="clean-accounts" class="inventory" hidden>
-              <caption>Accounts <span id="clean-accounts-count" class="settings__hint"></span></caption>
-              <thead><tr><th scope="col">Account</th><th scope="col">Action</th></tr></thead>
+              <caption data-i18n="clean.accounts.caption">Accounts <span id="clean-accounts-count" class="settings__hint"></span></caption>
+              <thead><tr><th scope="col" data-i18n="clean.col.account">Account</th><th scope="col" data-i18n="clean.col.action">Action</th></tr></thead>
               <tbody></tbody>
             </table>
             <details id="clean-copies-more" hidden>
-              <summary>Old plugin copies <span id="clean-copies-count" class="settings__hint"></span></summary>
+              <summary data-i18n="clean.copies.label">Old plugin copies <span id="clean-copies-count" class="settings__hint"></span></summary>
               <table id="clean-copies" class="inventory">
-                <thead><tr><th scope="col">Account</th><th scope="col">Plugin</th><th scope="col">Version</th><th scope="col">Action</th></tr></thead>
+                <thead><tr><th scope="col" data-i18n="clean.col.account">Account</th><th scope="col" data-i18n="clean.col.plugin">Plugin</th><th scope="col" data-i18n="clean.col.version">Version</th><th scope="col" data-i18n="clean.col.action">Action</th></tr></thead>
                 <tbody></tbody>
               </table>
             </details>
@@ -729,8 +729,8 @@
       </div>
       <div class="settings__footer">
         <p id="clean-status" class="settings__message" role="status" hidden></p>
-        <button id="clean-cancel" class="btn" type="button">Cancel</button>
-        <button id="clean-apply" class="btn btn--primary" type="button">Apply</button>
+        <button id="clean-cancel" class="btn" type="button" data-i18n="common.cancel">Cancel</button>
+        <button id="clean-apply" class="btn btn--primary" type="button" data-i18n="common.apply">Apply</button>
       </div>
     </div>
   </div>
@@ -738,10 +738,10 @@
 <dialog id="mcp-login" class="organize mcp-login" closedby="none" aria-labelledby="mcp-login-title">
   <div class="mcp-login__head">
     <h2 id="mcp-login-title" class="organize__title"></h2>
-    <label class="organize__field">Account <select id="mcp-login-account"></select></label>
-    <button id="mcp-login-close" class="btn btn--icon" type="button" aria-label="Close" data-tip="Close and end this sign-in"><svg class="icon" aria-hidden="true"><use href="#i-x"/></svg></button>
+    <label class="organize__field" data-i18n="mcp-login.account.label">Account <select id="mcp-login-account"></select></label>
+    <button id="mcp-login-close" class="btn btn--icon" type="button" aria-label="Close" data-tip="Close and end this sign-in" data-i18n-aria-label="common.close" data-i18n-tip="mcp-login.close.tip"><svg class="icon" aria-hidden="true"><use href="#i-x"/></svg></button>
   </div>
-  <p class="mcp__folder">Pick the server, then Authenticate: the browser opens to sign in. Close this window once it shows connected. Every Claude account, delegates included, gets this sign-in.</p>
+  <p class="mcp__folder" data-i18n="mcp-login.hint">Pick the server, then Authenticate: the browser opens to sign in. Close this window once it shows connected. Every Claude account, delegates included, gets this sign-in.</p>
   <div id="mcp-login-term" class="mcp-login__term"></div>
 </dialog>
 <dialog id="confirm-dialog" class="organize" closedby="any" aria-labelledby="confirm-title" aria-describedby="confirm-message">
@@ -749,22 +749,22 @@
     <h2 id="confirm-title" class="organize__title"></h2>
     <p id="confirm-message" class="sort__warning" role="note"></p>
     <div class="organize__actions">
-      <button class="btn" type="submit" value="cancel" autofocus>Cancel</button>
+      <button class="btn" type="submit" value="cancel" autofocus data-i18n="common.cancel">Cancel</button>
       <button id="confirm-ok" class="btn btn--primary" type="submit" value="ok"></button>
     </div>
   </form>
 </dialog>
 <dialog id="trust-dialog" class="organize" closedby="any" aria-labelledby="trust-title" aria-describedby="trust-warning">
   <form method="dialog">
-    <h2 id="trust-title" class="organize__title">Always trust folders?</h2>
-    <p id="trust-warning" class="sort__warning" role="note">Frugal Deck will accept Claude Code's trust check for you in every folder you open here. Claude Code will be able to read, edit, and execute files there, and a folder's own settings and hooks can run commands as soon as the chat starts. A folder you downloaded or did not write could harm your computer or expose your files and credentials.</p>
+    <h2 id="trust-title" class="organize__title" data-i18n="dialog.trust.title">Always trust folders?</h2>
+    <p id="trust-warning" class="sort__warning" role="note" data-i18n="dialog.trust.warning">Frugal Deck will accept Claude Code's trust check for you in every folder you open here. Claude Code will be able to read, edit, and execute files there, and a folder's own settings and hooks can run commands as soon as the chat starts. A folder you downloaded or did not write could harm your computer or expose your files and credentials.</p>
     <div class="organize__actions">
-      <button class="btn" type="submit" value="cancel" autofocus data-tip="Keep asking for each folder">Cancel</button>
-      <button class="btn btn--primary" type="submit" value="trust" data-tip="Skip the trust check in every folder">Always trust</button>
+      <button class="btn" type="submit" value="cancel" autofocus data-tip="Keep asking for each folder" data-i18n-tip="dialog.trust.cancel.tip" data-i18n="common.cancel">Cancel</button>
+      <button class="btn btn--primary" type="submit" value="trust" data-tip="Skip the trust check in every folder" data-i18n-tip="dialog.trust.confirm.tip" data-i18n="dialog.trust.confirm.label">Always trust</button>
     </div>
   </form>
 </dialog>
-<div id="undo-bar" class="undo-bar" role="status" hidden><span id="undo-text"></span><button id="undo-run" class="btn" type="button" data-tip="Put this back as it was">Undo</button><button id="undo-close" class="btn btn--icon" type="button" aria-label="Dismiss" data-tip="Dismiss"><svg class="icon" aria-hidden="true"><use href="#i-x"/></svg></button></div>
+<div id="undo-bar" class="undo-bar" role="status" hidden><span id="undo-text"></span><button id="undo-run" class="btn" type="button" data-tip="Put this back as it was" data-i18n-tip="undo.run.tip" data-i18n="common.undo">Undo</button><button id="undo-close" class="btn btn--icon" type="button" aria-label="Dismiss" data-tip="Dismiss" data-i18n-aria-label="undo.dismiss.label" data-i18n-tip="undo.dismiss.label"><svg class="icon" aria-hidden="true"><use href="#i-x"/></svg></button></div>
 <div id="tooltip" class="tooltip" popover="manual" role="tooltip"></div>
 <script type="module" src="./app.js"></script>
 </body>
