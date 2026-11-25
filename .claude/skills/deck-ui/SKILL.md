@@ -13,7 +13,7 @@ Files: `src/renderer/tokens.css` (tokens), `base.css` (reset), `app.css` (compon
 
 - No literal colour, font, radius, z-index or duration in `app.css`. Use a token or add one to `tokens.css` first.
 - Spacing: `--space-*` only. A literal px is allowed for 1px rules, motion offsets and optical nudges up to 2px.
-- Not for the app: `--container`, `--gutter`, `--gap-columns`, `--section-gap*`, `--text-lead`, `--text-display*`, `--text-2xl`, `--text-3xl`.
+- `--text-display`, `--text-section`, `--text-title` belong to the base heading reset only; do not use them in components.
 - Text sizes in the app: `--text-xs` (meta, chips, bars), `--text-sm` (body, controls), `--text-md` (dialog titles). Nothing larger.
 - Weights: 400 body, 500 headings and selected items. No other weights.
 
