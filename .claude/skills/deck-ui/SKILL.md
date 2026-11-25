@@ -71,7 +71,7 @@ Every panel that loads data shows all three: loading, empty (with what to do nex
 - Buttons are verbs or verb phrases: "Save", "Add server", "Close chat". No "OK".
 - Terms: **chat** is what the user sees and works in; **session** only for Claude Code session files or IDs. **Remove** takes something out of Deck and keeps the data; **delete** destroys it. **Account**, never profile. **Sign in / sign out**, never log in or logout.
 - Errors say what failed and what to do: "Could not save the plugin. Check the file is writable." No "Error:" prefix, no stack traces in the UI.
-- Ellipsis (…) only on a control that opens a dialog for more input.
+- Ellipsis (…) on a control that opens a dialog for more input, and at the end of progress text ("Loading…"). Nowhere else, and never three dots.
 
 ## Checklist before handing back
 
