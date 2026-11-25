@@ -149,6 +149,10 @@
 <div id="usage" class="usage" popover="auto" aria-label="Usage">
   <div id="meter-context" class="meter" hidden>Context <meter aria-label="Context used" min="0" max="100" low="60" high="80" optimum="0"></meter><span class="measured"></span></div>
   <div id="usage-tokens" class="meter" hidden>Session tokens <span class="measured"></span></div>
+  <div id="accounts-state" class="empty" hidden>
+    <p id="accounts-status" role="status"></p>
+    <button id="accounts-retry" class="btn" type="button" hidden>Retry</button>
+  </div>
   <div id="accounts" class="accounts"></div>
   <details id="usage-others" class="usage__others" hidden>
     <summary>Delegates <span id="others-count" class="usage__count"></span></summary>
@@ -166,7 +170,10 @@
   </div>
   <p id="palette-sends" class="palette__note" hidden></p>
   <div id="palette-list" class="palette__list" role="listbox" aria-label="Sessions"></div>
-  <p id="palette-empty" class="palette__empty" role="status" hidden>No results.</p>
+  <div id="palette-state" class="empty palette__empty" hidden>
+    <p id="palette-empty" role="status"></p>
+    <button id="palette-retry" class="btn" type="button" hidden>Retry</button>
+  </div>
 </dialog>
 <dialog id="organize" class="organize" closedby="any" aria-labelledby="organize-title">
   <form id="organize-form" method="dialog">
@@ -311,6 +318,7 @@
     <p id="tasks-summary" class="organize__text" role="status"></p>
     <div id="tasks-list" class="tasks__list"></div>
     <div class="organize__actions">
+      <button id="tasks-retry" class="btn" type="button" hidden>Retry</button>
       <button class="btn" type="submit" data-tip="Close tasks">Close</button>
     </div>
   </form>
@@ -502,7 +510,13 @@
       <section class="settings__section" data-section="activity" hidden>
         <h3 class="settings__title">Activity</h3>
         <p class="settings__hint">Account logins and logouts, MCP servers that ask to sign in, plugins added or updated in the Deck's store, Import and clean results, and chats left on their old settings. Saved to ~/.frugal-deck/activity.jsonl.</p>
-        <div class="settings__row"><pre id="activity-log" class="debug__console" role="log" tabindex="0" aria-label="Activity"></pre></div>
+        <div class="settings__row">
+          <div id="activity-state" class="empty">
+            <p id="activity-status" class="sort__status" role="status">Loading activity</p>
+            <button id="activity-retry" class="btn" type="button" hidden>Retry</button>
+          </div>
+          <pre id="activity-log" class="debug__console" role="log" tabindex="0" aria-label="Activity" hidden></pre>
+        </div>
       </section>
       <section class="settings__section" data-section="debug" hidden>
         <h3 class="settings__title">Debug</h3>

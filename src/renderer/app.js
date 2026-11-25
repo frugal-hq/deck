@@ -203,6 +203,8 @@ function render() {
 }
 
 let accountState = { primary: null, accounts: [], others: [] };
+let accountsLoading = null;
+let accountsError = '';
 const WARN_PCT = 80;
 const DAY_MS = 86400000;
 const resetDay = new Intl.DateTimeFormat('en-US', { weekday: 'short', hour: 'numeric', minute: '2-digit' });
@@ -562,7 +564,11 @@ function accountBlock(account, primary, chat, caps) {
   head.append(withMenu(block, account));
   block.append(head, ...loginLines(account));
   const limits = accountLimits(account).filter(([, limit]) => limit);
-  block.append(...(limits.length ? limits.map(([label, limit]) => limitRow(label, limit)) : [node('span', 'account__detail', 'No reading yet')]));
+  if (limits.length) block.append(...limits.map(([label, limit]) => limitRow(label, limit)));
+  else if (!accountsLoading && !accountsError) {
+    const next = account.signedIn ? 'Open a chat on this account to get a reading.' : 'Sign in to this account to get a reading.';
+    block.append(node('p', 'empty account__detail', `No reading yet. ${next}`));
+  }
   if (caps && account.usedToday) block.append(node('span', 'account__detail', `${account.usedToday} delegated today`));
   if (caps) block.append(...capsBlock(account));
   return block;
@@ -600,6 +606,12 @@ function drawAccounts() {
   const top = $('usage').classList.contains('usage--top');
   const currentId = chat?.account ?? accountState.primary;
   const current = accountState.accounts.find((account) => account.id === currentId);
+  const hasAccounts = current || (top && (accountState.accounts.length || accountState.others.length));
+  const empty = top ? 'No accounts yet. Select Add account to get started.' : 'No Claude account for this chat. Open All accounts to see your accounts.';
+  const status = accountsLoading ? 'Loading account usage' : accountsError || (hasAccounts ? '' : empty);
+  $('accounts-status').textContent = status;
+  $('accounts-state').hidden = !status;
+  $('accounts-retry').hidden = !accountsError;
   // The usage panel shows the account of the chat on screen, the one its meters read; switching in another chat leaves it alone.
   if (!top) {
     $('accounts').replaceChildren(...(current ? [accountBlock(current, true, chat)] : []));
@@ -2075,8 +2087,30 @@ function setAccounts(state) {
   drawInfo(chats.get(activeId));
 }
 
-deck.getAccounts().then(setAccounts);
+async function loadAccounts(refresh = false) {
+  if (accountsLoading) await accountsLoading;
+  if (accountsLoading) return;
+  accountsError = '';
+  const request = async () => {
+    if (refresh) await deck.refreshAccounts();
+    return deck.getAccounts();
+  };
+  accountsLoading = request().catch(() => null);
+  drawAccounts();
+  const state = await accountsLoading;
+  accountsLoading = null;
+  if (state) setAccounts(state);
+  else {
+    accountsError = refresh
+      ? 'Could not refresh account usage. Select Retry to try again.'
+      : 'Could not load accounts. Select Retry to try again.';
+    drawAccounts();
+  }
+}
+
+$('accounts-retry').onclick = () => loadAccounts(true);
 deck.onAccounts(setAccounts);
+loadAccounts();
 
 let resetClock = 0;
 
@@ -2086,7 +2120,7 @@ $('usage').addEventListener('toggle', (event) => {
     chats.get(activeId)?.term.focus();
     return;
   }
-  deck.refreshAccounts();
+  loadAccounts(true);
   resetClock = setInterval(() => {
     for (const element of $('usage').querySelectorAll('[data-reset]')) element.textContent = resetLabel(Number(element.dataset.reset));
   }, 30000);
@@ -2713,6 +2747,7 @@ let paletteChoose = null;
 let paletteText = new Set();
 let paletteAi = null;
 let paletteError = '';
+let paletteLoading = '';
 let paletteSearch = 0;
 let paletteTimer = 0;
 
@@ -2749,8 +2784,9 @@ function drawPalette() {
   const shown = new Set(titled.map((session) => session.id));
   const matches = paletteAi ?? [...titled, ...paletteSessions.filter((session) => paletteText.has(session.id) && !shown.has(session.id))];
   paletteList.replaceChildren(...matches.map(paletteOption));
-  $('palette-empty').textContent = paletteError || 'No results.';
-  $('palette-empty').hidden = matches.length > 0 && !paletteError;
+  $('palette-empty').textContent = paletteLoading || paletteError || 'No results. Try a different search.';
+  $('palette-state').hidden = matches.length > 0 && !paletteLoading && !paletteError;
+  $('palette-retry').hidden = !paletteError;
   selectPaletteRow(matches.length ? 0 : -1);
 }
 
@@ -2760,18 +2796,26 @@ function resetPaletteSearch() {
   paletteText = new Set();
   paletteAi = null;
   paletteError = '';
+  paletteLoading = '';
 }
 
 function searchMessages() {
   resetPaletteSearch();
-  drawPalette();
   const query = paletteQuery.value.trim();
   const search = paletteSearch;
-  if (query.length < 2) return;
+  paletteLoading = query.length >= 2 ? 'Searching messages' : '';
+  drawPalette();
+  if (!paletteLoading) return;
   paletteTimer = setTimeout(async () => {
-    const ids = await deck.searchMessages(query).catch((error) => (console.warn('Message search failed', error), []));
-    if (search !== paletteSearch) return;
-    paletteText = new Set(ids);
+    if (!palette.open) return;
+    const ids = await deck.searchMessages(query).catch((error) => (console.warn('Message search failed', error), null));
+    if (search !== paletteSearch || !palette.open) return;
+    paletteLoading = '';
+    if (ids) paletteText = new Set(ids);
+    else {
+      paletteError = 'Could not search messages. Select Retry to try again.';
+      $('palette-retry').onclick = searchMessages;
+    }
     drawPalette();
   }, 200);
 }
@@ -2779,39 +2823,74 @@ function searchMessages() {
 async function askAi() {
   const query = paletteQuery.value.trim();
   const button = $('palette-ask');
-  if (!query || button.disabled) return;
+  if (!query || button.disabled || paletteQuery.readOnly) return;
   resetPaletteSearch();
   const search = paletteSearch;
   button.disabled = true;
+  button.setAttribute('aria-busy', 'true');
   button.textContent = 'Asking…';
+  paletteLoading = 'Searching with AI';
+  drawPalette();
   const reply = await deck.searchAi({ model: $('palette-model').value, effort: $('palette-effort').value, rename: false, excerpts: sendsExcerpts() }, query)
     .catch((error) => ({ error: String(error) }));
   button.disabled = false;
+  button.removeAttribute('aria-busy');
   button.textContent = 'Ask AI';
-  if (search !== paletteSearch || !palette.open || reply.stopped) return;
-  const byId = new Map(paletteSessions.map((session) => [session.id, session]));
-  paletteAi = (reply.ids ?? []).map((id) => byId.get(id)).filter(Boolean);
-  paletteError = reply.error ?? '';
+  if (search !== paletteSearch || !palette.open) return;
+  paletteLoading = '';
+  if (reply.error) {
+    console.warn('AI search failed', reply.error);
+    paletteError = 'Could not search with AI. Select Retry to try again.';
+    $('palette-retry').onclick = askAi;
+  } else if (!reply.stopped) {
+    const byId = new Map(paletteSessions.map((session) => [session.id, session]));
+    paletteAi = (reply.ids ?? []).map((id) => byId.get(id)).filter(Boolean);
+  }
   drawPalette();
 }
 
 $('palette-ask').onclick = askAi;
+
+async function loadPalette(load) {
+  resetPaletteSearch();
+  const search = paletteSearch;
+  paletteSessions = [];
+  paletteQuery.readOnly = true;
+  $('palette-ai').hidden = true;
+  $('palette-sends').hidden = true;
+  paletteLoading = 'Loading sessions';
+  drawPalette();
+  let sessions;
+  try {
+    sessions = await load();
+  } catch {
+    sessions = null;
+  }
+  if (search !== paletteSearch || !palette.open) return;
+  paletteLoading = '';
+  if (!sessions) {
+    paletteError = 'Could not load sessions. Select Retry to try again.';
+    $('palette-retry').onclick = () => loadPalette(load);
+  } else {
+    paletteSessions = sessions;
+    paletteQuery.readOnly = false;
+    $('palette-ai').hidden = load !== deck.getAllSessions;
+    $('palette-sends').hidden = $('palette-ai').hidden;
+  }
+  drawPalette();
+}
 
 async function showPalette(load, choose, placeholder = 'Search titles, folders and messages') {
   if (palette.open) {
     palette.close();
     return;
   }
-  paletteSessions = await load();
   paletteChoose = choose;
   paletteQuery.placeholder = placeholder;
   paletteQuery.value = '';
-  resetPaletteSearch();
-  $('palette-ai').hidden = load !== deck.getAllSessions;
-  $('palette-sends').hidden = $('palette-ai').hidden;
   $('palette-sends').textContent = `Ask AI sends Anthropic your description and the title, folder, date and first prompt of up to 40 matching chats${sendsExcerpts() ? ', with up to 200 characters of a matching message from each' : ''}. Change it in Settings.`;
   palette.showModal();
-  drawPalette();
+  await loadPalette(load);
 }
 
 async function togglePalette() {
@@ -3365,11 +3444,9 @@ async function openSettings(section = localStorage.getItem('settingsSection')) {
   $('settings-debug').checked = localStorage.getItem('debugLog') === 'true';
   debugConsole.replaceChildren();
   showDebugLines(await deck.debugLines());
-  $('activity-log').replaceChildren();
-  showActivity(await deck.activityList());
   $('settings-dialog').showModal();
   debugConsole.scrollTop = debugConsole.scrollHeight;
-  $('activity-log').scrollTop = $('activity-log').scrollHeight;
+  loadActivity();
 }
 
 // Settings > Debug: the console shows debug.rs's last lines and follows new ones while the dialog is open.
@@ -3381,17 +3458,50 @@ function showDebugLines(lines) {
   if (atEnd) debugConsole.scrollTop = debugConsole.scrollHeight;
 }
 const activityLine = ({ at, kind, text }) => `${new Date(at).toLocaleString()}  ${kind}  ${text}\n`;
+let pendingActivity = null;
+
+async function loadActivity() {
+  const live = [];
+  pendingActivity = live;
+  $('activity-log').replaceChildren();
+  $('activity-log').hidden = true;
+  $('activity-state').hidden = false;
+  $('activity-status').textContent = 'Loading activity';
+  $('activity-status').dataset.failed = false;
+  $('activity-retry').hidden = true;
+  const entries = await deck.activityList().catch(() => null);
+  if (pendingActivity !== live) return;
+  pendingActivity = null;
+  if (!entries) {
+    showStatus('activity-status', 'Could not load activity. Select Retry to try again.', true);
+    $('activity-retry').hidden = false;
+    showActivity(live);
+    return;
+  }
+  // The saved history can already include live entries delivered during the read.
+  const key = ({ at, kind, text }) => JSON.stringify([at, kind, text]);
+  const seen = new Set(entries.map(key));
+  $('activity-status').textContent = 'No activity yet.';
+  showActivity([...entries, ...live.filter((entry) => !seen.has(key(entry)))]);
+}
+
+$('activity-retry').onclick = loadActivity;
+
 function showActivity(entries) {
   const activityLog = $('activity-log');
   const atEnd = activityLog.scrollHeight - activityLog.scrollTop - activityLog.clientHeight < 24;
   activityLog.append(...entries.map(activityLine));
+  activityLog.hidden = !activityLog.hasChildNodes();
+  $('activity-state').hidden = !activityLog.hidden && $('activity-retry').hidden;
   if (atEnd) activityLog.scrollTop = activityLog.scrollHeight;
 }
 deck.onDebugLine((line) => {
   if ($('settings-dialog').open) showDebugLines([line]);
 });
 deck.onActivity((entry) => {
-  if ($('settings-dialog').open) showActivity([entry]);
+  if (!$('settings-dialog').open) return;
+  if (pendingActivity) pendingActivity.push(entry);
+  else showActivity([entry]);
 });
 $('settings-debug').onchange = (event) => {
   localStorage.setItem('debugLog', event.target.checked);
@@ -4520,12 +4630,24 @@ function updateRow(text, action, tip, run, detail) {
   row.append(label, button);
   return row;
 }
+let tasksLoad = 0;
 // Every delegate job, from any chat: how many each account took today and in all, newest first.
 async function openTasks() {
+  const load = ++tasksLoad;
+  const summary = $('tasks-summary');
   $('tasks-list').replaceChildren();
-  $('tasks-summary').textContent = 'Reading tasks…';
-  $('tasks-dialog').showModal();
-  const tasks = await deck.allTasks();
+  $('tasks-retry').hidden = true;
+  summary.classList.remove('empty');
+  summary.textContent = 'Reading tasks…';
+  if (!$('tasks-dialog').open) $('tasks-dialog').showModal();
+  const tasks = await deck.allTasks().catch(() => null);
+  if (load !== tasksLoad || !$('tasks-dialog').open) return;
+  if (!tasks) {
+    summary.classList.add('empty');
+    summary.textContent = 'Could not load tasks. Select Retry to try again.';
+    $('tasks-retry').hidden = false;
+    return;
+  }
   const delegated = tasks.filter((task) => !isLocal(task));
   const local = tasks.filter((task) => isLocal(task));
   const today = new Date().toDateString();
@@ -4539,7 +4661,8 @@ async function openTasks() {
   }
   const todayTotal = [...counts.values()].reduce((sum, count) => sum + count.today, 0);
   const byAccount = [...counts].sort((a, b) => b[1].all - a[1].all).map(([name, count]) => `${name} ${count.all}${count.today ? ` (${count.today} today)` : ''}`);
-  $('tasks-summary').textContent = delegated.length ? `${delegated.length} tasks, ${todayTotal} today. ${byAccount.join(' · ')}${local.length ? `, ${local.length} local` : ''}` : 'No delegate tasks yet.';
+  summary.classList.toggle('empty', !delegated.length);
+  summary.textContent = delegated.length ? `${delegated.length} tasks, ${todayTotal} today. ${byAccount.join(' · ')}${local.length ? `, ${local.length} local` : ''}` : 'No delegate tasks yet. Delegate work from a chat to see it here.';
   const rows = delegated.map(taskRow);
   if (local.length) {
     const fold = node('details', 'info-panel__local');
@@ -4550,6 +4673,7 @@ async function openTasks() {
   }
   $('tasks-list').replaceChildren(...rows);
 }
+$('tasks-retry').onclick = openTasks;
 // Each one updates from its own source. The Deck: GitHub releases, or the installers built in this exe's build folder
 // (only on the computer that built it). frugal: GitHub or a folder, as Claude Code records it. With nothing newer, the button is off.
 async function openUpdates() {
