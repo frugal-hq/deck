@@ -631,7 +631,11 @@ async function useAccount(account) {
       all: ['Switch all', 'Stops the busy chats and reopens every chat on the new account'],
     });
     if (choice !== 'all' && choice !== 'idle') return;
-    if (choice === 'idle') moving = open.filter((chat) => !busy.includes(chat));
+    if (choice === 'idle') {
+      moving = open.filter((chat) => !busy.includes(chat));
+      const labels = busy.map((chat) => chat.name).join(', ');
+      deck.activityAdd('states', `Busy chats stayed on their account: ${labels}`);
+    }
   }
   if (!moving.length) return report(await deck.setPrimary(account.id));
   for (const chat of moving) await switchChat(chat, account, busy.includes(chat));
@@ -3320,8 +3324,11 @@ async function openSettings(section = localStorage.getItem('settingsSection')) {
   $('settings-debug').checked = localStorage.getItem('debugLog') === 'true';
   debugConsole.replaceChildren();
   showDebugLines(await deck.debugLines());
+  $('activity-log').replaceChildren();
+  showActivity(await deck.activityList());
   $('settings-dialog').showModal();
   debugConsole.scrollTop = debugConsole.scrollHeight;
+  $('activity-log').scrollTop = $('activity-log').scrollHeight;
 }
 
 // Settings > Debug: the console shows debug.rs's last lines and follows new ones while the dialog is open.
@@ -3332,8 +3339,18 @@ function showDebugLines(lines) {
   while (debugConsole.childNodes.length > DEBUG_KEEP) debugConsole.firstChild.remove();
   if (atEnd) debugConsole.scrollTop = debugConsole.scrollHeight;
 }
+const activityLine = ({ at, kind, text }) => `${new Date(at).toLocaleString()}  ${kind}  ${text}\n`;
+function showActivity(entries) {
+  const activityLog = $('activity-log');
+  const atEnd = activityLog.scrollHeight - activityLog.scrollTop - activityLog.clientHeight < 24;
+  activityLog.append(...entries.map(activityLine));
+  if (atEnd) activityLog.scrollTop = activityLog.scrollHeight;
+}
 deck.onDebugLine((line) => {
   if ($('settings-dialog').open) showDebugLines([line]);
+});
+deck.onActivity((entry) => {
+  if ($('settings-dialog').open) showActivity([entry]);
 });
 $('settings-debug').onchange = (event) => {
   localStorage.setItem('debugLog', event.target.checked);
@@ -4062,10 +4079,12 @@ $('clean-apply').onclick = async () => {
     const { zip, errors } = await deck.cleanApply(picked);
     const imported = picked.filter((item) => item.kind === 'plugin' && item.action === 'import').map((item) => item.name);
     if (imported.length) errors.push(...await deck.cleanUpdate(imported));
+    deck.activityAdd('clean', `Import and clean: ${picked.map((item) => `${item.action} ${item.kind} ${item.name}`).join(', ')}${errors.length ? `. Failed: ${errors.join('; ')}` : ''}${zip ? `. Backup: ${zip}` : ''}`.slice(0, 4000));
     if (visit !== cleanVisit || !$('clean-dialog').open) return;
     if (!errors.length) { $('clean-dialog').close(); return; }
     cleanStatus([zip ? `Backup: ${zip}` : '', ...errors].filter(Boolean).join('\n'));
   } catch (error) {
+    deck.activityAdd('clean', `Import and clean failed: ${error}`.slice(0, 4000));
     if (visit === cleanVisit && $('clean-dialog').open) cleanStatus(String(error));
   } finally {
     if (visit === cleanVisit && $('clean-dialog').open) {
@@ -4546,7 +4565,11 @@ async function restartChats(button) {
       all: ['Restart all', 'Stops the busy chats and reopens every chat'],
     });
     if (choice !== 'all' && choice !== 'idle') return;
-    if (choice === 'idle') restarting = open.filter((chat) => !busy.includes(chat));
+    if (choice === 'idle') {
+      restarting = open.filter((chat) => !busy.includes(chat));
+      const labels = busy.map((chat) => chat.name).join(', ');
+      deck.activityAdd('states', `Busy chats kept the previous frugal: ${labels}`);
+    }
   }
   button.disabled = true;
   for (const chat of restarting) await switchChat(chat, { id: chat.account }, true);

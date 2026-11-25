@@ -897,6 +897,7 @@ body { transition: opacity var(--dur-short) var(--ease-out); }
 .settings__hint { color: var(--color-muted); }
 .debug__console { height: 320px; margin: 0; overflow: auto; padding: var(--space-xs); border: var(--rule-hair) solid var(--color-rule); border-radius: var(--radius-pill); background: var(--color-paper-3); color: var(--color-ink-2); font: var(--text-xs)/1.5 var(--font-outlier); white-space: pre-wrap; overflow-wrap: anywhere; }
 .debug__console:empty::before { content: "No lines yet. Turn on the log, then repeat what failed."; color: var(--color-muted); }
+#activity-log:empty::before { content: "Nothing yet. Changes show here as they happen."; }
 .debug__actions { display: flex; gap: var(--space-xs); }
 .settings__row:has(input[type="checkbox"]) :is(.settings__hint, .settings__warn) { margin-left: calc(16px + var(--space-xs)); }
 .settings__warn { margin-top: var(--space-2xs); padding: var(--space-xs) var(--space-sm); border-radius: var(--radius-pill); background: var(--color-accent-soft); color: var(--color-ink-2); }

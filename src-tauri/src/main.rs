@@ -1,6 +1,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod accounts;
+mod activity;
 mod archive;
 mod chat;
 #[path = "../../setup/src/consolidation.rs"]
@@ -81,6 +82,7 @@ fn main() {
         .setup(|app| {
             statusline::write_editor(&app.path().app_data_dir()?)?;
             let home = std::path::PathBuf::from(std::env::var_os("USERPROFILE").ok_or("No user folder.")?);
+            activity::init(app.handle().clone(), home.clone());
             let codex_home = std::env::var_os("CODEX_HOME").filter(|s| !s.is_empty()).map(std::path::PathBuf::from).unwrap_or_else(|| home.join(".codex"));
             let ui = ui_file().and_then(|file| std::fs::read_to_string(file).ok())
                 .and_then(|text| serde_json::from_str::<serde_json::Value>(&text).ok()).filter(|v| v.is_object()).unwrap_or_default();
@@ -213,6 +215,8 @@ fn main() {
             ui_save,
             debug::debug_set,
             debug::debug_lines,
+            activity::activity_list,
+            activity::activity_add,
             debug::debug_clear,
             debug::debug_log,
             debug::debug_reveal,

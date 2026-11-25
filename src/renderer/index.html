@@ -337,6 +337,7 @@
       <button class="settings__tab" type="button" data-section="accounts"><svg class="icon" aria-hidden="true"><use href="#i-user"/></svg>Accounts</button>
       <button class="settings__tab" type="button" data-section="voice"><svg class="icon" aria-hidden="true"><use href="#i-mic"/></svg>Voice</button>
       <button class="settings__tab" type="button" data-section="privacy"><svg class="icon" aria-hidden="true"><use href="#i-lock"/></svg>Privacy</button>
+      <button class="settings__tab" type="button" data-section="activity"><svg class="icon" aria-hidden="true"><use href="#i-tasks"/></svg>Activity</button>
       <button class="settings__tab" type="button" data-section="debug"><svg class="icon" aria-hidden="true"><use href="#i-bug"/></svg>Debug</button>
     </nav>
     <div class="settings__body">
@@ -495,6 +496,11 @@
           <label class="organize__check"><input id="settings-clipboard" type="checkbox"> Allow reading the clipboard</label>
           <p class="settings__hint">Ctrl+V in a chat reads it. Off, Ctrl+V pastes only images.</p>
         </div>
+      </section>
+      <section class="settings__section" data-section="activity" hidden>
+        <h3 class="settings__title">Activity</h3>
+        <p class="settings__hint">Account logins and logouts, MCP servers that ask to sign in, plugins added or updated in the Deck's store, Import and clean results, and chats left on their old settings. Saved to ~/.frugal-deck/activity.jsonl.</p>
+        <div class="settings__row"><pre id="activity-log" class="debug__console" role="log" tabindex="0" aria-label="Activity"></pre></div>
       </section>
       <section class="settings__section" data-section="debug" hidden>
         <h3 class="settings__title">Debug</h3>

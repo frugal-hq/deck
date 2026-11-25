@@ -143,10 +143,13 @@
       send('debug:set', { on });
     },
     debugLines: () => invoke('debug:lines'),
+    activityList: () => invoke('activity:list'),
+    activityAdd: (kind, text) => send('activity:add', { kind, text }),
     debugClear: () => send('debug:clear'),
     debugReveal: () => send('debug:reveal'),
     debugLog: log,
     onDebugLine: (callback) => on('debug:line', callback),
+    onActivity: (callback) => on('activity', callback),
     continueIn: (options) => invoke('chat:continue', { options, output: output(options.id) }),
     switchAccount: (options) => invoke('chat:switch-account', { options, output: output(options.id) }),
     setVoiceMode: (mode) => send('voice:mode', { mode }),
