@@ -16,6 +16,9 @@
   --color-ok: oklch(76% 0.15 150); --color-ok-soft: oklch(24.5% 0.03 150); --color-bad: oklch(70% 0.17 25); --color-bad-soft: oklch(24.5% 0.035 25);
   --font-display: "Host Grotesk", ui-sans-serif, system-ui, sans-serif; --font-body: var(--font-display);
   --font-outlier: "Atkinson Hyperlegible Mono", ui-monospace, monospace;
+  --size-control-xs: 24px; --size-control-sm: 28px; --size-row: 32px; --size-control: 36px; --size-control-lg: 40px; --size-chrome: 46px;
+  --icon-sm: 12px; --icon: 16px; --icon-lg: 20px; --radius-sm: 6px;
+  --dialog-sm: 28rem; --dialog-md: 40rem; --dialog-lg: 56rem; --dialog-xl: 72rem;
   --radius-card: 16px; --radius-pill: 10px; --rule-hair: 1px;
   --color-control: oklch(28% 0.01 250); --color-control-2: oklch(24.5% 0.009 250); --color-highlight: oklch(100% 0 0 / 0.07); --color-scrim: oklch(0% 0 0 / 0.5);
   --shadow-card: 0 12px 32px oklch(0% 0 0 / 0.45); --shadow-float: 0 3px 10px oklch(0% 0 0 / 0.4);
