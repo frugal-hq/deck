@@ -3959,8 +3959,100 @@ async function openPluginsDialog() {
   }
 }
 
+let cleanChoices = [];
+let cleanVisit = 0;
+
+function cleanActions(item) {
+  if (item.kind === 'copy') return ['remove', 'keep'];
+  if (item.kind === 'account') return ['import', 'keep'];
+  const places = item.places;
+  const desktop = item.kind === 'mcp' && places.some((place) => place.scope === 'desktop')
+    && places.every((place) => place.scope === 'desktop' || place.account === 'Deck store');
+  return desktop ? ['keep', 'import'] : ['import', 'keep', 'remove'];
+}
+
+function fillClean(id, items, cells) {
+  const table = $(id);
+  const body = table.tBodies[0];
+  table.hidden = !items.length;
+  body.replaceChildren();
+  for (const item of items) {
+    const row = body.insertRow();
+    for (const value of cells(item)) row.insertCell().textContent = value;
+    const select = node('select', 'settings__select');
+    select.setAttribute('aria-label', `Action for ${item.kind} ${item.name}`);
+    for (const action of cleanActions(item)) select.add(new Option(action, action));
+    select.value = item.action;
+    row.insertCell().append(select);
+    cleanChoices.push({ item, select });
+  }
+}
+
+function cleanStatus(text) {
+  const status = $('clean-status');
+  status.textContent = text;
+  status.hidden = !text;
+}
+
+// Sessions stay out: removing transcripts while chats run is unsafe, and that stays in the uninstaller.
+async function openCleanDialog() {
+  const visit = ++cleanVisit;
+  cleanChoices = [];
+  cleanStatus('');
+  $('clean-empty').hidden = true;
+  $('clean-loading').hidden = false;
+  $('clean-apply').disabled = true;
+  for (const id of ['clean-plugins', 'clean-accounts', 'clean-copies']) $(id).hidden = true;
+  if (!$('clean-dialog').open) $('clean-dialog').showModal();
+  try {
+    const inventory = await deck.cleanInventory();
+    if (visit !== cleanVisit || !$('clean-dialog').open) return;
+    const plugins = [...inventory.plugins, ...inventory.mcp];
+    fillClean('clean-plugins', plugins, (item) => [
+      item.name, item.kind,
+      item.places.map((place) => [place.account, place.scope, place.version].filter(Boolean).join(' / ')).join('\n'),
+      item.store_version ?? '—', item.status,
+    ]);
+    fillClean('clean-accounts', inventory.accounts, (item) => [item.account]);
+    fillClean('clean-copies', inventory.copies, (item) => [item.account, item.name]);
+    $('clean-empty').hidden = Boolean(plugins.length || inventory.accounts.length || inventory.copies.length);
+  } catch (error) {
+    if (visit === cleanVisit && $('clean-dialog').open) cleanStatus(String(error));
+  } finally {
+    if (visit === cleanVisit) {
+      $('clean-loading').hidden = true;
+      $('clean-apply').disabled = false;
+    }
+  }
+}
+
 $('plugins-open').onclick = openPluginsDialog;
 $('plugins-cancel').onclick = () => $('plugins-dialog').close();
+for (const [button, dialog] of [['plugins-clean', 'plugins-dialog'], ['mcp-clean', 'mcp-dialog']]) {
+  $(button).onclick = () => { $(dialog).close(); openCleanDialog(); };
+}
+$('clean-cancel').onclick = () => $('clean-dialog').close();
+$('clean-recommended').onclick = () => { for (const { item, select } of cleanChoices) select.value = item.action; };
+$('clean-keep').onclick = () => { for (const { select } of cleanChoices) select.value = 'keep'; };
+$('clean-apply').onclick = async () => {
+  const picked = cleanChoices
+    .filter(({ select }) => select.value !== 'keep')
+    .map(({ item, select }) => ({ kind: item.kind, name: item.name, action: select.value }));
+  if (!picked.length) { $('clean-dialog').close(); return; }
+  const visit = cleanVisit;
+  $('clean-apply').disabled = true;
+  cleanStatus('Backing up and applying your choices. Removing old plugin copies can take a few minutes.');
+  try {
+    const { zip, errors } = await deck.cleanApply(picked);
+    if (visit !== cleanVisit || !$('clean-dialog').open) return;
+    if (!errors.length) { $('clean-dialog').close(); return; }
+    cleanStatus([zip ? `Backup: ${zip}` : '', ...errors].filter(Boolean).join('\n'));
+  } catch (error) {
+    if (visit === cleanVisit && $('clean-dialog').open) cleanStatus(String(error));
+  } finally {
+    if (visit === cleanVisit && $('clean-dialog').open) $('clean-apply').disabled = false;
+  }
+};
 $('plugins-save').onclick = async () => {
   if (!pluginsShown) return;
   $('plugins-save').disabled = true;

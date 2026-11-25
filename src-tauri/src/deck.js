@@ -110,6 +110,8 @@
   window.deck = {
     pickFolder: () => invoke('folder:pick'),
     pickFiles: () => invoke('files:pick'),
+    cleanInventory: () => invoke('inventory'),
+    cleanApply: (actions) => invoke('consolidate', { actions }),
     // frugal: a pasted file has a path only if it was dropped before; savePasted copies pasted images.
     pathForFile: (file) => dropPaths.get(fileKey(file)) ?? '',
     thumbnail: (file) => invoke('files:thumbnail', { file }),

@@ -3,6 +3,9 @@
 mod accounts;
 mod archive;
 mod chat;
+#[path = "../../setup/src/consolidation.rs"]
+#[allow(dead_code)]
+mod consolidation;
 mod debug;
 mod elevated;
 mod handoff;
@@ -259,6 +262,8 @@ fn main() {
             os::files_save_pasted,
             os::link_open,
             os::window_attention,
+            consolidation::inventory,
+            consolidation::consolidate,
             chat::folder_default,
             chat::chat_start,
             chat::chat_continue,

@@ -580,6 +580,7 @@
       </div>
       <div class="settings__footer">
         <p id="mcp-error" class="settings__message" role="status"></p>
+        <button id="mcp-clean" class="btn" type="button" data-tip="Find plugins and MCP servers in every account, bring them into the Deck store and remove old copies, with a backup">Import and clean…</button>
         <button id="mcp-cancel" class="btn" type="button">Cancel</button>
         <button id="mcp-save" class="btn btn--primary" type="button">Save</button>
       </div>
@@ -652,8 +653,49 @@
       </div>
       <div class="settings__footer">
         <p id="plugins-error" class="settings__message" role="status"></p>
+        <button id="plugins-clean" class="btn" type="button" data-tip="Find plugins and MCP servers in every account, bring them into the Deck store and remove old copies, with a backup">Import and clean…</button>
         <button id="plugins-cancel" class="btn" type="button">Cancel</button>
         <button id="plugins-save" class="btn btn--primary" type="button">Save</button>
+      </div>
+    </div>
+  </div>
+</dialog>
+<dialog id="clean-dialog" class="organize settings" closedby="any" aria-labelledby="clean-title">
+  <div class="settings__frame">
+    <nav class="settings__nav" aria-label="Import and clean">
+      <h2 id="clean-title" class="settings__heading">Import and clean</h2>
+    </nav>
+    <div class="settings__pane">
+      <div class="settings__body">
+        <section class="settings__section">
+          <p class="settings__hint">Frugal Deck keeps one copy of each plugin and MCP server and shares it with every Claude account. Pick what to import, keep or remove. Everything changed is backed up first, except old plugin copies: Claude Code downloads them again if needed. Chats started or restarted afterward pick up the changes.</p>
+          <div class="organize__actions">
+            <button id="clean-recommended" class="btn" type="button">Recommended</button>
+            <button id="clean-keep" class="btn" type="button">Keep everything</button>
+          </div>
+          <p id="clean-loading" class="settings__hint" hidden>Looking for plugins, MCP servers and old copies in every account…</p>
+          <p id="clean-empty" class="settings__hint" hidden>Every account already uses the Deck store.</p>
+          <table id="clean-plugins" class="inventory" hidden>
+            <caption>Plugins and MCP servers</caption>
+            <thead><tr><th scope="col">Name</th><th scope="col">Kind</th><th scope="col">Where</th><th scope="col">Store version</th><th scope="col">Status</th><th scope="col">Action</th></tr></thead>
+            <tbody></tbody>
+          </table>
+          <table id="clean-accounts" class="inventory" hidden>
+            <caption>Accounts</caption>
+            <thead><tr><th scope="col">Account</th><th scope="col">Action</th></tr></thead>
+            <tbody></tbody>
+          </table>
+          <table id="clean-copies" class="inventory" hidden>
+            <caption>Old plugin copies</caption>
+            <thead><tr><th scope="col">Account</th><th scope="col">Path</th><th scope="col">Action</th></tr></thead>
+            <tbody></tbody>
+          </table>
+        </section>
+      </div>
+      <div class="settings__footer">
+        <p id="clean-status" class="settings__message" role="status" hidden></p>
+        <button id="clean-cancel" class="btn" type="button">Cancel</button>
+        <button id="clean-apply" class="btn btn--primary" type="button">Apply</button>
       </div>
     </div>
   </div>
