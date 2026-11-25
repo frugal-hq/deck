@@ -267,6 +267,12 @@ impl Accounts {
             for entry in std::iter::once(json!({"serverName": name})).chain(mcp_entries(&s, name, store.get(string(name)))) { if !denied.contains(&entry) { denied.push(entry); } }
         }
         for name in moved { let entry = json!({"serverName": name}); if !denied.contains(&entry) { denied.push(entry); } }
+        // The allowlist matches by URL or command, so a server sharing one with an allowed server would load too; every other known server is denied by name.
+        let known = s["mcpTargets"].as_object().into_iter().flat_map(|map| map.keys()).chain(store.as_object().into_iter().flat_map(|map| map.keys()));
+        for name in known.filter(|name| !is_frugal(name) && !on.contains(&json!(name))) {
+            let entry = json!({"serverName": name});
+            if !denied.contains(&entry) { denied.push(entry); }
+        }
         Ok((allowed, denied, (!deck.is_empty()).then(|| json!({"mcpServers": deck})), delegate_only))
     }
     // mcpAccountsOff: account ids whose chats never load a server; frugal's no_delegate_mcp and mcp_kinds: delegate access; mcpDelegateOnly: servers only delegates load.
@@ -1658,7 +1664,7 @@ pub(crate) mod tests {
         a.set_mcp_access(json!({"air": {"accountsOff": ["sm"]}, "plugin:frugal:accounts": {"accountsOff": ["sm"]}}).as_object().unwrap()).unwrap();
         let (allowed, denied, config, _) = a.chat_mcp("sm", &dir.0, None, &[], (&[], &[])).unwrap();
         assert_eq!(allowed, [json!({"serverUrl": "https://mcp.linear.app/mcp"}), json!({"serverName": "a"}), json!({"serverCommand": ["python", "server.py"]})]);
-        assert_eq!(denied, [json!({"serverName": "air"}), json!({"serverCommand": ["npx", "-y", "air"]})]);
+        assert_eq!(denied, [json!({"serverName": "air"}), json!({"serverCommand": ["npx", "-y", "air"]}), json!({"serverName": "notion"})]);
         assert!(config.is_none());
         a.set_mcp_access(json!({"air": {"accountsOff": [], "delegates": false}}).as_object().unwrap()).unwrap();
         assert_eq!(a.mcp_access().1, json!(["air"]));
