@@ -190,7 +190,7 @@ fn remove(accounts: &Mutex<Accounts>, name: &str, deck: bool, scope: &Value) -> 
 }
 
 // .claude.json keys project folders with forward slashes; the Deck's have backslashes. Windows folders ignore case.
-fn same_folder(a: &str, b: &str) -> bool {
+pub(crate) fn same_folder(a: &str, b: &str) -> bool {
     let plain = |s: &str| s.replace('\\', "/").trim_end_matches('/').to_lowercase();
     plain(a) == plain(b)
 }

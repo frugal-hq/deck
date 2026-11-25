@@ -91,8 +91,10 @@ impl Accounts {
                 !n.is_empty() && n.bytes().all(|c| c.is_ascii_alphanumeric() || matches!(c, b'_' | b'.' | b'-')))
     }
 
+    pub(crate) fn main_account(&self) -> Value { json!({"id": MAIN, "name": "Main", "configDir": self.home.join(".claude")}) }
+
     pub fn claude_accounts(&self) -> Vec<Value> {
-        let mut found = vec![json!({"id": MAIN, "name": "Main", "configDir": self.home.join(".claude")})];
+        let mut found = vec![self.main_account()];
         let mut add = |id: &Value, name: &Value, dir: &Value| {
             let Some(id) = id.as_str().filter(|id| valid_id(id)) else { return; };
             if !self.is_account_dir(dir) { return; }
@@ -188,7 +190,7 @@ impl Accounts {
         Ok(names)
     }
     // A chat's servers: the global list plus its folder, group and workspaces' on-lists, less their off-lists; every other server is off.
-    // Returns allowedMcpServers, deniedMcpServers, the --mcp-config with the Deck's servers among them, and delegate-only names.
+    // Returns allowedMcpServers, deniedMcpServers, the --mcp-config for Deck and shared servers, and delegate-only names.
     // A server turned off for the chat's account or marked delegate-only stays off whatever its scopes say.
     pub fn chat_mcp(&self, account_id: &str, folder: &Path, topic: Option<&str>, workspaces: &[String], auto: (&[String], &[String])) -> Result<(Vec<Value>, Vec<Value>, Option<Value>, Vec<Value>)> {
         let s = self.load();
@@ -224,8 +226,29 @@ impl Accounts {
             for entry in std::iter::once(json!({"serverName": name})).chain(mcp_entries(&s, name)) { if !denied.contains(&entry) { denied.push(entry); } }
         }
         for name in moved { let entry = json!({"serverName": name}); if !denied.contains(&entry) { denied.push(entry); } }
-        let deck: serde_json::Map<String, Value> = on.iter()
+        let mut deck: serde_json::Map<String, Value> = on.iter()
             .filter_map(|name| { let name = name.as_str()?; Some((name.to_owned(), s["mcpServers"].get(name)?.clone())) }).collect();
+        if account_id != MAIN {
+            if let Some(account) = self.claude_accounts().into_iter().find(|a| a["id"] == account_id) {
+                let [main, own] = [&self.main_account(), &account].map(|a| read_json(&self.claude_json(a), json!({})));
+                let folder = folder.to_string_lossy();
+                let main_project = main["projects"].as_object().into_iter().flatten()
+                    .find(|(path, _)| crate::mcp::same_folder(path, &folder))
+                    .map_or(&Value::Null, |(_, project)| &project["mcpServers"]);
+                for name in on.iter().filter_map(Value::as_str) {
+                    if is_frugal(name) || deck.contains_key(name) || own["mcpServers"].get(name).is_some()
+                        || own["projects"].as_object().is_some_and(|projects| projects.values().any(|project| project["mcpServers"].get(name).is_some())) { continue; }
+                    // Main's local server takes precedence over its user server with the same name.
+                    if let Some(config) = main_project.get(name).or_else(|| main["mcpServers"].get(name)) {
+                        let transport = config["type"].as_str().unwrap_or(if config.get("command").is_some() { "stdio" } else { "" });
+                        if let Some(entry) = mcp_entry(transport, config) {
+                            if !allowed.contains(&entry) { allowed.push(entry); }
+                        }
+                        deck.insert(name.to_owned(), config.clone());
+                    }
+                }
+            }
+        }
         Ok((allowed, denied, (!deck.is_empty()).then(|| json!({"mcpServers": deck})), delegate_only))
     }
     // mcpAccountsOff: account ids whose chats never load a server; frugal's no_delegate_mcp and mcp_kinds: delegate access; mcpDelegateOnly: servers only delegates load.
@@ -557,11 +580,6 @@ pub fn cap_exhausted_until(reading: &Value, caps: &Value, previous: &Value, at: 
     until.filter(|n| *n > previous.as_f64().unwrap_or(0.0)).map_or(Value::Null, |n| json!(n))
 }
 
-pub fn has_frugal(account: &Value) -> bool {
-    let data = read_json(&Path::new(string(&account["configDir"])).join("plugins/installed_plugins.json"), json!({}));
-    let plugins = &data["plugins"]["frugal@frugal"];
-    plugins.as_array().is_some_and(|a| !a.is_empty()) || plugins.as_str().is_some_and(|s| !s.is_empty())
-}
 // frugal as an account has it installed: its installPath and version, or null.
 pub fn frugal_install(account: &Value) -> Value {
     read_json(&Path::new(string(&account["configDir"])).join("plugins/installed_plugins.json"), json!({}))["plugins"]["frugal@frugal"][0].clone()
@@ -1091,13 +1109,13 @@ pub fn mcp_set(app: AppHandle, accounts: State<Mutex<Accounts>>, scope: Value, n
 }
 
 #[cfg(test)]
-mod tests {
+pub(crate) mod tests {
     use super::*;
     use std::io::Write;
 
-    struct TempDir(PathBuf);
+    pub(crate) struct TempDir(pub(crate) PathBuf);
     impl TempDir {
-        fn new() -> Self {
+        pub(crate) fn new() -> Self {
             loop {
                 let stamp = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
                 let path = std::env::temp_dir().join(format!("deck-accounts-{}-{stamp}", std::process::id()));
@@ -1387,9 +1405,6 @@ mod tests {
         assert_eq!(a.snapshot(at)["accounts"][1]["email"], "new@example.com");
         fs::remove_file(work.join(".credentials.json")).unwrap();
         assert_eq!(a.snapshot(at)["accounts"][1]["email"], Value::Null);
-        assert!(!has_frugal(&a.claude_accounts()[1]));
-        write_json(&work.join("plugins/installed_plugins.json"), &json!({"plugins": {"frugal@frugal": [{}]}})).unwrap();
-        assert!(has_frugal(&a.claude_accounts()[1]));
         assert!(!a.rename_account("unknown", &json!("x")).unwrap());
         assert!(!a.rename_account("work", &json!(false)).unwrap());
         assert!(!a.rename_account("work", &json!("   ")).unwrap());
@@ -1474,6 +1489,36 @@ mod tests {
         let before = a.chat_mcp(MAIN, &dir.0, None, &[], (&[], &[])).unwrap();
         set(json!({"air": {"auto": true}}));
         assert_eq!(a.chat_mcp(MAIN, &dir.0, None, &[], (&[], &[])).unwrap(), before);
+    }
+
+    #[test]
+    fn chat_mcp_shares_main_servers_with_other_accounts() {
+        let dir = TempDir::new();
+        let a = dir.accounts();
+        let side = a.prepare_account(&json!("Side")).unwrap();
+        fs::write(Path::new(string(&side["configDir"])).join(".credentials.json"), "{}").unwrap();
+        assert!(a.finish_account(&side).unwrap());
+        let folder = dir.0.join("Project");
+        let project_key = folder.to_string_lossy().replace('\\', "/").to_uppercase();
+        let user = json!({"type": "http", "url": "https://example.com/mcp"});
+        let local = json!({"command": "local-mcp"});
+        let names = json!(["user", "local", "off", "own", "own-local", "elsewhere", "deck", "plugin:frugal:accounts"]);
+        write_json(&a.claude_json(&a.main_account()), &json!({
+            "mcpServers": {"user": user, "local": user, "off": user, "own": user, "own-local": user, "deck": user, "plugin:frugal:accounts": user},
+            "projects": {(project_key): {"mcpServers": {"local": local}}, "elsewhere": {"mcpServers": {"elsewhere": user}}}
+        })).unwrap();
+        write_json(&a.claude_json(&side), &json!({
+            "mcpServers": {"own": local}, "projects": {"elsewhere": {"mcpServers": {"own-local": local}}}
+        })).unwrap();
+        a.set_mcp_global(&names).unwrap();
+        a.set_mcp_off(&json!({"folder": folder}), &json!(["off"])).unwrap();
+        a.add_deck_server("deck", local.clone()).unwrap();
+        let (allowed, denied, config, _) = a.chat_mcp(string(&side["id"]), &folder, None, &[], (&[], &[])).unwrap();
+        assert!(allowed.contains(&json!({"serverCommand": ["local-mcp"]})));
+        assert!(denied.contains(&json!({"serverName": "off"})));
+        assert_eq!(config.unwrap()["mcpServers"], json!({"deck": local, "user": user, "local": local}));
+        let (_, _, config, _) = a.chat_mcp(MAIN, &folder, None, &[], (&[], &[])).unwrap();
+        assert_eq!(config.unwrap()["mcpServers"], json!({"deck": local}));
     }
 
     #[test]

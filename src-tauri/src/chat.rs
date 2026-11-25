@@ -363,7 +363,7 @@ fn launch(app: &AppHandle, id: &str, place: &str, folder: PathBuf, size: (u16, u
     let session = index.session(id).unwrap_or_default();
     let dir = Path::new(account["configDir"].as_str().unwrap_or_default());
     let group = group.as_str().filter(|group| !group.is_empty());
-    let prepared = (|| -> Result<(Vec<Value>, Vec<Value>, Option<Value>, Vec<Value>, Option<String>, Option<String>, Option<PathBuf>, Value), Box<dyn std::error::Error>> {
+    let prepared = (|| -> Result<_, Box<dyn std::error::Error>> {
         // A folder removed since its sessions ran comes back empty, so they resume and new chats start there.
         std::fs::create_dir_all(&folder)?;
         if account["id"] != MAIN {
@@ -387,10 +387,18 @@ fn launch(app: &AppHandle, id: &str, place: &str, folder: PathBuf, size: (u16, u
             .partition(|name| picked.as_ref().is_some_and(|picked| picked.contains(name)));
         crate::mcp::share_tokens(&accounts);
         let (allowed, denied, mcp, delegate_only) = accounts.chat_mcp(account["id"].as_str().unwrap_or_default(), &folder, topic, &workspaces, (&auto_on, &auto_delegates))?;
-        let plugin = accounts.claude_accounts().iter().find(|a| a["id"] == MAIN).and_then(accounts::frugal_dir);
-        Ok((allowed, denied, mcp, delegate_only, topic.map(str::to_owned), workspaces.first().map(|w| w.to_string()), plugin, crate::plugins::enabled_plugins(&settings["pluginStates"], picked.as_deref())))
+        let main = accounts.main_account();
+        // Every account runs Main's frugal. Other plugins are passed explicitly to non-Main accounts.
+        let mut plugin_dirs: Vec<_> = accounts::frugal_dir(&main).into_iter().collect();
+        if account["id"] != MAIN {
+            let dir = Path::new(accounts::string(&main["configDir"]));
+            let installed = accounts::read_json(&dir.join("plugins/installed_plugins.json"), json!({}));
+            let main_settings = accounts::read_json(&dir.join("settings.json"), json!({}));
+            plugin_dirs.extend(crate::plugins::shared_plugin_dirs(&installed, &main_settings, &settings["pluginStates"], picked.as_deref()));
+        }
+        Ok((allowed, denied, mcp, delegate_only, topic.map(str::to_owned), workspaces.first().map(|w| w.to_string()), plugin_dirs, crate::plugins::enabled_plugins(&settings["pluginStates"], picked.as_deref())))
     })();
-    let (allowed, denied, deck_mcp, delegate_only, deck_group, deck_workspace, frugal_plugin, enabled_plugins) = match prepared {
+    let (allowed, denied, deck_mcp, delegate_only, deck_group, deck_workspace, plugin_dirs, enabled_plugins) = match prepared {
         Ok(prepared) => prepared,
         Err(error) => return json!({ "error": format!("Failed to start Claude: {error}") }),
     };
@@ -442,8 +450,7 @@ fn launch(app: &AppHandle, id: &str, place: &str, folder: PathBuf, size: (u16, u
     if let Err(error) = crate::index::mark_deck_session(id) {
         crate::debug_log!("chat", "{id}: could not mark Deck session: {error}");
     }
-    // Every account runs the main account's frugal: --plugin-dir replaces its own install, so one update reaches them all.
-    if let Some(dir) = frugal_plugin {
+    for dir in plugin_dirs {
         command.arg("--plugin-dir");
         command.arg(dir);
     }
@@ -492,8 +499,10 @@ fn start(app: &AppHandle, options: StartOptions, output: Channel<Value>) -> Valu
     let (Some(folder), true, false, true, true) = (folder, is_uuid(&options.id), chats.is_live(&options.id), is_size(options.cols), is_size(options.rows)) else {
         return invalid();
     };
-    let account = accounts.lock().unwrap().primary();
-    let frugal = !resume && options.frugal == true && accounts::has_frugal(&account);
+    let (account, frugal) = {
+        let accounts = accounts.lock().unwrap();
+        (accounts.primary(), !resume && options.frugal == true && accounts::frugal_dir(&accounts.main_account()).is_some())
+    };
     let prompt = frugal.then_some("/frugal:frugal");
     // Reopening an archived session brings its whole chat back to the sidebar.
     if let Some(chat) = index.session(&options.id).filter(|s| resume && s["archived"] == true).map(|s| s["chatId"].clone()) {

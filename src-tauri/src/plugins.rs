@@ -1,17 +1,15 @@
 use serde_json::{json, Value};
 use std::io::{BufRead, BufReader};
-use std::path::Path;
+use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::Mutex;
 use std::time::Duration;
 use tauri::{AppHandle, Manager, State};
-use crate::accounts::{array, is_frugal, object, read_json, read_strict, run, string, Accounts, MAIN};
+use crate::accounts::{array, is_frugal, object, read_json, read_strict, run, string, Accounts};
 use crate::chat::{account_env, find_claude, NO_CLAUDE};
 
 type Result<T> = std::result::Result<T, String>;
 const FRUGAL: &str = "frugal@frugal";
-
-fn main_account(accounts: &Accounts) -> Value { accounts.claude_accounts().into_iter().find(|a| a["id"] == MAIN).unwrap() }
 
 fn filter_states(states: &Value) -> Value {
     json!(states.as_object().into_iter().flatten().filter(|(id, state)| id.as_str() != FRUGAL && matches!(state.as_str(), Some("off" | "auto"))).map(|(id, state)| (id.clone(), state.clone())).collect::<serde_json::Map<_, _>>())
@@ -19,6 +17,18 @@ fn filter_states(states: &Value) -> Value {
 
 pub fn enabled_plugins(states: &Value, picked: Option<&[String]>) -> Value {
     json!(filter_states(states).as_object().unwrap().iter().map(|(id, state)| (id.clone(), json!(*state == "auto" && picked.is_none_or(|picked| picked.contains(id))))).collect::<serde_json::Map<_, _>>())
+}
+
+pub fn shared_plugin_dirs(installed: &Value, main_settings: &Value, states: &Value, picked: Option<&[String]>) -> Vec<PathBuf> {
+    let enabled = enabled_plugins(states, picked);
+    let mut dirs = Vec::new();
+    for (id, entries) in installed["plugins"].as_object().into_iter().flatten() {
+        if id == FRUGAL || enabled.get(id).unwrap_or(&main_settings["enabledPlugins"][id]) != true { continue; }
+        if let Some(dir) = array(entries).iter().filter_map(|entry| entry["installPath"].as_str().map(PathBuf::from)).find(|dir| dir.is_dir()) {
+            if !dirs.contains(&dir) { dirs.push(dir); }
+        }
+    }
+    dirs
 }
 
 fn auto_candidates(settings: &Value) -> Vec<String> {
@@ -84,7 +94,7 @@ pub fn auto_picks_clear(accounts: State<'_, Mutex<Accounts>>) -> Result<()> {
 }
 
 fn list(accounts: &Accounts) -> Value {
-    let main = main_account(accounts);
+    let main = accounts.main_account();
     let dir = Path::new(string(&main["configDir"]));
     let installed = read_json(&dir.join("plugins/installed_plugins.json"), json!({}));
     let settings = read_json(&dir.join("settings.json"), json!({}));
@@ -116,7 +126,7 @@ fn valid_id(id: &str) -> bool {
 }
 
 fn catalog(accounts: &Accounts) -> Result<Value> {
-    let main = main_account(accounts);
+    let main = accounts.main_account();
     let dir = Path::new(string(&main["configDir"])).join("plugins/marketplaces");
     let mut catalog = json!({});
     let entries = match std::fs::read_dir(&dir) {
@@ -139,7 +149,7 @@ fn catalog(accounts: &Accounts) -> Result<Value> {
 
 fn command(accounts: &Accounts) -> Result<Command> {
     let mut command = Command::new(find_claude().ok_or(NO_CLAUDE)?);
-    command.env_clear().envs(account_env(accounts, &main_account(accounts))).current_dir(&accounts.home).stdin(Stdio::null());
+    command.env_clear().envs(account_env(accounts, &accounts.main_account())).current_dir(&accounts.home).stdin(Stdio::null());
     Ok(command)
 }
 
@@ -228,6 +238,7 @@ pub async fn recommend(app: AppHandle, task: String) -> Result<Value> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::accounts::tests::TempDir;
 
     #[test]
     fn plugin_states_and_chat_settings() {
@@ -238,6 +249,33 @@ mod tests {
         assert_eq!(enabled_plugins(&states, Some(&[])), json!({"a@m": false, "b@m": false}));
         assert_eq!(filter_states(&Value::Null), json!({}));
         assert_eq!(enabled_plugins(&json!({"frugal@frugal": "off", "b@m": "auto"}), None), json!({"b@m": true}));
+    }
+
+    #[test]
+    fn shared_plugin_dirs_respect_states_and_install_paths() {
+        let temp = TempDir::new();
+        let settings_dir = temp.0.join("settings");
+        let auto_dir = temp.0.join("auto");
+        let excluded_dir = temp.0.join("excluded");
+        for dir in [&settings_dir, &auto_dir, &excluded_dir] { std::fs::create_dir(dir).unwrap(); }
+        let installed = json!({"plugins": {
+            "settings@m": [{"installPath": temp.0.join("missing")}, {"installPath": settings_dir}, {"installPath": excluded_dir}],
+            "duplicate@m": [{"installPath": settings_dir}],
+            "off@m": [{"installPath": excluded_dir}],
+            "auto@m": [{"installPath": auto_dir}],
+            "frugal@frugal": [{"installPath": excluded_dir}],
+            "missing@m": [{"installPath": temp.0.join("missing")}]
+        }});
+        let settings = json!({"enabledPlugins": {"settings@m": true, "duplicate@m": true, "off@m": true, "auto@m": true, "frugal@frugal": true, "missing@m": true}});
+        let states = json!({"off@m": "off", "auto@m": "auto"});
+        let expected = [auto_dir, settings_dir.clone()];
+        let picked = ["auto@m".into()];
+        for picked in [None, Some(picked.as_slice())] {
+            let mut dirs = shared_plugin_dirs(&installed, &settings, &states, picked);
+            dirs.sort();
+            assert_eq!(dirs, expected);
+        }
+        assert_eq!(shared_plugin_dirs(&installed, &settings, &states, Some(&[])), [settings_dir]);
     }
 
     #[test]
