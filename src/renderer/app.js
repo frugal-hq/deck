@@ -834,6 +834,9 @@ const taskSpan = (seconds) => (seconds == null ? '' : seconds < 60 ? `${seconds}
 const commandTitle = (check) => check.split(/;|&&/).map((part) => part.trim()).filter((part) => part && !/^(set|export|cd|taskkill)\b|^\w+=/.test(part)).join(' && ') || check;
 
 const isFailed = (task) => task.status === 'failed' || task.status === 'not delegated';
+// An edit whose check failed with no error, or the same way twice: the check or the brief was wrong, the changes stay in the tree.
+const checkFailed = (task) => task.status === 'failed' && task.kind === 'edit' && task.cause === 'brief';
+const taskStatus = (task) => (checkFailed(task) ? 'Check failed' : TASK_STATUS[task.status] ?? task.status);
 const TASK_CAUSES = ['account', 'env', 'brief', 'code', 'frugal'];
 function taskCauseRank(task) {
   const index = TASK_CAUSES.indexOf(task.cause);
@@ -849,7 +852,7 @@ function whyFailed(task) {
   if (!isFailed(task)) return '';
   const tries = task.failures ?? [];
   if (!tries.length) return task.result ? '' : 'Why it failed:\nNo end was logged: the delegate hung, or its chat closed while it ran.';
-  const details = node('span', '', 'Why it failed:');
+  const details = node('span', '', checkFailed(task) ? 'Why the check failed:' : 'Why it failed:');
   for (const f of tries) {
     details.append('\n- ');
     const cause = taskCauseChip(f.cause);
@@ -863,7 +866,7 @@ function taskRow(task) {
   const row = node('div', 'info-panel__agent');
   const head = node('div', 'info-panel__agent-head');
   const title = task.check ? commandTitle(task.check) : task.description || task.name;
-  const status = node('span', `info-panel__status is-${task.status.replace(' ', '-')}`, TASK_STATUS[task.status] ?? task.status);
+  const status = node('span', `info-panel__status is-${checkFailed(task) ? 'check-failed' : task.status.replace(' ', '-')}`, taskStatus(task));
   const cause = isFailed(task) && taskCauseChip(task.cause);
   if (cause) status.prepend(cause, ' ');
   head.append(node('span', 'info-panel__agent-title', title), status);
@@ -877,7 +880,7 @@ function taskRow(task) {
   const label = (name, value) => (value ? `${name}: ${value}` : '');
   const details = [
     task.check ? label('Command', task.check) : label('Task', task.description),
-    label('Status', TASK_STATUS[task.status] ?? task.status),
+    label('Status', taskStatus(task)),
     whyFailed(task),
     label('Type', task.kind),
     label('Level', task.level),
