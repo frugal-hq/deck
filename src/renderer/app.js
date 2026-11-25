@@ -3965,6 +3965,7 @@ let cleanVisit = 0;
 function cleanActions(item) {
   if (item.kind === 'copy') return ['remove', 'keep'];
   if (item.kind === 'account') return ['import', 'keep'];
+  if (item.status === "can't import") return ['keep', 'remove'];
   const places = item.places;
   const desktop = item.kind === 'mcp' && places.some((place) => place.scope === 'desktop')
     && places.every((place) => place.scope === 'desktop' || place.account === 'Deck store');
@@ -3982,7 +3983,8 @@ function fillClean(id, items, cells) {
     for (const value of cells(item)) row.insertCell().textContent = value;
     const select = node('select', 'settings__select');
     select.setAttribute('aria-label', `Action for ${item.kind} ${item.name}`);
-    for (const action of cleanActions(item)) select.add(new Option(action, action));
+    // For a plugin the store already has, remove drops only the accounts' copies: the store's stays the one in use.
+    for (const action of cleanActions(item)) select.add(new Option(action === 'remove' && item.status === 'in store' ? 'use store' : action, action));
     select.value = item.action;
     row.insertCell().append(select);
     cleanChoices.push({ item, select });
@@ -4058,6 +4060,8 @@ $('clean-apply').onclick = async () => {
   cleanBusy('Backing up…', 0, picked.length + 1);
   try {
     const { zip, errors } = await deck.cleanApply(picked);
+    const imported = picked.filter((item) => item.kind === 'plugin' && item.action === 'import').map((item) => item.name);
+    if (imported.length) errors.push(...await deck.cleanUpdate(imported));
     if (visit !== cleanVisit || !$('clean-dialog').open) return;
     if (!errors.length) { $('clean-dialog').close(); return; }
     cleanStatus([zip ? `Backup: ${zip}` : '', ...errors].filter(Boolean).join('\n'));

@@ -113,6 +113,7 @@
     cleanInventory: () => invoke('inventory'),
     cleanApply: (actions) => invoke('consolidate', { actions }),
     onCleanProgress: (callback) => on('consolidate:progress', callback),
+    cleanUpdate: (names) => invoke('plugins_update', { names }),
     // frugal: a pasted file has a path only if it was dropped before; savePasted copies pasted images.
     pathForFile: (file) => dropPaths.get(fileKey(file)) ?? '',
     thumbnail: (file) => invoke('files:thumbnail', { file }),

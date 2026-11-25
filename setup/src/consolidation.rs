@@ -141,9 +141,10 @@ fn path_parts(path: &Path) -> Vec<String> {
     }).collect()
 }
 
+// ~/.claude is the main account, always there without an entry.
 fn registered(accounts: &Value, dir: &Path) -> bool {
-    accounts["accounts"].as_array().into_iter().flatten().any(|account| {
-        account["configDir"].as_str().is_some_and(|path| same_path(Path::new(path), dir))
+    dir.file_name().is_some_and(|name| name == ".claude") || accounts["accounts"].as_array().into_iter().flatten().any(|account| {
+        account["config_dir"].as_str().is_some_and(|path| same_path(Path::new(path), dir))
     })
 }
 
@@ -172,13 +173,17 @@ fn version_order(left: &str, right: &str) -> std::cmp::Ordering {
 type Places = BTreeMap<String, Vec<Value>>;
 
 fn group_inventory(kind: &str, store: &Places, accounts: &Places) -> Vec<Value> {
-    store.keys().chain(accounts.keys()).collect::<BTreeSet<_>>().into_iter().map(|name| {
+    // Only what some account or Claude Desktop still has: a name only in the store has nothing to clean.
+    accounts.keys().collect::<BTreeSet<_>>().into_iter().map(|name| {
         let stored = store.get(name).map_or(&[][..], Vec::as_slice);
         let outside = accounts.get(name).map_or(&[][..], Vec::as_slice);
         let store_version = stored.iter().filter_map(|place| place["version"].as_str()).max_by(|a, b| version_order(a, b));
-        let newer = outside.iter().filter_map(|place| place["version"].as_str())
+        // A plugin only enabled in settings (a builtin one) or whose cache folder is gone has nothing to copy.
+        let importable = |place: &&Value| kind != "plugin" || place["importable"] == true;
+        let newer = outside.iter().filter(importable).filter_map(|place| place["version"].as_str())
             .any(|version| store_version.map_or(!stored.is_empty(), |current| newer_version(version, current)));
-        let (status, action) = if stored.is_empty() { ("not in store", "import") }
+        let (status, action) = if stored.is_empty() && !outside.iter().any(|place| importable(&place)) { ("can't import", "keep") }
+            else if stored.is_empty() { ("not in store", "import") }
             else if newer { ("newer in account", "import") }
             else { ("in store", "remove") };
         let action = if !outside.is_empty() && outside.iter().all(|place| place["scope"] == "desktop") {
@@ -197,8 +202,11 @@ fn plugin_places(dir: &Path, account: &str, places: &mut Places) -> Value {
     for name in plugins.into_iter().flat_map(Map::keys).chain(enabled.into_iter().flat_map(Map::keys)).collect::<BTreeSet<_>>() {
         let mut found = false;
         for entry in installed["plugins"][name].as_array().into_iter().flatten() {
+            let importable = entry["installPath"].as_str().zip(entry["version"].as_str()).zip(name.rsplit_once('@'))
+                .and_then(|((path, version), (plugin, market))| Some((dir.join(path), cache_for_plugin(market, plugin, version).ok()?)))
+                .is_some_and(|(path, suffix)| same_path(&path, &dir.join(PLUGIN_CACHE).join(suffix)) && path.is_dir());
             let mut place = json!({ "account": account, "dir": dir, "scope": entry["scope"].as_str().unwrap_or("user"),
-                "version": entry["version"].as_str() });
+                "version": entry["version"].as_str(), "importable": importable });
             if let Some(path) = entry["projectPath"].as_str() { place["projectPath"] = json!(path); }
             if let Some(enabled) = settings["enabledPlugins"][name].as_bool() { place["enabled"] = json!(enabled); }
             places.entry(name.clone()).or_default().push(place);
@@ -261,7 +269,7 @@ pub(crate) async fn inventory() -> Value {
             }
             if !is_store && config["oauthAccount"].is_object() {
                 let registered = registered(&known_accounts, &dir);
-                accounts.push(json!({ "kind": "account", "name": dir.file_name(), "account": account, "dir": dir,
+                accounts.push(json!({ "kind": "account", "name": dir.file_name().map(|name| name.to_string_lossy()), "account": account, "dir": dir,
                     "registered": registered, "action": if registered { "keep" } else { "import" } }));
             }
             let (count, bytes) = found_sessions.values().fold((0, 0), |(count, bytes), paths| {
@@ -532,7 +540,7 @@ fn plan_account(home: &Path, dirs: &[PathBuf], name: &str) -> Result<Vec<Consoli
     if id.is_empty() || entries.iter().any(|entry| entry["id"] == id) {
         return Err(format!("Account ID is already in use or empty: {id}"));
     }
-    entries.push(json!({ "id": id, "name": account, "configDir": dir }));
+    entries.push(json!({ "id": id, "kind": "claude", "enabled": true, "used": 0, "day": "", "config_dir": dir }));
     Ok(vec![ConsolidationEdit { account, writes: vec![(file, accounts)], ..Default::default() }])
 }
 
@@ -860,11 +868,15 @@ mod tests {
     use super::*;
 
     fn plugin_inventory(store: Option<&str>, account: &str) -> Value {
+        plugin_row(store, account, true)
+    }
+
+    fn plugin_row(store: Option<&str>, account: &str, importable: bool) -> Value {
         let name = "example@market".to_owned();
         let stored = store.map(|version| {
             Places::from([(name.clone(), vec![json!({ "account": "Deck store", "scope": "user", "version": version })])])
         }).unwrap_or_default();
-        let outside = Places::from([(name, vec![json!({ "account": "dev@example.com", "scope": "project", "version": account })])]);
+        let outside = Places::from([(name, vec![json!({ "account": "dev@example.com", "scope": "project", "version": account, "importable": importable })])]);
         group_inventory("plugin", &stored, &outside).remove(0)
     }
 
@@ -893,6 +905,10 @@ mod tests {
         assert_eq!(row["status"], "not in store");
         assert_eq!(row["action"], "import");
         assert!(row["store_version"].is_null());
+        let row = plugin_row(None, "2", false);
+        assert_eq!(row["status"], "can't import");
+        assert_eq!(row["action"], "keep");
+        assert_eq!(plugin_row(Some("1"), "2", false)["status"], "in store");
     }
 
     #[test]

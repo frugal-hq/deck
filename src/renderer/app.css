@@ -908,12 +908,12 @@ body { transition: opacity var(--dur-short) var(--ease-out); }
   .settings__nav { flex-direction: row; border-right: 0; border-bottom: var(--rule-hair) solid var(--color-rule); overflow-x: auto; }
   .settings__heading, .settings__scope { display: none; }
 }
-#clean-dialog .inventory { width: 100%; border-collapse: collapse; table-layout: fixed; overflow-wrap: anywhere; font-size: var(--text-sm); }
+#clean-dialog { width: min(72rem, 96vw); height: min(44rem, 90vh); }
+#clean-dialog .inventory { width: 100%; border-collapse: collapse; overflow-wrap: break-word; font-size: var(--text-sm); }
 #clean-dialog .inventory caption { margin-bottom: var(--space-2xs); text-align: start; font-weight: 500; }
 #clean-dialog .inventory :is(th, td) { padding: var(--space-2xs); border-bottom: var(--rule-hair) solid var(--color-rule); vertical-align: top; text-align: start; }
-#clean-dialog .inventory th { font-weight: 500; }
-#clean-dialog .inventory th:last-child { width: 96px; }
-#clean-plugins th:nth-child(2), #clean-mcp th:nth-child(2) { width: 34%; }
+#clean-dialog .inventory th { font-weight: 500; white-space: nowrap; }
+#clean-dialog .inventory td:first-child, #clean-dialog .inventory td:last-child { white-space: nowrap; }
 .clean__busy { display: grid; gap: var(--space-2xs); }
 .clean__busy[hidden] { display: none; }
 .clean__choices { display: grid; gap: var(--space-md); min-inline-size: 0; margin: 0; padding: 0; border: 0; }

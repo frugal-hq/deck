@@ -1,11 +1,11 @@
 use serde_json::{json, Value};
-use std::collections::HashMap;
+use std::collections::{BTreeSet, HashMap};
 use std::io::{BufRead, BufReader};
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::Mutex;
 use std::time::Duration;
-use tauri::{AppHandle, Manager, State};
+use tauri::{AppHandle, Emitter, Manager, State};
 use crate::accounts::{array, is_frugal, object, read_json, read_strict, run, string, Accounts};
 use crate::chat::{account_env, claude_env, find_claude, NO_CLAUDE};
 
@@ -202,6 +202,32 @@ pub async fn plugin_install(app: AppHandle, id: String) -> Result<String> {
         command.args(["plugin", "install", &id]);
         let output = run(&mut command, Duration::from_secs(60)).map_err(|e| e.to_string())?;
         Ok(String::from_utf8_lossy(&output).lines().rev().find(|line| !line.trim().is_empty()).unwrap_or_default().trim().to_owned())
+    }).await.map_err(|e| e.to_string())?
+}
+
+// An import copies the version the account had; this pulls each marketplace and updates the plugin in the store.
+// frugal stays out: the Deck updates it itself.
+#[tauri::command]
+pub async fn plugins_update(app: AppHandle, names: Vec<String>) -> Result<Vec<String>> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let mut errors = Vec::new();
+        let mut markets = BTreeSet::new();
+        for (index, name) in names.iter().enumerate() {
+            let Some((_, market)) = name.rsplit_once('@').filter(|_| valid_id(name) && name != FRUGAL) else { continue };
+            let _ = app.emit("consolidate:progress", [json!({ "done": index, "total": names.len(), "step": format!("update {name}") })]);
+            let mut steps = Vec::new();
+            if markets.insert(market.to_owned()) { steps.push(vec!["plugin", "marketplace", "update", market]); }
+            steps.push(vec!["plugin", "update", name]);
+            for args in steps {
+                let result = {
+                    let state = app.state::<Mutex<Accounts>>();
+                    let accounts = state.lock().unwrap();
+                    command(&accounts, claude_env(&accounts, Some(&accounts.store_dir())))
+                }.and_then(|mut command| run(command.args(&args), Duration::from_secs(120)).map_err(|e| e.to_string()));
+                if let Err(error) = result { errors.push(format!("{}: {error}", args.join(" "))); }
+            }
+        }
+        Ok(errors)
     }).await.map_err(|e| e.to_string())?
 }
 

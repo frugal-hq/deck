@@ -285,6 +285,7 @@ fn main() {
             plugins::auto_picks_clear,
             plugins::plugin_find,
             plugins::plugin_install,
+            plugins::plugins_update,
             plugins::recommend,
             chat::mcp_login,
             organizer::topics_estimate,
