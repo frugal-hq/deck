@@ -4,6 +4,10 @@ import { matchSessions } from './palette.mjs';
 import { groupChats, buildTree } from './chats.mjs';
 import { trustPromptKey } from './trust.mjs';
 import { trimSilence, encodeWav, joinChunks } from './voice.mjs';
+import { loadLocale, applyI18n } from './i18n.mjs';
+
+await loadLocale();
+applyI18n();
 
 const $ = (id) => document.getElementById(id);
 const stage = $('stage');
