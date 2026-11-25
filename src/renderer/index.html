@@ -669,27 +669,39 @@
       <div class="settings__body">
         <section class="settings__section">
           <p class="settings__hint">Frugal Deck keeps one copy of each plugin and MCP server and shares it with every Claude account. Pick what to import, keep or remove. Everything changed is backed up first, except old plugin copies: Claude Code downloads them again if needed. Chats started or restarted afterward pick up the changes.</p>
-          <div class="organize__actions">
-            <button id="clean-recommended" class="btn" type="button">Recommended</button>
-            <button id="clean-keep" class="btn" type="button">Keep everything</button>
+          <div id="clean-busy" class="clean__busy" hidden>
+            <p id="clean-step" class="settings__hint"></p>
+            <progress id="clean-progress" class="sort__progress" aria-labelledby="clean-step"></progress>
           </div>
-          <p id="clean-loading" class="settings__hint" hidden>Looking for plugins, MCP servers and old copies in every account…</p>
           <p id="clean-empty" class="settings__hint" hidden>Every account already uses the Deck store.</p>
-          <table id="clean-plugins" class="inventory" hidden>
-            <caption>Plugins and MCP servers</caption>
-            <thead><tr><th scope="col">Name</th><th scope="col">Kind</th><th scope="col">Where</th><th scope="col">Store version</th><th scope="col">Status</th><th scope="col">Action</th></tr></thead>
-            <tbody></tbody>
-          </table>
-          <table id="clean-accounts" class="inventory" hidden>
-            <caption>Accounts</caption>
-            <thead><tr><th scope="col">Account</th><th scope="col">Action</th></tr></thead>
-            <tbody></tbody>
-          </table>
-          <table id="clean-copies" class="inventory" hidden>
-            <caption>Old plugin copies</caption>
-            <thead><tr><th scope="col">Account</th><th scope="col">Path</th><th scope="col">Action</th></tr></thead>
-            <tbody></tbody>
-          </table>
+          <fieldset id="clean-choices" class="clean__choices">
+            <div class="organize__actions">
+              <button id="clean-recommended" class="btn" type="button">Recommended</button>
+              <button id="clean-keep" class="btn" type="button">Keep everything</button>
+            </div>
+            <table id="clean-plugins" class="inventory" hidden>
+              <caption>Plugins <span id="clean-plugins-count" class="settings__hint"></span></caption>
+              <thead><tr><th scope="col">Name</th><th scope="col">Where</th><th scope="col">Store version</th><th scope="col">Status</th><th scope="col">Action</th></tr></thead>
+              <tbody></tbody>
+            </table>
+            <table id="clean-mcp" class="inventory" hidden>
+              <caption>MCP servers <span id="clean-mcp-count" class="settings__hint"></span></caption>
+              <thead><tr><th scope="col">Name</th><th scope="col">Where</th><th scope="col">Status</th><th scope="col">Action</th></tr></thead>
+              <tbody></tbody>
+            </table>
+            <table id="clean-accounts" class="inventory" hidden>
+              <caption>Accounts <span id="clean-accounts-count" class="settings__hint"></span></caption>
+              <thead><tr><th scope="col">Account</th><th scope="col">Action</th></tr></thead>
+              <tbody></tbody>
+            </table>
+            <details id="clean-copies-more" hidden>
+              <summary>Old plugin copies <span id="clean-copies-count" class="settings__hint"></span></summary>
+              <table id="clean-copies" class="inventory">
+                <thead><tr><th scope="col">Account</th><th scope="col">Plugin</th><th scope="col">Version</th><th scope="col">Action</th></tr></thead>
+                <tbody></tbody>
+              </table>
+            </details>
+          </fieldset>
         </section>
       </div>
       <div class="settings__footer">

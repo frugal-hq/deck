@@ -913,7 +913,11 @@ body { transition: opacity var(--dur-short) var(--ease-out); }
 #clean-dialog .inventory :is(th, td) { padding: var(--space-2xs); border-bottom: var(--rule-hair) solid var(--color-rule); vertical-align: top; text-align: start; }
 #clean-dialog .inventory th { font-weight: 500; }
 #clean-dialog .inventory th:last-child { width: 96px; }
-#clean-plugins th:nth-child(3) { width: 28%; }
+#clean-plugins th:nth-child(2), #clean-mcp th:nth-child(2) { width: 34%; }
+.clean__busy { display: grid; gap: var(--space-2xs); }
+.clean__busy[hidden] { display: none; }
+.clean__choices { display: grid; gap: var(--space-md); min-inline-size: 0; margin: 0; padding: 0; border: 0; }
+#clean-copies-more summary { cursor: pointer; font-weight: 500; }
 #clean-dialog .inventory td { white-space: pre-line; }
 #clean-dialog .inventory select { max-width: 100%; }
 #clean-status { white-space: pre-line; }

@@ -3975,6 +3975,7 @@ function fillClean(id, items, cells) {
   const table = $(id);
   const body = table.tBodies[0];
   table.hidden = !items.length;
+  $(`${id}-count`).textContent = `(${items.length})`;
   body.replaceChildren();
   for (const item of items) {
     const row = body.insertRow();
@@ -3988,6 +3989,17 @@ function fillClean(id, items, cells) {
   }
 }
 
+// Indeterminate while scanning; Apply fills it from the backend's consolidate:progress steps.
+function cleanBusy(step, done, total) {
+  $('clean-busy').hidden = step == null;
+  $('clean-choices').disabled = step != null;
+  $('clean-step').textContent = step ?? '';
+  const bar = $('clean-progress');
+  if (total) { bar.max = total; bar.value = done; } else bar.removeAttribute('value');
+}
+
+const placeText = (place) => [place.account, place.scope, place.version ?? place.projectPath].filter(Boolean).join(' / ');
+
 function cleanStatus(text) {
   const status = $('clean-status');
   status.textContent = text;
@@ -4000,27 +4012,28 @@ async function openCleanDialog() {
   cleanChoices = [];
   cleanStatus('');
   $('clean-empty').hidden = true;
-  $('clean-loading').hidden = false;
+  cleanBusy('Looking for plugins, MCP servers and old copies in every account…');
   $('clean-apply').disabled = true;
-  for (const id of ['clean-plugins', 'clean-accounts', 'clean-copies']) $(id).hidden = true;
+  for (const id of ['clean-plugins', 'clean-mcp', 'clean-accounts', 'clean-copies-more']) $(id).hidden = true;
   if (!$('clean-dialog').open) $('clean-dialog').showModal();
   try {
     const inventory = await deck.cleanInventory();
     if (visit !== cleanVisit || !$('clean-dialog').open) return;
-    const plugins = [...inventory.plugins, ...inventory.mcp];
-    fillClean('clean-plugins', plugins, (item) => [
-      item.name, item.kind,
-      item.places.map((place) => [place.account, place.scope, place.version].filter(Boolean).join(' / ')).join('\n'),
-      item.store_version ?? '—', item.status,
-    ]);
+    fillClean('clean-plugins', inventory.plugins, (item) => [item.name, item.places.map(placeText).join('\n'), item.store_version ?? '—', item.status]);
+    fillClean('clean-mcp', inventory.mcp, (item) => [item.name, item.places.map(placeText).join('\n'), item.status]);
     fillClean('clean-accounts', inventory.accounts, (item) => [item.account]);
-    fillClean('clean-copies', inventory.copies, (item) => [item.account, item.name]);
-    $('clean-empty').hidden = Boolean(plugins.length || inventory.accounts.length || inventory.copies.length);
+    // A copy is <account>/plugins/cache/<market>/<plugin>/<version>.
+    fillClean('clean-copies', inventory.copies, (item) => {
+      const [market, plugin, version] = item.name.split(/[\\/]/).slice(-3);
+      return [item.account, `${plugin}@${market}`, version];
+    });
+    $('clean-copies-more').hidden = !inventory.copies.length;
+    $('clean-empty').hidden = Boolean(inventory.plugins.length || inventory.mcp.length || inventory.accounts.length || inventory.copies.length);
   } catch (error) {
     if (visit === cleanVisit && $('clean-dialog').open) cleanStatus(String(error));
   } finally {
     if (visit === cleanVisit) {
-      $('clean-loading').hidden = true;
+      cleanBusy();
       $('clean-apply').disabled = false;
     }
   }
@@ -4041,7 +4054,8 @@ $('clean-apply').onclick = async () => {
   if (!picked.length) { $('clean-dialog').close(); return; }
   const visit = cleanVisit;
   $('clean-apply').disabled = true;
-  cleanStatus('Backing up and applying your choices. Removing old plugin copies can take a few minutes.');
+  cleanStatus('');
+  cleanBusy('Backing up…', 0, picked.length + 1);
   try {
     const { zip, errors } = await deck.cleanApply(picked);
     if (visit !== cleanVisit || !$('clean-dialog').open) return;
@@ -4050,9 +4064,15 @@ $('clean-apply').onclick = async () => {
   } catch (error) {
     if (visit === cleanVisit && $('clean-dialog').open) cleanStatus(String(error));
   } finally {
-    if (visit === cleanVisit && $('clean-dialog').open) $('clean-apply').disabled = false;
+    if (visit === cleanVisit && $('clean-dialog').open) {
+      cleanBusy();
+      $('clean-apply').disabled = false;
+    }
   }
 };
+deck.onCleanProgress(({ done, total, step }) => {
+  if (!$('clean-busy').hidden) cleanBusy(`${step} (${done} of ${total})`, done, total);
+});
 $('plugins-save').onclick = async () => {
   if (!pluginsShown) return;
   $('plugins-save').disabled = true;

@@ -667,8 +667,11 @@ fn save_consolidation_json(home: &Path, file: &Path, value: &Value) -> Result<()
 }
 
 #[tauri::command]
-pub(crate) async fn consolidate(actions: Value) -> Result<Value, String> {
+pub(crate) async fn consolidate(app: tauri::AppHandle, actions: Value) -> Result<Value, String> {
+    use tauri::Emitter as _;
     let _lock = CONSOLIDATION.lock().map_err(|error| error.to_string())?;
+    // Steps for a progress bar: the backup, then one per picked item; removing an old copy can take minutes.
+    let progress = |done: usize, total: usize, step: String| { let _ = app.emit("consolidate:progress", json!([{ "done": done, "total": total, "step": step }])); };
     let home = home()?;
     let mut dirs = claude_dirs(&home);
     dirs.sort();
@@ -755,6 +758,8 @@ pub(crate) async fn consolidate(actions: Value) -> Result<Value, String> {
     }).find(|(zip, list)| !zip.exists() && !list.exists()).unwrap();
     let zip_relative = safe_relative(&home, &zip)?;
     safe_relative(&home, &list_file)?;
+    let total = plans.len() + 1;
+    progress(0, total, "Backing up".to_owned());
     let mut list = Vec::new();
     for path in &archived {
         inspect_tree(path).map_err(|error| path_error(path, error))?;
@@ -766,7 +771,8 @@ pub(crate) async fn consolidate(actions: Value) -> Result<Value, String> {
     save_consolidation_json(&home, &consolidation_file(&home), &manifest)?;
 
     let mut applied = 0;
-    for (kind, name, action, _) in plans {
+    for (index, (kind, name, action, _)) in plans.into_iter().enumerate() {
+        progress(index + 1, total, format!("{action} {kind} {name}"));
         let result = (|| {
             for edit in plan_consolidation(&home, &dirs, kind, name, action)? {
                 for (source, target) in edit.copies {
