@@ -196,7 +196,7 @@ function render() {
   const linkButton = $('link-chat');
   linkButton.classList.toggle('is-linked', linked);
   linkButton.querySelector('span').textContent = linked ? 'Linked' : 'Link';
-  linkButton.dataset.tip = linked ? 'Already linked to a chat. Click to move or unlink it' : 'Join this session to another chat';
+  linkButton.dataset.tip = linked ? 'Already linked to a chat. Click to move or unlink it' : 'Join this chat to another chat';
   if (!chat) return;
   $('path').textContent = chat.cwd;
   drawMeters();
@@ -281,7 +281,7 @@ function accountName(account, details) {
 }
 
 function report(result) {
-  if (result?.error) ask({ title: 'Account', text: result.error, action: 'OK', run: () => {} });
+  if (result?.error) ask({ title: 'Account', text: result.error, action: 'Close', run: () => {} });
 }
 
 // Voice: the badge records here, whisper.cpp transcribes in the main process, and the text lands at the cursor unsent.
@@ -305,7 +305,7 @@ const applyAccent = () => {
 applyAccent();
 const decimal = new Intl.NumberFormat('en-US', { maximumFractionDigits: 1 });
 const sizeText = (bytes) => (bytes >= 1e9 ? `${decimal.format(bytes / 1e9)} GB` : `${decimal.format(bytes / 1e6)} MB`);
-const voiceError = (text) => ask({ title: 'Voice', text, action: 'OK', run: () => {} });
+const voiceError = (text) => ask({ title: 'Voice', text, action: 'Close', run: () => {} });
 let recording = null;
 let downloadingFor = null;
 // Whether the chosen local model is on disk; null until checked or when local dictation is off.
@@ -424,7 +424,7 @@ async function toggleDictation(chat, area) {
     recording = { chat, stream, context, chunks, area };
     setVoice(chat, 'Listening');
   } catch (error) {
-    voiceError(`The microphone is not available: ${error.message}`);
+    voiceError(`The microphone is not available: ${error.message}. Check that it is connected and allowed in Settings.`);
   }
 }
 
@@ -442,7 +442,7 @@ async function stopDictation() {
   const samples = trimSilence(joinChunks(chunks), VOICE_RATE);
   if (!samples.length) {
     setVoice(chat, null);
-    return voiceError('No speech was heard.');
+    return voiceError('No speech was heard. Record again.');
   }
   setVoice(chat, 'Transcribing');
   const result = await deck.voiceTranscribe({ audio: encodeWav(samples, VOICE_RATE), model: voiceModel(), language: voiceLanguage() });
@@ -468,7 +468,7 @@ function signIn(account) {
 }
 
 function accountMenu(account) {
-  const items = [{ label: 'Rename', run: () => askRename(account) }];
+  const items = [{ label: 'Rename…', run: () => askRename(account) }];
   if (!account.signedIn) items.push({ label: 'Sign in', run: () => signIn(account) });
   else items.push({ label: 'Sign out', run: () => ask({
     title: `Sign out of ${account.name}?`,
@@ -500,7 +500,7 @@ function withMenu(target, account) {
 // What the panel says under a name: that there is no login, and a warning when another account shares it. The email is in the name's tooltip.
 function loginLines(account) {
   const lines = account.signedIn ? [] : [node('span', 'account__email', 'Signed out')];
-  if (account.sameLogin.length) lines.push(node('span', 'account__detail is-warn', `Same login as ${account.sameLogin.join(', ')}`));
+  if (account.sameLogin.length) lines.push(node('span', 'account__detail is-warn', `Same sign-in as ${account.sameLogin.join(', ')}`));
   return lines;
 }
 
@@ -1000,7 +1000,7 @@ function makeBadge(chat) {
   const dot = node('button', 'term-badge__dot');
   dot.type = 'button';
   dot.append(icon('more'));
-  dot.dataset.tip = 'Session details. Click to show or hide them';
+  dot.dataset.tip = 'Chat details. Click to show or hide them';
   const info = node('span', 'term-badge__info');
   const frugal = node('button', 'term-badge__action term-badge__frugal', 'Frugal');
   frugal.type = 'button';
@@ -1139,7 +1139,7 @@ async function micMenu(chat) {
     items.push({ label: 'Default microphone', checked: !voiceDevice(), run: () => localStorage.removeItem('voiceDevice') });
     inputs.forEach((device, index) => items.push({ label: device.label || `Microphone ${index + 1}`, checked: voiceDevice() === device.deviceId, run: () => localStorage.setItem('voiceDevice', device.deviceId) }));
   }
-  items.push({ label: 'Voice settings…', run: () => openSettings('voice') });
+  items.push({ label: 'Voice settings', run: () => openSettings('voice') });
   const box = chat.mic.getBoundingClientRect();
   openMenu(box.right, box.top, items, chat.mic.querySelector('.term-mic__more'));
   menu.style.left = `${Math.max(8, box.right - menu.offsetWidth)}px`;
@@ -1470,7 +1470,7 @@ accountForm.onsubmit = async (event) => {
         try { pending = deck.accountCli(args, kind === 'gemini' ? `${$('account-key').value}\n` : null); }
         finally { $('account-key').value = ''; }
         const result = accountResult(await pending, true);
-        if (result.ok !== true || result.id !== id || result.kind !== kind || typeof result.loggedIn !== 'boolean') throw new Error('Account registration failed.');
+        if (result.ok !== true || result.id !== id || result.kind !== kind || typeof result.loggedIn !== 'boolean') throw new Error('Could not add the account. Select Retry to try again.');
         run.registered = true;
         accountStep(0, 'done');
       }
@@ -1498,20 +1498,20 @@ accountForm.onsubmit = async (event) => {
           const code = await exited;
           if (accountAdd !== run) return;
           const state = await deck.getAccounts();
-          if (code !== 0 || !state.accounts.some((a) => a.id === id && a.signedIn)) throw new Error(run.loginError || 'Sign-in did not finish.');
+          if (code !== 0 || !state.accounts.some((a) => a.id === id && a.signedIn)) throw new Error(run.loginError || 'Sign-in did not finish. Select Retry to try again.');
           run.registered = true;
         } else {
           const deadline = Date.now() + 10 * 60 * 1000;
           while (true) {
             if (accountAdd !== run) return;
-            if (Date.now() >= deadline) throw new Error('Sign-in did not finish.');
+            if (Date.now() >= deadline) throw new Error('Sign-in did not finish. Select Retry to try again.');
             const status = accountResult(await deck.accountCli(['status', id]), true);
             if (accountAdd !== run) return;
             if (status.id !== id || status.kind !== kind || typeof status.installed !== 'boolean' || typeof status.loggedIn !== 'boolean') {
               throw new Error('Update frugal to add this kind of account.');
             }
             if (status.loggedIn) break;
-            if (run.exitCode != null && run.exitCode !== 0) throw new Error('Sign-in did not finish.');
+            if (run.exitCode != null && run.exitCode !== 0) throw new Error('Sign-in did not finish. Select Retry to try again.');
             await new Promise((resolve) => setTimeout(resolve, 2000));
           }
         }
@@ -1667,10 +1667,10 @@ function drawHandoff() {
   if (document.activeElement !== note) note.value = handoff.note;
   const size = `Context is ${compact.format(handoff.tokens)} tokens.`;
   const counting = handoff.timer || handoff.paused;
-  $('handoff-status').textContent = handoff.timer ? `${size} A new session starts in ${Math.max(handoff.left, 0)} s.` : handoff.paused ? `${size} Countdown paused while you write.` : size;
+  $('handoff-status').textContent = handoff.timer ? `${size} A new chat starts in ${Math.max(handoff.left, 0)} s.` : handoff.paused ? `${size} Countdown paused while you write.` : size;
   const stop = $('handoff-stop');
   stop.textContent = counting ? 'Cancel' : 'Dismiss';
-  stop.dataset.tip = counting ? 'Stop the countdown and keep this prompt' : 'Keep working in this session';
+  stop.dataset.tip = counting ? 'Stop the countdown and keep this prompt' : 'Keep working in this chat';
   $('handoff-save').hidden = !handoff.paused;
 }
 
@@ -1691,7 +1691,7 @@ async function continueHandoff(chat) {
   render();
   if (!result.error && instant && localStorage.getItem('handoffInstantShown') !== 'true') {
     localStorage.setItem('handoffInstantShown', 'true');
-    if (await askConfirm('Handoff started at once', 'The handoff delay in Settings is 0 seconds, so new sessions start as soon as a handoff is ready, with no countdown. This notice shows once.', 'Open settings')) openSettings('handoff');
+    if (await askConfirm('Handoff started at once', 'The handoff delay in Settings is 0 seconds, so new chats start as soon as a handoff is ready, with no countdown. This notice shows once.', 'Open settings')) openSettings('handoff');
   }
 }
 
@@ -2500,7 +2500,7 @@ function workspaceMenu(name) {
   if (folder) fetchMcp({ workspace: name, folder }, 30_000);
   return [
     ...(folder ? [{ label: 'MCP servers', icon: 'plug', run: () => openMcpDialog({ workspace: name, folder }) }] : []),
-    { label: 'Rename', icon: 'edit', run: () => ask({
+    { label: 'Rename…', icon: 'edit', run: () => ask({
       title: `Rename ${name}`,
       text: 'Use the name of another workspace to merge them.',
       value: name,
@@ -2512,11 +2512,11 @@ function workspaceMenu(name) {
         deck.renameWorkspace(name, to);
       },
     }) },
-    { label: 'Move to workspace', icon: 'topic', run: () => openWorkspace(spaceKey(name), name) },
-    { label: 'Delete', icon: 'trash', danger: true, run: () => ask({
-      title: `Delete ${name}?`,
+    { label: 'Move to workspace…', icon: 'topic', run: () => openWorkspace(spaceKey(name), name) },
+    { label: 'Remove', icon: 'trash', danger: true, run: () => ask({
+      title: `Remove ${name}?`,
       text: 'Its groups and chats stay, outside any workspace. Workspaces inside it move up one level.',
-      action: 'Delete',
+      action: 'Remove',
       danger: true,
       run: () => deck.deleteWorkspace(name),
     }) },
@@ -2526,7 +2526,7 @@ function workspaceMenu(name) {
 const sessionsOfGroup = (key) => currentIndex.sessions.filter((s) => chatsById.get(s.chatId)?.topic === key).map((s) => s.id);
 
 function groupMenu(key, label, byTopic) {
-  const move = { label: 'Move to workspace', icon: 'topic', run: () => openWorkspace(key, label) };
+  const move = { label: 'Move to workspace…', icon: 'topic', run: () => openWorkspace(key, label) };
   // A group's servers are listed from the folder of one of its chats.
   const folder = byTopic ? currentIndex.sessions.find((s) => chatsById.get(s.chatId)?.topic === key)?.cwd : key;
   const listScope = byTopic ? { group: key, folder } : { folder };
@@ -2536,7 +2536,7 @@ function groupMenu(key, label, byTopic) {
   if (!byTopic) return [move, mcp];
   const workspace = currentIndex.workspaces?.[key];
   return [
-    { label: 'Rename', icon: 'edit', run: () => ask({
+    { label: 'Rename…', icon: 'edit', run: () => ask({
       title: `Rename ${label}`,
       text: 'Use the name of another group to merge them.',
       value: key,
@@ -2548,7 +2548,7 @@ function groupMenu(key, label, byTopic) {
         deck.renameGroup(sessionsOfGroup(key), key, to);
       },
     }) },
-    { label: 'Merge into another group', icon: 'merge', run: () => ask({
+    { label: 'Merge into another group…', icon: 'merge', run: () => ask({
       title: `Merge ${label} into`,
       text: 'Its chats move into the group you choose, and this group goes away.',
       names: groupNames.filter((other) => other !== key),
@@ -2561,10 +2561,10 @@ function groupMenu(key, label, byTopic) {
     }) },
     move,
     ...(folder ? [mcp] : []),
-    { label: 'Delete', icon: 'trash', danger: true, run: () => ask({
-      title: `Delete ${label}?`,
+    { label: 'Remove', icon: 'trash', danger: true, run: () => ask({
+      title: `Remove ${label}?`,
       text: workspace ? `Its chats stay in ${workspace}, without a group.` : 'Its chats stay, outside any group.',
-      action: 'Delete',
+      action: 'Remove',
       danger: true,
       run: () => deck.deleteGroup(sessionsOfGroup(key), key),
     }) },
@@ -2633,7 +2633,7 @@ function indexStatus({ indexing, sessions, error, progress }) {
   if (error) return `Could not read the index: ${error}`;
   if (indexing && progress?.total) return `Indexing ${progress.done.toLocaleString()} of ${progress.total.toLocaleString()} sessions (${Math.floor(100 * progress.done / progress.total)}%)`;
   if (sessions.length) return '';
-  return indexing ? 'Indexing sessions' : 'No sessions yet.';
+  return indexing ? 'Indexing sessions…' : 'No chats yet.';
 }
 
 function pinnedElement(sessions) {
@@ -2858,7 +2858,7 @@ async function loadPalette(load) {
   paletteQuery.readOnly = true;
   $('palette-ai').hidden = true;
   $('palette-sends').hidden = true;
-  paletteLoading = 'Loading sessions';
+  paletteLoading = 'Loading chats…';
   drawPalette();
   let sessions;
   try {
@@ -2869,7 +2869,7 @@ async function loadPalette(load) {
   if (search !== paletteSearch || !palette.open) return;
   paletteLoading = '';
   if (!sessions) {
-    paletteError = 'Could not load sessions. Select Retry to try again.';
+    paletteError = 'Could not load chats. Select Retry to try again.';
     $('palette-retry').onclick = () => loadPalette(load);
   } else {
     paletteSessions = sessions;
@@ -3208,7 +3208,7 @@ $('organize-link').onclick = () => {
 $('organize-unlink').onclick = () => {
   organize.close();
   deck.link(organizing.id, null);
-  showUndo('Session unlinked.');
+  showUndo('Chat unlinked.');
 };
 $('space-filter').onchange = () => renderSessions(currentIndex);
 
@@ -3366,7 +3366,7 @@ async function drawSortEstimate() {
     ? 'Choose at least one group.'
     : parts.length
       ? `About ${tokens.toLocaleString('en-US')} tokens of your Claude account: ${parts.join(' and ')}. Only titles, folder names and your notes are sent.${time}`
-      : 'Every session already has what you asked for. Nothing to send.';
+      : 'Every chat already has what you asked for. Nothing to send.';
   const join = await deck.estimateJoins();
   $('join-row').hidden = join.sessions === 0;
   if (join.sessions !== 0) {
@@ -4003,7 +4003,7 @@ $('mcp-ask-run').onclick = async () => {
   const text = $('mcp-ask').value.trim();
   if (!scope || !text || $('mcp-ask-run').disabled) return;
   $('mcp-ask-run').disabled = true;
-  $('mcp-ask-cost').textContent = 'Asking Haiku...';
+  $('mcp-ask-cost').textContent = 'Asking Haiku…';
   const reply = await deck.mcpFromPrompt(text).catch((error) => ({ error: String(error) }));
   if (mcpScope !== scope) return;
   syncMcpAsk();
@@ -4123,7 +4123,7 @@ async function openPluginsDialog() {
   $('plugins-error').hidden = true;
   $('plugins-request').value = '';
   $('plugins-task').value = '';
-  $('plugins-list').replaceChildren(node('p', 'mcp__empty', 'Loading...'));
+  $('plugins-list').replaceChildren(node('p', 'mcp__empty', 'Loading…'));
   showSection($('plugins-dialog'), 'installed');
   $('plugins-dialog').showModal();
   try {
@@ -4159,7 +4159,7 @@ function fillClean(id, items, cells) {
     const select = node('select', 'settings__select');
     select.setAttribute('aria-label', `Action for ${item.kind} ${item.name}`);
     // For a plugin the store already has, remove drops only the accounts' copies: the store's stays the one in use.
-    for (const action of cleanActions(item)) select.add(new Option(action === 'remove' && item.status === 'in store' ? 'use store' : action, action));
+    for (const action of cleanActions(item)) select.add(new Option(action === 'remove' && item.status === 'in store' ? 'Use store' : action[0].toUpperCase() + action.slice(1), action));
     select.value = item.action;
     row.insertCell().append(select);
     cleanChoices.push({ item, select });
@@ -4478,13 +4478,13 @@ $('link-chat').onclick = () => {
   }
   const { left, bottom } = $('link-chat').getBoundingClientRect();
   openMenu(left, bottom + 4, [
-    { label: 'Move to another chat', run: () => showPalette(otherChats, (target) => {
+    { label: 'Move to another chat…', run: () => showPalette(otherChats, (target) => {
       deck.link(activeSession.id, target.id);
       showUndo(`Moved to ${target.title}.`);
     }, 'Move to which chat?') },
     { label: 'Unlink from chat', run: () => {
       deck.link(activeSession.id, null);
-      showUndo('Session unlinked.');
+      showUndo('Chat unlinked.');
     } },
   ]);
 };
@@ -4707,7 +4707,7 @@ async function openUpdates() {
     const fromFolder = frugalSource?.source === 'directory';
     const [kind, from] = fromFolder ? ['folder', frugalSource.path] : frugalSource?.repo ? ['GitHub', frugalSource.repo] : ['other', frugalSource?.url ?? 'unknown'];
     const sourceTip = fromFolder ? 'Install frugal from GitHub frugal-hq/frugal' : 'Install frugal from a folder that holds its marketplace, such as a clone of the repo';
-    rows.push(updateRow(`Source: ${kind}`, fromFolder ? 'Use GitHub' : 'Use a folder', sourceTip, (button) => setFrugalSource(fromFolder, button), from));
+    rows.push(updateRow(`Source: ${kind}`, fromFolder ? 'Use GitHub' : 'Use a folder…', sourceTip, (button) => setFrugalSource(fromFolder, button), from));
   } else {
     rows.push(updateRow('frugal plugin', 'Install', 'Install frugal from GitHub in the Deck store', (button) => setFrugalSource(true, button)));
   }

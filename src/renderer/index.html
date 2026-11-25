@@ -62,11 +62,11 @@
     <button class="window-control window-control--close" type="button" data-window-action="close" aria-label="Close" data-tip="Close Frugal Deck"><svg class="icon" aria-hidden="true"><use href="#i-x"/></svg></button>
   </div>
 </header>
-<aside class="sidebar" aria-label="Sessions">
+<aside class="sidebar" aria-label="Chats">
   <div class="sidebar__tools">
-    <button id="search" class="btn" type="button" aria-label="Search" data-tip="Find a session by title, folder or message (Ctrl+Shift+K)"><svg class="icon" aria-hidden="true"><use href="#i-search"/></svg><span class="btn__label">Search</span></button>
-    <button id="sort" class="btn" type="button" aria-label="Organize" data-tip="Group your sessions by folder or topic"><svg class="icon" aria-hidden="true"><use href="#i-sort"/></svg><span class="btn__label">Organize</span></button>
-    <button id="archived" class="btn" type="button" aria-label="Archived" data-tip="Archived sessions and the chat each came from"><svg class="icon" aria-hidden="true"><use href="#i-archive"/></svg><span class="btn__label">Archived</span></button>
+    <button id="search" class="btn" type="button" aria-label="Search" data-tip="Find a chat by title, folder or message (Ctrl+Shift+K)"><svg class="icon" aria-hidden="true"><use href="#i-search"/></svg><span class="btn__label">Search</span></button>
+    <button id="sort" class="btn" type="button" aria-label="Organize" data-tip="Group your chats by folder or topic"><svg class="icon" aria-hidden="true"><use href="#i-sort"/></svg><span class="btn__label">Organize</span></button>
+    <button id="archived" class="btn" type="button" aria-label="Archived" data-tip="Archived chats and the chat each came from"><svg class="icon" aria-hidden="true"><use href="#i-archive"/></svg><span class="btn__label">Archived</span></button>
   </div>
   <p id="index-status" class="sidebar__status" role="status" hidden></p>
   <progress id="index-progress" class="index__progress" hidden></progress>
@@ -80,19 +80,19 @@
     <p>New chats open in Frugal Deck/Sessions in your home folder. Choose a folder to work on a project.</p>
     <div class="empty__actions">
       <button id="start" class="btn btn--primary" type="button" data-tip="Start a new chat in the default folder"><svg class="icon" aria-hidden="true"><use href="#i-plus"/></svg>New chat</button>
-      <button id="pick" class="btn" type="button" data-tip="Choose a folder and start a chat there"><svg class="icon" aria-hidden="true"><use href="#i-folder"/></svg>Choose folder</button>
+      <button id="pick" class="btn" type="button" data-tip="Choose a folder and start a chat there"><svg class="icon" aria-hidden="true"><use href="#i-folder"/></svg>Choose folder…</button>
     </div>
   </section>
   <p id="notice" class="notice" role="alert" hidden></p>
   <section id="handoff" class="handoff" aria-labelledby="handoff-title" hidden>
     <h2 id="handoff-title" class="handoff__title">Handoff ready</h2>
     <p id="handoff-status" class="handoff__status" role="status"></p>
-    <textarea id="handoff-text" class="handoff__text" spellcheck="false" aria-label="Prompt for the new session"></textarea>
-    <textarea id="handoff-note" class="handoff__text handoff__note" placeholder="Add a note for the new session. Typing pauses the countdown" aria-label="Note for the new session"></textarea>
+    <textarea id="handoff-text" class="handoff__text" spellcheck="false" aria-label="Prompt for the new chat"></textarea>
+    <textarea id="handoff-note" class="handoff__text handoff__note" placeholder="Add a note for the new chat. Typing pauses the countdown" aria-label="Note for the new chat"></textarea>
     <div class="handoff__actions">
       <button id="handoff-stop" class="btn" type="button"></button>
       <button id="handoff-save" class="btn" type="button" data-tip="Keep your changes and resume the countdown" hidden>Save and wait</button>
-      <button id="handoff-continue" class="btn btn--primary" type="button" data-tip="Start a new session with this prompt, in the same folder and account">Continue in new session</button>
+      <button id="handoff-continue" class="btn btn--primary" type="button" data-tip="Start a new chat with this prompt, in the same folder and account">Continue in new chat</button>
     </div>
   </section>
 </main>
@@ -148,7 +148,7 @@
 </footer>
 <div id="usage" class="usage" popover="auto" aria-label="Usage">
   <div id="meter-context" class="meter" hidden>Context <meter aria-label="Context used" min="0" max="100" low="60" high="80" optimum="0"></meter><span class="measured"></span></div>
-  <div id="usage-tokens" class="meter" hidden>Session tokens <span class="measured"></span></div>
+  <div id="usage-tokens" class="meter" hidden>Chat tokens <span class="measured"></span></div>
   <div id="accounts-state" class="empty" hidden>
     <p id="accounts-status" role="status"></p>
     <button id="accounts-retry" class="btn" type="button" hidden>Retry</button>
@@ -159,17 +159,17 @@
     <div id="others" class="others"></div>
   </details>
   <button id="usage-all" class="usage__all" type="button">All accounts</button>
-  <button id="account-add" class="btn" type="button" data-tip="Install and sign in to an account">Add account</button>
+  <button id="account-add" class="btn" type="button" data-tip="Install and sign in to an account">Add account…</button>
 </div>
-<dialog id="palette" class="palette" closedby="any" aria-label="Search sessions">
-  <input id="palette-query" class="palette__query" type="text" role="combobox" aria-controls="palette-list" aria-expanded="true" aria-autocomplete="list" aria-label="Search sessions" placeholder="Search titles, folders and messages" autocomplete="off" spellcheck="false">
+<dialog id="palette" class="palette" closedby="any" aria-label="Search chats">
+  <input id="palette-query" class="palette__query" type="text" role="combobox" aria-controls="palette-list" aria-expanded="true" aria-autocomplete="list" aria-label="Search chats" placeholder="Search titles, folders and messages" autocomplete="off" spellcheck="false">
   <div id="palette-ai" class="palette__ai" hidden>
     <select id="palette-model" aria-label="Model for AI search"><option value="haiku" selected>Haiku</option><option value="sonnet">Sonnet</option><option value="opus">Opus</option></select>
     <select id="palette-effort" aria-label="Effort for AI search"><option value="low" selected>Low</option><option value="medium">Medium</option><option value="high">High</option></select>
     <button id="palette-ask" class="btn" type="button" data-tip="Describe the chat you are looking for and Claude finds it in your messages (Ctrl+Enter)">Ask AI</button>
   </div>
   <p id="palette-sends" class="palette__note" hidden></p>
-  <div id="palette-list" class="palette__list" role="listbox" aria-label="Sessions"></div>
+  <div id="palette-list" class="palette__list" role="listbox" aria-label="Chats"></div>
   <div id="palette-state" class="empty palette__empty" hidden>
     <p id="palette-empty" role="status"></p>
     <button id="palette-retry" class="btn" type="button" hidden>Retry</button>
@@ -183,7 +183,7 @@
     <label class="organize__field" data-tip="Pick a workspace to place this chat in it outside any group, or a group under it">Group<input id="organize-group" placeholder="No group" autocomplete="off" spellcheck="false"></label>
     <label class="organize__field">Tags<input id="organize-tags" placeholder="Comma-separated" autocomplete="off" spellcheck="false"></label>
     <div class="organize__actions">
-      <button id="organize-link" class="btn sort__restore" type="button" data-tip="Join this chat to another chat, as if it came from its handoff">Link to chat</button>
+      <button id="organize-link" class="btn sort__restore" type="button" data-tip="Join this chat to another chat, as if it came from its handoff">Link to chat…</button>
       <button id="organize-unlink" class="btn sort__restore" type="button" data-tip="Move this session and the later ones out of this chat" hidden>Unlink from chat</button>
       <button id="organize-archive" class="btn sort__restore" type="button" data-tip="Move this chat and its sessions to Archived. Nothing is deleted">Archive</button>
       <button id="organize-cancel" class="btn" type="button" data-tip="Close without saving">Cancel</button>
@@ -193,7 +193,7 @@
 </dialog>
 <dialog id="archived-dialog" class="organize" closedby="any" aria-labelledby="archived-title">
   <h2 id="archived-title" class="organize__title">Archived</h2>
-  <p id="archived-empty" class="sidebar__status">No archived sessions.</p>
+  <p id="archived-empty" class="sidebar__status">No archived chats.</p>
   <ul id="archived-list" class="archived"></ul>
 </dialog>
 <div id="menu" class="menu" popover="auto" role="menu" aria-label="Options"></div>
@@ -250,16 +250,16 @@
 <dialog id="sort-dialog" class="organize" closedby="any" aria-labelledby="sort-title">
   <form method="dialog">
     <div class="sort__head">
-      <h2 id="sort-title" class="organize__title">Organize sessions</h2>
+      <h2 id="sort-title" class="organize__title">Organize chats</h2>
       <div class="segmented" role="radiogroup" aria-label="Group by">
-        <label data-tip="Group sessions by project folder"><input type="radio" name="session-view" value="folders">Folders</label>
-        <label data-tip="Group sessions by subject"><input type="radio" name="session-view" value="topics">Topics</label>
+        <label data-tip="Group chats by project folder"><input type="radio" name="session-view" value="folders">Folders</label>
+        <label data-tip="Group chats by subject"><input type="radio" name="session-view" value="topics">Topics</label>
       </div>
     </div>
     <label class="organize__field">Sort with Claude<select id="sort-scope">
-      <option value="new" selected>Sessions without a topic</option>
+      <option value="new" selected>Chats without a topic</option>
       <option value="groups">Groups I choose</option>
-      <option value="all">Every session</option>
+      <option value="all">Every chat</option>
     </select></label>
     <fieldset id="sort-groups" class="sort__groups" hidden><legend class="sort__legend">Sorted again. Groups you set by hand stay</legend><div id="sort-group-list" class="sort__group-list"></div></fieldset>
     <label class="organize__field">What you work on<textarea id="sort-notes" rows="2" maxlength="2000" placeholder="Your projects and how to split them, such as one group per product or client" spellcheck="false"></textarea></label>
@@ -285,7 +285,7 @@
     </details>
     <div class="organize__actions">
       <button id="sort-close" class="btn" type="button" data-tip="Close this menu">Close</button>
-      <button id="sort-run" class="btn btn--primary" type="button" data-tip="Let Claude sort your sessions into topics">Find topics</button>
+      <button id="sort-run" class="btn btn--primary" type="button" data-tip="Let Claude sort your chats into topics">Find topics</button>
     </div>
   </form>
 </dialog>
@@ -386,8 +386,8 @@
         <div class="settings__row" data-tip="Below keeps tooltips from covering the row above the pointer">
           <label class="organize__check">Show tooltips
             <select id="settings-tooltips" class="settings__select">
-              <option value="above">above the pointer</option>
-              <option value="below">below the pointer</option>
+              <option value="above">Above the pointer</option>
+              <option value="below">Below the pointer</option>
             </select>
           </label>
           <p class="settings__hint">Where help like this appears.</p>
@@ -413,17 +413,17 @@
       </section>
       <section class="settings__section" data-section="handoff" hidden>
         <h3 class="settings__title">Handoff</h3>
-        <div class="settings__row" data-tip="A fresh session costs less per turn than one with a full context">
+        <div class="settings__row" data-tip="A fresh chat costs less per turn than one with a full context">
           <label class="organize__check"><input id="settings-handoff-auto" type="checkbox"> Start handoffs on their own</label>
-          <p class="settings__hint">From 150K tokens of context, a handoff opens a new session after the delay. Off, it waits for Continue in new session.</p>
+          <p class="settings__hint">From 150K tokens of context, a handoff opens a new chat after the delay. Off, it waits for Continue in new chat.</p>
         </div>
         <div class="settings__row" data-tip="Time to read or cancel the handoff before it starts">
           <label class="organize__check">Handoff delay in seconds
             <input id="settings-handoff-delay" class="settings__select" type="number" min="0" max="600" step="1">
           </label>
-          <p class="settings__hint">0 starts the new session as soon as the handoff is ready, with no countdown.</p>
+          <p class="settings__hint">0 starts the new chat as soon as the handoff is ready, with no countdown.</p>
         </div>
-        <div class="settings__row" data-tip="Adds what the handoff left out before the new session reads it">
+        <div class="settings__row" data-tip="Adds what the handoff left out before the new chat reads it">
           <label class="organize__check"><input id="settings-handoff-note" type="checkbox"> Add a note box to handoffs</label>
           <p class="settings__hint">A box under the handoff for more context. Typing in it pauses the countdown.</p>
         </div>
@@ -463,8 +463,8 @@
         <div class="settings__row" data-tip="Speaking is faster than typing long prompts">
           <label class="organize__check">Voice input
             <select id="settings-voice" class="settings__select">
-              <option value="off">off</option>
-              <option value="local">local model (whisper.cpp)</option>
+              <option value="off">Off</option>
+              <option value="local">Local model (whisper.cpp)</option>
               <option value="anthropic">Anthropic (/voice in Claude Code)</option>
             </select>
           </label>
@@ -473,8 +473,8 @@
         <div class="settings__row settings__voice" data-tip="Larger models get more words right and take longer">
           <label class="organize__check">Voice model
             <select id="settings-voice-model" class="settings__select">
-              <option value="small">small, 488 MB, fastest</option>
-              <option value="medium">medium, 1.5 GB</option>
+              <option value="small">Small, 488 MB, fastest</option>
+              <option value="medium">Medium, 1.5 GB</option>
               <option value="large-v3">large-v3, 3.1 GB, most accurate</option>
             </select>
           </label>
@@ -485,7 +485,7 @@
             <select id="settings-voice-language" class="settings__select">
               <option value="en">English</option>
               <option value="es">Spanish</option>
-              <option value="auto">detect</option>
+              <option value="auto">Detect</option>
             </select>
           </label>
           <p class="settings__hint">The language you speak in.</p>
@@ -509,7 +509,7 @@
       </section>
       <section class="settings__section" data-section="activity" hidden>
         <h3 class="settings__title">Activity</h3>
-        <p class="settings__hint">Account logins and logouts, MCP servers that ask to sign in, plugins added or updated in the Deck's store, Import and clean results, and chats left on their old settings. Saved to ~/.frugal-deck/activity.jsonl.</p>
+        <p class="settings__hint">Account sign-ins and sign-outs, MCP servers that ask to sign in, plugins added or updated in the Deck's store, Import and clean results, and chats left on their old settings. Saved to ~/.frugal-deck/activity.jsonl.</p>
         <div class="settings__row">
           <div id="activity-state" class="empty">
             <p id="activity-status" class="sort__status" role="status">Loading activity</p>
@@ -570,7 +570,7 @@
         <section class="settings__section" data-section="recommend" hidden>
           <h3 class="settings__title">Recommend</h3>
           <div class="settings__row">
-            <label class="organize__field">What will you work on? <textarea id="mcp-task" maxlength="2000" placeholder="Fix the login page, write the release notes..."></textarea></label>
+            <label class="organize__field">What will you work on? <textarea id="mcp-task" maxlength="2000" placeholder="Fix the login page, write the release notes"></textarea></label>
             <p class="settings__hint">Haiku checks or unchecks each server and picks its mode. Nothing is saved until Save.</p>
             <div class="organize__actions"><button id="mcp-recommend" class="btn" type="button">Recommend</button></div>
           </div>
@@ -587,7 +587,7 @@
             <div id="mcp-suggest" class="mcp__chips"></div>
           </div>
           <div class="settings__row">
-            <label class="organize__field">Describe one <input id="mcp-ask" type="text" maxlength="2000" autocomplete="off" placeholder="GitHub's official server, a local Postgres..."></label>
+            <label class="organize__field">Describe one <input id="mcp-ask" type="text" maxlength="2000" autocomplete="off" placeholder="GitHub's official server, a local Postgres"></label>
             <div class="organize__actions"><span id="mcp-ask-cost" class="settings__hint mcp__cost" aria-live="polite"></span><button id="mcp-ask-run" class="btn" type="button" disabled>Fill in with Haiku</button></div>
           </div>
           <div id="mcp-new" class="settings__row mcp__form" hidden>
@@ -627,7 +627,7 @@
     <div id="mcp-access-move" class="access__group"></div>
     <div class="organize__actions">
       <button class="btn" type="submit" value="cancel">Cancel</button>
-      <button class="btn btn--primary" type="submit" value="ok">Done</button>
+      <button class="btn btn--primary" type="submit" value="ok">Apply</button>
     </div>
   </form>
 </dialog>
@@ -649,7 +649,7 @@
         <section class="settings__section" data-section="recommend" hidden>
           <h3 class="settings__title">Recommend</h3>
           <div class="settings__row">
-            <label class="organize__field">What will you work on? <textarea id="plugins-task" maxlength="2000" placeholder="Fix the login page, write the release notes..."></textarea></label>
+            <label class="organize__field">What will you work on? <textarea id="plugins-task" maxlength="2000" placeholder="Fix the login page, write the release notes"></textarea></label>
             <p class="settings__hint">Haiku sets each plugin to On, Auto or Off. Nothing is saved until Save.</p>
             <div class="organize__actions"><button id="plugins-recommend" class="btn" type="button">Recommend</button></div>
           </div>
@@ -662,7 +662,7 @@
         <section class="settings__section" data-section="install" hidden>
           <h3 class="settings__title">Install</h3>
           <div class="settings__row">
-            <label class="organize__field">What should it do? <input id="plugins-request" type="text" maxlength="2000" autocomplete="off" placeholder="Review pull requests, work with Figma..."></label>
+            <label class="organize__field">What should it do? <input id="plugins-request" type="text" maxlength="2000" autocomplete="off" placeholder="Review pull requests, work with Figma"></label>
             <div class="organize__actions"><button id="plugins-find" class="btn" type="button">Find</button></div>
           </div>
           <div id="plugins-confirm" class="settings__row mcp__form" hidden>
