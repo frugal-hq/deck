@@ -75,6 +75,7 @@ Every panel that loads data shows all three: loading, empty (with what to do nex
 
 ## Checklist before handing back
 
+0. `node test/ui.check.mjs` passes (tokens, radius, z-index, transitions, no alert/confirm, defined vars).
 1. `grep -nE '[0-9]+px' src/renderer/app.css` shows no new spacing, size, radius or icon literals.
 2. Every new interactive element has hover, `:focus-visible`, `:disabled`.
 3. Every new async panel has loading, empty and error.
