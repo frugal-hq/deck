@@ -364,7 +364,7 @@ fn entry_uses_cache(entry: &Value, dir: &Path, cache: &Path) -> bool {
 }
 
 #[tauri::command]
-fn inventory() -> Value {
+async fn inventory() -> Value {
     let (mut store_plugins, mut plugins, mut store_mcp, mut mcp) = (Places::new(), Places::new(), Places::new(), Places::new());
     let (mut accounts, mut copies, mut transcripts) = (Vec::new(), Vec::new(), Vec::new());
     if let Ok(home) = home() {
@@ -412,7 +412,7 @@ fn inventory() -> Value {
 }
 
 #[tauri::command]
-fn info() -> Value {
+async fn info() -> Value {
     let uninstall = UNINSTALL_FROM.get().map(|dir| dir.to_string_lossy().into_owned());
     let home = home().ok();
     json!({
@@ -870,7 +870,7 @@ fn save_consolidation_json(home: &Path, file: &Path, value: &Value) -> Result<()
 }
 
 #[tauri::command]
-fn consolidate(actions: Value) -> Result<Value, String> {
+async fn consolidate(actions: Value) -> Result<Value, String> {
     let _lock = CONSOLIDATION.lock().map_err(|error| error.to_string())?;
     let home = home()?;
     let mut dirs = claude_dirs(&home);
@@ -1011,7 +1011,9 @@ fn consolidate(actions: Value) -> Result<Value, String> {
 }
 
 #[tauri::command]
-fn restore() -> Result<(), String> {
+async fn restore() -> Result<(), String> { restore_config() }
+
+fn restore_config() -> Result<(), String> {
     let _lock = CONSOLIDATION.lock().map_err(|error| error.to_string())?;
     let home = home()?;
     let file = consolidation_file(&home);
@@ -1065,7 +1067,7 @@ async fn uninstall(app: AppHandle, deck: bool, claude: bool, groups: bool, setti
         let _ = Command::new(system32("taskkill.exe")).args(["/F", "/T", "/IM", "frugal-deck.exe"]).creation_flags(NO_WINDOW).status();
         std::thread::sleep(Duration::from_millis(500));
 
-        if restore { crate::restore()?; }
+        if restore { crate::restore_config()?; }
 
         let ids = deck_ids(&home);
         let doomed: Vec<PathBuf> = sessions(&home).into_iter()

@@ -11,6 +11,8 @@
   html, body { height: 100%; }
   body { display: grid; grid-template-rows: 36px 1fr; overflow: hidden; font-size: var(--text-sm); user-select: none; }
   [hidden] { display: none !important; }
+  /* Until info() answers, no view is picked: only the progress bar shows. */
+  body:not([data-view]) [data-views]:not(.progress) { display: none; }
   .bar { display: flex; align-items: center; padding-inline: var(--space-sm) 0; -webkit-app-region: drag; }
   .bar button { -webkit-app-region: no-drag; }
   .mark { display: inline-flex; align-items: center; gap: var(--space-2xs); font-weight: 500; }
@@ -70,7 +72,7 @@
   #message { white-space: pre-line; overflow-wrap: anywhere; user-select: text; }
 </style>
 </head>
-<body data-view="about">
+<body>
 <svg width="0" height="0" aria-hidden="true" style="position: absolute">
   <symbol id="logo" viewBox="36 35.5 184 184"><path fill="currentColor" fill-rule="evenodd" d="M101 54L70 54A24 24 0 0 0 46 78L46 177A24 24 0 0 0 70 201L101 201ZM65.5 89L85.5 89A5.5 5.5 0 0 1 85.5 100L65.5 100A5.5 5.5 0 0 1 65.5 89ZM65.5 122L85.5 122A5.5 5.5 0 0 1 85.5 133L65.5 133A5.5 5.5 0 0 1 65.5 122ZM65.5 155L85.5 155A5.5 5.5 0 0 1 85.5 166L65.5 166A5.5 5.5 0 0 1 65.5 155ZM109 54L186 54A24 24 0 0 1 210 78L210 177A24 24 0 0 1 186 201L109 201ZM140 166L140 132.5L132 132.5A9.5 9.5 0 0 1 132 113.5L140 113.5L140 111A31 31 0 0 1 171 80L177 80A9 9 0 0 1 177 98L171 98A13 13 0 0 0 158 111L158 113.5L162 113.5A9.5 9.5 0 0 1 162 132.5L158 132.5L158 166A9 9 0 0 1 140 166ZM179 122A9 9 0 1 0 197 122A9 9 0 1 0 179 122Z"/></symbol>
 </svg>
@@ -213,7 +215,11 @@
   $('cancel').onclick = quit;
   $('finish').onclick = quit;
 
-  const { version, installed, uninstall, data, folders, consolidation } = await invoke('info');
+  const { version, installed, uninstall, data, folders, consolidation } = await invoke('info').catch((error) => {
+    show('failed', 'The setup could not start', String(error));
+    $('retry').hidden = true;
+    throw error;
+  });
 
   if (uninstall) {
     // Uninstaller: what to keep. Rows with nothing on disk are left out.
