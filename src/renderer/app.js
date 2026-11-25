@@ -608,7 +608,7 @@ function drawAccounts() {
   const current = accountState.accounts.find((account) => account.id === currentId);
   const hasAccounts = current || (top && (accountState.accounts.length || accountState.others.length));
   const empty = top ? 'No accounts yet. Select Add account to get started.' : 'No Claude account for this chat. Open All accounts to see your accounts.';
-  const status = accountsLoading ? 'Loading account usage' : accountsError || (hasAccounts ? '' : empty);
+  const status = accountsLoading ? 'Loading account usage…' : accountsError || (hasAccounts ? '' : empty);
   $('accounts-status').textContent = status;
   $('accounts-state').hidden = !status;
   $('accounts-retry').hidden = !accountsError;
@@ -2803,7 +2803,7 @@ function searchMessages() {
   resetPaletteSearch();
   const query = paletteQuery.value.trim();
   const search = paletteSearch;
-  paletteLoading = query.length >= 2 ? 'Searching messages' : '';
+  paletteLoading = query.length >= 2 ? 'Searching messages…' : '';
   drawPalette();
   if (!paletteLoading) return;
   paletteTimer = setTimeout(async () => {
@@ -2829,7 +2829,7 @@ async function askAi() {
   button.disabled = true;
   button.setAttribute('aria-busy', 'true');
   button.textContent = 'Asking…';
-  paletteLoading = 'Searching with AI';
+  paletteLoading = 'Searching with AI…';
   drawPalette();
   const reply = await deck.searchAi({ model: $('palette-model').value, effort: $('palette-effort').value, rename: false, excerpts: sendsExcerpts() }, query)
     .catch((error) => ({ error: String(error) }));
@@ -3466,7 +3466,7 @@ async function loadActivity() {
   $('activity-log').replaceChildren();
   $('activity-log').hidden = true;
   $('activity-state').hidden = false;
-  $('activity-status').textContent = 'Loading activity';
+  $('activity-status').textContent = 'Loading activity…';
   $('activity-status').dataset.failed = false;
   $('activity-retry').hidden = true;
   const entries = await deck.activityList().catch(() => null);
@@ -4565,7 +4565,7 @@ deck.onTopicsProgress((done, total) => {
 
 $('join-run').onclick = async () => {
   lockSortDialog(true);
-  sortStatus('Asking Claude');
+  sortStatus('Asking Claude…');
   const result = await deck.runJoins(sortOptions()).catch((error) => ({ error: error.message }));
   lockSortDialog(false);
   if (result.error) sortStatus(result.error, true);
