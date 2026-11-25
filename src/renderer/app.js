@@ -3677,10 +3677,10 @@ function mcpSection(title, rows, empty) {
 }
 
 // `claude mcp list` never sees Deck servers: they reach chats through --mcp-config, so only /mcp checks or signs them in.
-// Signed in: an account holds a live token for it, and every account shares it.
-function deckRow(name, config, checked, signedIn) {
+// Signed in: an account holds a live token for it, and every account shares it. Needs sign-in: a chat was asked to sign in and no token came since.
+function deckRow(name, config, checked, signedIn, needsAuth) {
   const remote = config.type !== 'stdio';
-  return { name, deck: true, checked, status: remote ? (signedIn ? 'Signed in' : 'Checked in chats') : 'Local command', title: remote ? config.url : undefined,
+  return { name, deck: true, checked, status: remote ? (needsAuth ? 'Needs sign-in' : signedIn ? 'Signed in' : 'Checked in chats') : 'Local command', title: remote ? config.url : undefined,
     signIn: remote && !signedIn ? 'Sign in' : null, signInOn: [], removable: true, access: !name.startsWith('plugin:frugal:'), delegable: true };
 }
 
@@ -3726,7 +3726,7 @@ function drawMcp(result) {
   const sections = [
     ...(rows.some(frugal) ? [mcpSection('Frugal, always on', rows.filter(frugal), '')] : []),
     mcpSection('Account servers', rows.filter((row) => row.connected && !frugal(row)), 'None connected.'),
-    Object.assign(mcpSection('Deck servers, any account', deckServers.map(([name, config]) => deckRow(name, config, checked(name), (result.signedIn ?? []).includes(name))), 'None yet. Add one below.'), { id: 'mcp-deck' }),
+    Object.assign(mcpSection('Deck servers, any account', deckServers.map(([name, config]) => deckRow(name, config, checked(name), (result.signedIn ?? []).includes(name), (result.needsAuth ?? []).includes(name))), 'None yet. Add one below.'), { id: 'mcp-deck' }),
   ];
   list.replaceChildren(...sections);
   // Not connected and Removed get their own sections, shown in the nav only when they hold something.

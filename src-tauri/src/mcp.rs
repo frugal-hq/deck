@@ -229,6 +229,16 @@ fn signed_in(tokens: &serde_json::Map<String, Value>, servers: &Value, now: i64)
     })).map(|(name, _)| name.clone()).collect()
 }
 
+// The Deck servers some Claude account was asked to sign in to (configDir/mcp-needs-auth-cache.json, keyed by server name) with no token for them since.
+// Claude Code deletes an entry when the server connects; a token expiring before the entry means the refresh failed too.
+// frugal: a revoked token that has not expired yet shows only once its expiry passes.
+fn needs_auth(caches: &[Value], tokens: &serde_json::Map<String, Value>, servers: &Value) -> Vec<String> {
+    servers.as_object().into_iter().flatten().map(|(name, _)| name).filter(|name| caches.iter().any(|cache| {
+        let Some(at) = cache[name.as_str()]["timestamp"].as_i64() else { return false };
+        tokens.values().filter(|t| t["serverName"] == name.as_str()).map(expires).max().is_none_or(|newest| newest < at)
+    })).cloned().collect()
+}
+
 // One MCP sign-in serves every signed-in Claude account, delegates included. Runs on each listing and chat start, so a refreshed token reaches the others.
 // frugal: a server that rotates refresh tokens can sign out an account that refreshed with an older copy at the same time; one new sign-in fixes all.
 pub fn share_tokens(a: &Accounts) -> serde_json::Map<String, Value> {
@@ -293,12 +303,15 @@ pub fn list(accounts: &Mutex<Accounts>, scope: &Value) -> Value {
     let Some(scope) = mcp_scope(scope) else { return json!({ "error": "Invalid folder." }) };
     let Some(claude) = find_claude() else { return json!({ "error": NO_CLAUDE }) };
     let global = scope["global"] == true;
-    let signed;
+    let (signed, needs);
     let (runs, folder, off, on, all, deck, sources, home, (accounts_off, no_delegate, kinds, delegate_only, auto)) = {
         let a = accounts.lock().unwrap();
         let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_millis() as i64);
         let deck = a.deck_servers();
-        signed = signed_in(&share_tokens(&a), &deck, now);
+        let tokens = share_tokens(&a);
+        let caches: Vec<Value> = a.claude_accounts().iter().map(|account| read_json(&PathBuf::from(account["configDir"].as_str().unwrap_or_default()).join("mcp-needs-auth-cache.json"), json!({}))).collect();
+        needs = needs_auth(&caches, &tokens, &deck);
+        signed = signed_in(&tokens, &deck, now).into_iter().filter(|name| !needs.contains(name)).collect::<Vec<_>>();
         // Learn the server command from the same frugal copy each chat loads.
         let runs: Vec<_> = a.labeled_accounts().iter().map(|account| (account["name"].clone(), account["id"].clone(), account_env(&a, account), a.chat_frugal_dir(account))).collect();
         let sources = sources(&a);
@@ -352,7 +365,7 @@ pub fn list(accounts: &Mutex<Accounts>, scope: &Value) -> Value {
     }
     if let (true, Some(error)) = (servers.is_empty(), error) { return json!({ "error": error }); }
     let _ = accounts.lock().unwrap().learn_mcp_targets(learned);
-    json!({ "servers": servers, "off": off, "on": on, "global": all, "deck": deck, "accounts": count, "removed": removed, "accountsOff": accounts_off, "noDelegate": no_delegate, "kinds": kinds, "delegateOnly": delegate_only, "auto": auto, "signedIn": signed })
+    json!({ "servers": servers, "off": off, "on": on, "global": all, "deck": deck, "accounts": count, "removed": removed, "accountsOff": accounts_off, "noDelegate": no_delegate, "kinds": kinds, "delegateOnly": delegate_only, "auto": auto, "signedIn": signed, "needsAuth": needs })
 }
 
 // Windows prints "√ Connected" and others "✓ Connected"; a failure says "Failed to connect".
@@ -404,6 +417,9 @@ mod tests {
         let tokens = serde_json::Map::from_iter([("pylon|a".to_owned(), json!({ "serverName": "pylon", "serverUrl": "https://p", "accessToken": "x", "expiresAt": 9 }))]);
         assert_eq!(signed_in(&tokens, &deck, 5), ["pylon"]);
         assert!(signed_in(&tokens, &deck, 10).is_empty());
+        let caches = [json!({ "pylon": { "timestamp": 8 }, "old": { "timestamp": 1 } }), json!({ "air": { "timestamp": 1 } })];
+        assert_eq!(needs_auth(&caches, &tokens, &deck), ["old", "air"]);
+        assert!(needs_auth(&[json!({ "pylon": { "timestamp": 10 } })], &tokens, &deck) == ["pylon"]);
         assert!(best.get("old|b").is_none());
         assert_eq!(creds[0]["mcpOAuth"]["pylon|a"], token(9));
         assert_eq!(creds[2]["mcpOAuth"]["pylon|a"], token(9));
