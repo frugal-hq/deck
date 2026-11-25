@@ -464,11 +464,23 @@ mod tests {
             assert_eq!(seen.lock().unwrap().len(), 1);
             assert_eq!(seen.lock().unwrap()[0], ("a".to_owned(), read_meters(&full)));
             // A cold PowerShell on a busy CI runner can take longer than CHAIN_TIMEOUT, so this one runs without it.
-            let mut powershell = Command::new("powershell.exe").args(["-NoProfile", "-Command", command]).current_dir(&dir.0)
-                .stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped()).spawn().unwrap();
-            powershell.stdin.take().unwrap().write_all(body.as_bytes()).unwrap();
-            let out = powershell.wait_with_output().unwrap();
-            assert_eq!(seen.lock().unwrap().len(), 2, "{:?} {} {}", out.status, String::from_utf8_lossy(&out.stdout), String::from_utf8_lossy(&out.stderr));
+            // On windows-latest its curl exits 1 now and then with nothing printed (4 of the last 15 runs): -S prints why,
+            // and up to 3 tries keep a quoting break, which fails every time, from passing as a flake.
+            let shown = command.replacen("curl.exe -s ", "curl.exe -sS ", 1);
+            let mut fails = Vec::new();
+            while seen.lock().unwrap().len() < 2 && fails.len() < 3 {
+                let mut powershell = Command::new("powershell.exe").args(["-NoProfile", "-Command", &shown]).current_dir(&dir.0)
+                    .stdin(Stdio::piped()).stdout(Stdio::piped()).stderr(Stdio::piped()).spawn().unwrap();
+                powershell.stdin.take().unwrap().write_all(body.as_bytes()).unwrap();
+                let out = powershell.wait_with_output().unwrap();
+                if seen.lock().unwrap().len() < 2 {
+                    fails.push(format!("{:?} {} {}", out.status, String::from_utf8_lossy(&out.stdout), String::from_utf8_lossy(&out.stderr)));
+                }
+            }
+            if !fails.is_empty() {
+                eprintln!("powershell tries that failed: {fails:#?}");
+            }
+            assert_eq!(seen.lock().unwrap().len(), 2, "{fails:#?}");
 
             let chained = bridge.register("b", &dir.0, &env, Some(&json!({ "type": "command", "command": "read -r line; echo \"USER:${#line}\"", "padding": 3 })));
             assert_eq!(chained["statusLine"]["padding"], 3);
