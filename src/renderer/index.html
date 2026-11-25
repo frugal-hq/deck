@@ -358,6 +358,7 @@
             <span id="settings-external-count" class="settings__hint"></span>
             <button id="settings-import-external" class="btn" type="button">Import</button>
           </div>
+          <p id="import-status" class="sort__status" role="status" hidden></p>
         </div>
         <div class="settings__row" data-tip="The chime tells you a chat finished or needs you while you look elsewhere">
           <label class="organize__check">Notification volume
@@ -446,6 +447,7 @@
         <div class="settings__row" data-tip="Old sessions stay available to resume and search">
           <label class="organize__check"><input id="settings-keep-transcripts" type="checkbox"> Keep transcripts in all accounts</label>
           <p class="settings__hint">Sets cleanupPeriodDays to 3650 in every Claude account, so Claude Code stops deleting transcripts idle for 30 days. Off removes only that value.</p>
+          <p id="transcripts-status" class="sort__status" role="status" hidden></p>
         </div>
       </section>
       <section class="settings__section" data-section="voice" hidden>
@@ -515,6 +517,7 @@
             <button id="debug-copy" class="btn btn--bar" type="button" data-tip="Copy every line shown">Copy</button>
             <button id="debug-reveal" class="btn btn--bar" type="button" data-tip="Show debug.log in File Explorer">Show file</button>
             <button id="debug-clear" class="btn btn--bar" type="button" data-tip="Empty this console and debug.log">Clear</button>
+            <p id="debug-status" class="sort__status" role="status" hidden></p>
           </div>
         </div>
       </section>

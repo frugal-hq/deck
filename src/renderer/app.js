@@ -367,7 +367,13 @@ async function holdToTalk(chat) {
   if (!chat.voiceOn) {
     const result = await deck.switchAccount({ id: chat.id, accountId: chat.account, cols: chat.cols, rows: chat.rows, bypass: chat.bypassOn, admin: chat.adminOn });
     if (result.stopped) chat.state = 'error';
-    if (result.error) report(result);
+    if (result.error) chat.error = result.error;
+    if (result.stopped || result.error) render();
+    if (result.error && !result.stopped) setTimeout(() => {
+      if (chat.error !== result.error) return;
+      chat.error = null;
+      render();
+    }, 5000);
     return;
   }
   let mic = {};
@@ -1053,8 +1059,14 @@ async function toggleBypass(chat) {
   const result = await deck.switchAccount({ id: chat.id, accountId: chat.account, cols: chat.cols, rows: chat.rows, bypass: chat.bypassOn, admin: chat.adminOn });
   if (result.error) {
     chat.bypassOn = previous;
-    drawBadge(chat);
-    report(result);
+    chat.error = result.error;
+    render();
+    if (result.stopped) return;
+    setTimeout(() => {
+      if (chat.error !== result.error) return;
+      chat.error = null;
+      render();
+    }, 5000);
   }
 }
 
@@ -1065,8 +1077,14 @@ async function toggleAdmin(chat) {
   const result = await deck.switchAccount({ id: chat.id, accountId: chat.account, cols: chat.cols, rows: chat.rows, bypass: chat.bypassOn, admin: true });
   if (result.error) {
     chat.adminOn = false;
-    drawBadge(chat);
-    report(result);
+    chat.error = result.error;
+    render();
+    if (result.stopped) return;
+    setTimeout(() => {
+      if (chat.error !== result.error) return;
+      chat.error = null;
+      render();
+    }, 5000);
   }
 }
 
@@ -2824,7 +2842,9 @@ window.addEventListener('keydown', (event) => {
   if (!event.repeat) togglePalette();
 }, true);
 
-function showUndo(text) {
+let undoAction = null;
+function showUndo(text, undo = null) {
+  undoAction = undo;
   $('undo-text').textContent = text;
   $('undo-bar').hidden = false;
 }
@@ -2876,7 +2896,9 @@ $('workspace-form').onsubmit = () => {
 $('workspace-cancel').onclick = () => workspaceDialog.close();
 $('organize-archive').onclick = () => {
   organize.close();
-  deck.setArchived(currentIndex.sessions.filter((s) => s.chatId === organizing.chatId).map((s) => s.id), true);
+  const ids = currentIndex.sessions.filter((s) => s.chatId === organizing.chatId).map((s) => s.id);
+  deck.setArchived(ids, true);
+  showUndo('Archived.', () => deck.setArchived(ids, false));
 };
 
 // Newest first. A session that is not the first of its chat names that chat; opening one brings its chat back.
@@ -3228,6 +3250,25 @@ function sortStatus(text, failed = false) {
   $('sort-status').dataset.failed = failed;
 }
 
+// An error stays. Success clears after a few seconds, unless a later status replaced it.
+const STATUS_MS = 4000;
+const statusTimers = new Map();
+function showStatus(id, text, failed = false) {
+  const status = $(id);
+  clearTimeout(statusTimers.get(id));
+  status.textContent = text;
+  status.hidden = !text;
+  status.dataset.failed = failed;
+  if (!text || failed) {
+    statusTimers.delete(id);
+    return;
+  }
+  statusTimers.set(id, setTimeout(() => {
+    if (status.textContent !== text) return;
+    showStatus(id, '');
+  }, STATUS_MS));
+}
+
 async function drawSortEstimate() {
   if (sorting) return;
   const options = sortOptions();
@@ -3356,7 +3397,14 @@ $('settings-debug').onchange = (event) => {
   localStorage.setItem('debugLog', event.target.checked);
   deck.setDebug(event.target.checked);
 };
-$('debug-copy').onclick = () => navigator.clipboard.writeText(debugConsole.textContent);
+$('debug-copy').onclick = async () => {
+  try {
+    await navigator.clipboard.writeText(debugConsole.textContent);
+    showStatus('debug-status', 'Copied');
+  } catch {
+    showStatus('debug-status', 'Could not copy the log. Click Copy again.', true);
+  }
+};
 $('debug-reveal').onclick = () => deck.debugReveal();
 $('debug-clear').onclick = () => {
   deck.debugClear();
@@ -3895,7 +3943,7 @@ $('mcp-save').onclick = async () => {
   }
   const scope = mcpScope.global ? { global: true } : { folder: mcpScope.folder, group: mcpScope.group, workspace: mcpScope.workspace };
   const saved = await deck.mcpSet(scope, [...off], [...on]).catch((error) => ({ error: String(error) }));
-  if (saved?.error) { $('mcp-error').textContent = saved.error; $('mcp-error').hidden = false; return; }
+  if (saved?.error) { showStatus('mcp-error', saved.error, true); return; }
   // An account the list did not show keeps its setting.
   const access = {};
   for (const [name, state] of mcpAccess) {
@@ -3905,9 +3953,9 @@ $('mcp-save').onclick = async () => {
     if (state.kinds) access[name].kinds = state.kinds;
   }
   const applied = Object.keys(access).length ? await deck.mcpAccessSet(access).catch((error) => ({ error: String(error) })) : null;
-  if (applied?.error) { $('mcp-error').textContent = applied.error; $('mcp-error').hidden = false; return; }
+  if (applied?.error) { showStatus('mcp-error', applied.error, true); return; }
   mcpCache.clear();
-  $('mcp-dialog').close();
+  showStatus('mcp-error', 'Saved');
 };
 let pluginsShown = null;
 let pluginSuggestion = null;
@@ -4081,7 +4129,13 @@ $('clean-apply').onclick = async () => {
     if (imported.length) errors.push(...await deck.cleanUpdate(imported));
     deck.activityAdd('clean', `Import and clean: ${picked.map((item) => `${item.action} ${item.kind} ${item.name}`).join(', ')}${errors.length ? `. Failed: ${errors.join('; ')}` : ''}${zip ? `. Backup: ${zip}` : ''}`.slice(0, 4000));
     if (visit !== cleanVisit || !$('clean-dialog').open) return;
-    if (!errors.length) { $('clean-dialog').close(); return; }
+    if (!errors.length) {
+      const count = picked.length;
+      const text = `Applied ${count} ${count === 1 ? 'change' : 'changes'}`;
+      await openCleanDialog();
+      if ($('clean-dialog').open && $('clean-status').hidden) showStatus('clean-status', text);
+      return;
+    }
     cleanStatus([zip ? `Backup: ${zip}` : '', ...errors].filter(Boolean).join('\n'));
   } catch (error) {
     deck.activityAdd('clean', `Import and clean failed: ${error}`.slice(0, 4000));
@@ -4101,10 +4155,9 @@ $('plugins-save').onclick = async () => {
   $('plugins-save').disabled = true;
   try {
     await deck.pluginsSet(pluginStates());
-    $('plugins-dialog').close();
+    showStatus('plugins-error', 'Saved');
   } catch (error) {
-    $('plugins-error').textContent = String(error);
-    $('plugins-error').hidden = false;
+    showStatus('plugins-error', String(error), true);
   } finally { $('plugins-save').disabled = false; }
 };
 $('plugins-find').onclick = async () => {
@@ -4152,9 +4205,9 @@ for (const prefix of ['mcp', 'plugins']) {
     button.disabled = true;
     try {
       await deck.autoPicksClear();
+      showStatus(prefix + '-error', 'Forgot picks');
     } catch (error) {
-      $(prefix + '-error').textContent = String(error);
-      $(prefix + '-error').hidden = false;
+      showStatus(prefix + '-error', String(error), true);
     } finally { button.disabled = false; }
   };
   $(prefix + '-recommend').onclick = async () => {
@@ -4241,7 +4294,7 @@ $('settings-accent').onchange = (event) => {
   localStorage.setItem('accentHue', event.target.value);
   applyAccent();
 };
-$('settings-keep-transcripts').onchange = (event) => deck.setKeepTranscripts(event.target.checked).catch((error) => askConfirm('Could not change every account', String(error), 'OK'));
+$('settings-keep-transcripts').onchange = (event) => deck.setKeepTranscripts(event.target.checked).catch((error) => showStatus('transcripts-status', `Could not change every account. ${error}`, true));
 $('settings-mouse').onchange = async (event) => {
   if (event.target.checked) {
     event.target.checked = false; // Stays off until the warning is accepted.
@@ -4276,8 +4329,10 @@ $('settings-import-external').onclick = async () => {
   $('settings-import-external').disabled = true;
   try {
     await deck.importSessions(ids);
+    const count = ids.length;
+    showStatus('import-status', `Imported ${count} ${count === 1 ? 'chat' : 'chats'}`);
   } catch (error) {
-    askConfirm('Could not import external sessions', String(error), 'OK');
+    showStatus('import-status', `Could not import external sessions. ${error}`, true);
   } finally { updateExternalCount(); }
 };
 $('settings-ai-excerpts').onchange = (event) => localStorage.setItem('aiSearchExcerpts', event.target.checked);
@@ -4350,7 +4405,9 @@ $('sort-scope').onchange = () => {
 };
 $('sort-close').onclick = () => sortDialog.close();
 $('undo-run').onclick = () => {
-  deck.undoLink();
+  if (undoAction) undoAction();
+  else deck.undoLink();
+  undoAction = null;
   $('undo-bar').hidden = true;
 };
 $('undo-close').onclick = () => {
