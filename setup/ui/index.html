@@ -45,6 +45,14 @@
   .folder { display: flex; align-items: center; gap: var(--space-sm); }
   .folder .path { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
   .presets { display: flex; gap: var(--space-xs); }
+  .inventory { width: 100%; border-collapse: collapse; table-layout: fixed; overflow-wrap: anywhere; }
+  .inventory caption { margin-bottom: var(--space-2xs); text-align: start; font-weight: 500; }
+  .inventory caption .warn { display: block; font-weight: 400; }
+  .inventory th, .inventory td { padding: var(--space-2xs); border-bottom: var(--rule-hair) solid var(--color-rule); vertical-align: top; text-align: start; }
+  .inventory th { font-weight: 500; }
+  .inventory th:last-child { width: 96px; }
+  #clean-plugins th:nth-child(3) { width: 28%; }
+  .inventory td { white-space: pre-line; }
   .check { display: flex; align-items: center; gap: var(--space-xs); cursor: pointer; }
   .check input { appearance: none; display: grid; place-content: center; width: 16px; height: 16px; margin: 0; border-radius: 4px; background: var(--color-paper-3); }
   .actions { display: flex; justify-content: end; align-items: center; gap: var(--space-xs); }
@@ -59,7 +67,7 @@
   .progress::after { content: ""; position: absolute; inset: 0 auto 0 0; width: 35%; border-radius: inherit; background: var(--color-accent); animation: slide 1.4s var(--ease-in-out) infinite; }
   @keyframes slide { from { translate: -100% 0; } to { translate: 290% 0; } }
   body:is([data-view="installing"], [data-view="removing"]) .close { visibility: hidden; }
-  #message { white-space: pre-line; user-select: text; }
+  #message { white-space: pre-line; overflow-wrap: anywhere; user-select: text; }
 </style>
 </head>
 <body data-view="about">
@@ -119,6 +127,35 @@
       <p id="folder-warn" class="warn" hidden>Administrator chats are safest in a folder only administrators can change, like Program Files.</p>
     </form>
 
+    <div class="content" data-views="clean" hidden>
+      <p>Frugal Deck keeps one copy of each plugin and MCP server and shares it with every Claude account. Pick what to import, keep or remove.</p>
+      <div class="presets">
+        <button id="clean-recommended" class="btn btn--small" type="button">Recommended</button>
+        <button id="clean-keep" class="btn btn--small" type="button">Keep everything</button>
+      </div>
+      <p class="muted">Everything changed is backed up first; uninstalling can restore it.</p>
+      <table id="clean-plugins" class="inventory" hidden>
+        <caption>Plugins and MCP servers</caption>
+        <thead><tr><th scope="col">Name</th><th scope="col">Kind</th><th scope="col">Where</th><th scope="col">Store version</th><th scope="col">Status</th><th scope="col">Action</th></tr></thead>
+        <tbody></tbody>
+      </table>
+      <table id="clean-accounts" class="inventory" hidden>
+        <caption>Accounts</caption>
+        <thead><tr><th scope="col">Account</th><th scope="col">Action</th></tr></thead>
+        <tbody></tbody>
+      </table>
+      <table id="clean-copies" class="inventory" hidden>
+        <caption>Old plugin copies</caption>
+        <thead><tr><th scope="col">Account</th><th scope="col">Path</th><th scope="col">Size</th><th scope="col">Action</th></tr></thead>
+        <tbody></tbody>
+      </table>
+      <table id="clean-sessions" class="inventory" hidden>
+        <caption>Sessions <span class="warn">Removed sessions go to the backup zip.</span></caption>
+        <thead><tr><th scope="col">Account</th><th scope="col">Count</th><th scope="col">Size</th><th scope="col">Action</th></tr></thead>
+        <tbody></tbody>
+      </table>
+    </div>
+
     <form id="remove-form" class="content" data-views="remove">
       <div class="presets">
         <button id="keep-all" class="btn btn--small" type="button">Keep everything</button>
@@ -129,6 +166,7 @@
       <label class="choice" id="row-groups"><input type="checkbox" name="groups"><span>Delete groups, workspaces and the index</span><span class="muted" id="size-groups"></span></label>
       <label class="choice" id="row-settings"><input type="checkbox" name="settings"><span>Delete Frugal Deck settings</span><span class="muted">Your choices in Settings, the chats left open, and downloaded voice models.</span></label>
       <label class="check"><input id="backup" type="checkbox"> Save a backup (.zip) in Documents first</label>
+      <label id="restore-field" class="check" hidden><input id="restore" type="checkbox" checked> Restore my original Claude configuration (from the Import and clean backup)</label>
     </form>
 
     <div class="progress" role="progressbar" aria-label="Working" data-views="installing removing"></div>
@@ -141,6 +179,9 @@
     <button id="cancel" class="btn" type="button" data-views="about choose remove">Cancel</button>
     <button id="continue" class="btn btn--primary" type="button" data-views="about">Continue</button>
     <button id="install" class="btn btn--primary" type="submit" form="form" data-views="choose">Install</button>
+    <button id="clean-back" class="btn" type="button" data-views="clean" hidden>Back</button>
+    <button id="clean-skip" class="btn" type="button" data-views="clean" hidden>Skip</button>
+    <button id="clean-apply" class="btn btn--primary" type="button" data-views="clean" hidden>Apply and continue</button>
     <button id="uninstall" class="btn btn--primary" type="submit" form="remove-form" data-views="remove">Uninstall</button>
     <button id="retry" class="btn" type="button" data-views="failed">Try again</button>
     <button id="reveal" class="btn" type="button" data-views="removed" hidden>Show backup</button>
@@ -172,7 +213,7 @@
   $('cancel').onclick = quit;
   $('finish').onclick = quit;
 
-  const { version, installed, uninstall, data, folders } = await invoke('info');
+  const { version, installed, uninstall, data, folders, consolidation } = await invoke('info');
 
   if (uninstall) {
     // Uninstaller: what to keep. Rows with nothing on disk are left out.
@@ -188,6 +229,7 @@
     $('row-groups').hidden = !data?.groups;
     $('size-groups').textContent = data?.groups ? `How the Deck sorts your sessions: groups, workspaces, names, archive marks and its search index, ${bytes(data.groups.bytes)}.` : '';
     $('row-settings').hidden = !data?.settings;
+    $('restore-field').hidden = !consolidation;
     const boxes = () => [...$('remove-form').querySelectorAll('.choice:not([hidden]) input')];
     const update = () => {
       const deleting = boxes().some((box) => box.checked);
@@ -207,7 +249,7 @@
       const picked = Object.fromEntries(['deck', 'claude', 'groups', 'settings'].map((name) => [name, !$(`row-${name}`).hidden && form[name].checked]));
       show('removing', 'Uninstalling Frugal Deck');
       try {
-        const result = await invoke('uninstall', { ...picked, backup: $('backup').checked });
+        const result = await invoke('uninstall', { ...picked, backup: $('backup').checked, restore: !!consolidation && $('restore').checked });
         revealPath = result.backup;
         const kept = !Object.values(picked).some(Boolean);
         const lines = [kept ? 'Your sessions, groups and settings are still here. Install Frugal Deck again to get them back.' : 'What you chose was deleted.'];
@@ -277,22 +319,88 @@
     $('continue').onclick = choose;
     $('retry').onclick = choose;
     about();
-    $('form').onsubmit = async (event) => {
-      event.preventDefault();
+
+    const choices = [];
+    const cleanLines = [];
+    const fill = (id, items, cells, actions) => {
+      const table = $(id);
+      const body = table.tBodies[0];
+      table.hidden = !items.length;
+      body.replaceChildren();
+      for (const item of items) {
+        const row = body.insertRow();
+        for (const value of cells(item)) row.insertCell().textContent = value;
+        const select = document.createElement('select');
+        select.setAttribute('aria-label', `Action for ${item.kind} ${item.name}`);
+        for (const action of actions(item)) select.add(new Option(action, action));
+        select.value = item.action;
+        row.insertCell().append(select);
+        choices.push({ item, select });
+      }
+    };
+    $('clean-recommended').onclick = () => { for (const { item, select } of choices) select.value = item.action; };
+    $('clean-keep').onclick = () => { for (const { select } of choices) select.value = 'keep'; };
+    $('clean-back').onclick = choose;
+
+    const install = async (actions = []) => {
       const open = $('open').checked;
       show('installing', installed ? 'Updating Frugal Deck' : 'Installing Frugal Deck');
+      if (actions.length) {
+        $('subtitle').textContent = 'Backing up and applying your choices.';
+        try {
+          const { zip, errors } = await invoke('consolidate', { actions });
+          if (zip) cleanLines.push(`Backup: ${zip}`);
+          if (errors.length) cleanLines.push(`Import and clean errors:\n${errors.join('\n')}`);
+        } catch (error) {
+          cleanLines.push(`Import and clean stopped:\n${error}`);
+        }
+      }
       $('subtitle').textContent = 'Windows may ask for administrator permission.';
       try {
         if (data && !data.language) await invoke('set_ui', { key: 'language', value: $('language').value });
         if (!$('external-field').hidden && !$('external').checked) await invoke('set_ui', { key: 'showExternal', value: 'false' });
         await invoke('install', { everyone: mode() === 'machine', open, folder: installed ? null : folderNow() });
-        show('done', 'Frugal Deck is installed', open ? 'It opens in a moment.' : 'Find it in the Start menu.');
+        show('done', 'Frugal Deck is installed', [open ? 'It opens in a moment.' : 'Find it in the Start menu.', ...cleanLines].join('\n\n'));
         // The Deck is already starting, so the setup steps aside.
-        if (open) setTimeout(quit, 1500);
+        if (open && !cleanLines.length) setTimeout(quit, 1500);
       } catch (error) {
-        show('failed', 'The installation stopped', String(error));
+        show('failed', 'The installation stopped', [String(error), ...cleanLines].join('\n\n'));
       }
       $('subtitle').textContent = `Version ${version}`;
+    };
+    $('clean-skip').onclick = () => install();
+    $('clean-apply').onclick = () => install(choices
+      .filter(({ select }) => select.value !== 'keep')
+      .map(({ item, select }) => ({ kind: item.kind, name: item.name, action: select.value })));
+    $('form').onsubmit = async (event) => {
+      event.preventDefault();
+      const button = $('install');
+      if (button.disabled) return;
+      button.disabled = true;
+      try {
+        const inventory = await invoke('inventory');
+        if (!Object.values(inventory).some((items) => items.length)) {
+          return await install();
+        }
+        choices.length = 0;
+        fill('clean-plugins', [...inventory.plugins, ...inventory.mcp], (item) => [
+          item.name, item.kind,
+          item.places.map((place) => [place.account, place.scope, place.version].filter(Boolean).join(' / ')).join('\n'),
+          item.store_version ?? '—', item.status,
+        ], (item) => item.kind === 'mcp' && item.places.some((place) => place.scope === 'desktop')
+          && item.places.every((place) => place.scope === 'desktop' || place.account === 'Deck store')
+          ? ['keep', 'import'] : ['import', 'keep', 'remove']);
+        fill('clean-accounts', inventory.accounts, (item) => [item.account], () => ['import', 'keep']);
+        fill('clean-copies', inventory.copies, (item) => [item.account, item.name, bytes(item.bytes)], () => ['remove', 'keep']);
+        fill('clean-sessions', inventory.sessions, (item) => [item.account, item.count, bytes(item.bytes)], () => ['keep', 'remove']);
+        show('clean', 'Import and clean');
+        $('subtitle').textContent = '';
+      } catch (error) {
+        show('failed', 'The inventory stopped', String(error));
+        $('subtitle').textContent = '';
+      } finally {
+        button.disabled = false;
+      }
     };
   }
 </script>
