@@ -9,7 +9,7 @@ use std::process::{Command, Stdio};
 use std::sync::Mutex;
 use std::time::{Duration, UNIX_EPOCH};
 use tauri::{AppHandle, Manager, WebviewWindow};
-use crate::accounts::{self, Accounts, MAIN};
+use crate::accounts::{self, Accounts};
 use tauri_plugin_dialog::DialogExt;
 
 const RELEASES: &str = "https://api.github.com/repos/frugal-hq/deck/releases/latest";
@@ -65,25 +65,13 @@ fn latest_release() -> Result<Option<Value>, String> {
     Ok(Some(json!({ "version": tag.trim_start_matches('v'), "url": url, "page": release["html_url"] })))
 }
 
-fn main_account(app: &AppHandle) -> Option<(Value, std::collections::HashMap<String, String>, PathBuf)> {
-    let accounts = app.state::<Mutex<Accounts>>();
-    let accounts = accounts.lock().unwrap();
-    let main = accounts.claude_accounts().into_iter().find(|account| account["id"] == MAIN)?;
-    let env = crate::chat::account_env(&accounts, &main);
-    Some((main, env, accounts.home.clone()))
-}
-
 // Chats allow frugal's server by the command of the copy they load, which moves with each install; listed before returning,
 // so a chat restarted right after an update gets the new command.
 fn relearn(app: &AppHandle) {
     crate::mcp::list(&app.state::<Mutex<Accounts>>(), &json!({ "global": true }));
 }
 
-fn config_dir(main: &Value) -> &Path {
-    Path::new(main["configDir"].as_str().unwrap_or_default())
-}
-
-// Where the account installs frugal from, as Claude Code records it: { source: "github", repo } or { source: "directory", path }.
+// Where the Deck installs frugal from, as Claude Code records it: { source: "github", repo } or { source: "directory", path }.
 fn frugal_source(config_dir: &Path) -> Value {
     std::fs::read(config_dir.join("plugins/known_marketplaces.json")).ok().and_then(|bytes| serde_json::from_slice::<Value>(&bytes).ok()).map_or(Value::Null, |known| known["frugal"]["source"].clone())
 }
@@ -113,11 +101,15 @@ fn frugal_latest(source: &Value, installed: &str) -> Value {
     json!({ "version": version, "newer": version.as_str().is_some_and(|version| newer(version, installed)), "dirty": changed })
 }
 
-// `claude plugin` commands on the main account.
-fn claude_plugin(app: &AppHandle) -> Result<(Value, impl Fn(&[&str]) -> Result<Vec<u8>, String>), String> {
-    let (main, env, home) = main_account(app).ok_or("The main account is not set up.")?;
+// `claude plugin` commands in the Deck store.
+fn claude_plugin(app: &AppHandle) -> Result<(PathBuf, impl Fn(&[&str]) -> Result<Vec<u8>, String>), String> {
     let claude = crate::chat::find_claude().ok_or(crate::chat::NO_CLAUDE)?;
-    Ok((main, move |args: &[&str]| {
+    let accounts = app.state::<Mutex<Accounts>>();
+    let accounts = accounts.lock().unwrap();
+    let store = accounts.store_dir();
+    let env = crate::chat::claude_env(&accounts, Some(&store));
+    let home = accounts.home.clone();
+    Ok((store, move |args: &[&str]| {
         let mut command = Command::new(&claude);
         command.env_clear().envs(&env).args(args).current_dir(&home).stdin(Stdio::null());
         accounts::run(&mut command, Duration::from_secs(300)).map_err(|error| error.to_string().trim().to_owned())
@@ -128,7 +120,9 @@ fn claude_plugin(app: &AppHandle) -> Result<(Value, impl Fn(&[&str]) -> Result<V
 pub async fn update_check(app: AppHandle) -> Value {
     tauri::async_runtime::spawn_blocking(move || {
         let remote = latest_release();
-        let (frugal, source) = main_account(&app).map_or((Value::Null, Value::Null), |(main, _, _)| (accounts::frugal_install(&main)["version"].clone(), frugal_source(config_dir(&main))));
+        let store = app.state::<Mutex<Accounts>>().lock().unwrap().store_dir();
+        let frugal = accounts::frugal_install(&store)["version"].clone();
+        let source = frugal_source(&store);
         let latest = frugal.as_str().map_or(Value::Null, |installed| frugal_latest(&source, installed));
         let folder = Some(build_folder()).filter(|folder| folder.is_dir());
         json!({ "version": env!("CARGO_PKG_VERSION"), "local": local_build(), "remote": remote.as_ref().ok().cloned().flatten(), "error": remote.err(), "buildFolder": folder,
@@ -138,13 +132,13 @@ pub async fn update_check(app: AppHandle) -> Value {
     .unwrap_or_default()
 }
 
-// Chats on every account load the main account's frugal (--plugin-dir), so updating it there reaches them all.
+// Chats on every account load the Deck store's frugal with --plugin-dir.
 // Returns Claude Code's own last line, such as `Plugin "frugal" updated from 0.27.7 to 0.28.0`.
 #[tauri::command]
 pub async fn update_frugal(app: AppHandle) -> Result<String, String> {
     tauri::async_runtime::spawn_blocking(move || {
-        let (main, step) = claude_plugin(&app)?;
-        let source = frugal_source(config_dir(&main));
+        let (store, step) = claude_plugin(&app)?;
+        let source = frugal_source(&store);
         if let Some(error) = source["path"].as_str().filter(|_| source["source"] == "directory").and_then(dirty) {
             return Err(error);
         }
@@ -159,7 +153,7 @@ pub async fn update_frugal(app: AppHandle) -> Result<String, String> {
     .map_err(|error| error.to_string())?
 }
 
-// Switches the main account between frugal on GitHub and a folder that holds its marketplace, such as a clone of the repo; returns the new source, or "" when no folder was picked.
+// Switches the Deck store between frugal on GitHub and a folder that holds its marketplace, such as a clone of the repo; returns the new source, or "" when no folder was picked.
 // Removing the marketplace uninstalls frugal and wipes its plugin data (per-session markers only), so it is added and installed again; a failed add puts the old source back.
 #[tauri::command]
 pub async fn update_frugal_source(app: AppHandle, window: WebviewWindow, github: bool) -> Result<String, String> {
@@ -187,10 +181,10 @@ pub async fn update_frugal_source(app: AppHandle, window: WebviewWindow, github:
             }
             None => FRUGAL_REPO.to_owned(),
         };
-        let (main, step) = claude_plugin(&app)?;
-        let old = frugal_source(config_dir(&main));
+        let (store, step) = claude_plugin(&app)?;
+        let old = frugal_source(&store);
+        if !old.is_null() { step(&["plugin", "marketplace", "remove", "frugal"])?; }
         let old = ["repo", "path", "url"].iter().find_map(|key| old[*key].as_str()).map(str::to_owned);
-        step(&["plugin", "marketplace", "remove", "frugal"])?;
         if let Err(error) = step(&["plugin", "marketplace", "add", &target]) {
             if let Some(old) = old {
                 if step(&["plugin", "marketplace", "add", &old]).is_ok() {

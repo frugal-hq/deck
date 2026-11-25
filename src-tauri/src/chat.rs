@@ -192,13 +192,17 @@ pub fn clean_env() -> HashMap<String, String> {
 }
 
 // FRUGAL_ROLES is read by frugal's accounts server, so the setting applies to chats started after it changes.
-pub fn account_env(accounts: &Accounts, account: &Value) -> HashMap<String, String> {
+pub(crate) fn claude_env(accounts: &Accounts, config_dir: Option<&Path>) -> HashMap<String, String> {
     let mut env = clean_env();
     env.insert("FRUGAL_ROLES".into(), if accounts.roles() { "on" } else { "off" }.into());
-    if account["id"] != MAIN {
-        env.insert("CLAUDE_CONFIG_DIR".into(), account["configDir"].as_str().unwrap_or_default().into());
+    if let Some(dir) = config_dir {
+        env.insert("CLAUDE_CONFIG_DIR".into(), dir.to_string_lossy().into_owned());
     }
     env
+}
+
+pub fn account_env(accounts: &Accounts, account: &Value) -> HashMap<String, String> {
+    claude_env(accounts, (account["id"] != MAIN).then(|| Path::new(accounts::string(&account["configDir"]))))
 }
 
 fn command(claude: PathBuf, env: HashMap<String, String>, cwd: &Path) -> CommandBuilder {
@@ -346,9 +350,17 @@ pub fn chat_recorded_sessions() -> Vec<String> {
     std::fs::read_to_string(file).unwrap_or_default().lines().map(|s| s.trim().to_string()).filter(|s| !s.is_empty()).collect()
 }
 
-// main.js launchChat.
+fn chat_plugin_dirs(accounts: &Accounts, account: &Value, states: &Value, picked: Option<&[String]>) -> Vec<PathBuf> {
+    let store = accounts.store_dir();
+    let installed = accounts::read_json(&store.join("plugins/installed_plugins.json"), json!({}));
+    let settings = accounts::read_json(&store.join("settings.json"), json!({}));
+    let mut dirs: Vec<_> = accounts.chat_frugal_dir(account).into_iter().collect();
+    dirs.extend(crate::plugins::shared_plugin_dirs(&installed, &settings, states, picked));
+    dirs
+}
+
+// main.js launchChat. The place is the session whose chat sets the group and workspace, the source chat's for a handoff.
 #[allow(clippy::too_many_arguments)]
-// place: the session whose chat sets the group and workspace, the source chat's for a handoff.
 fn launch(app: &AppHandle, id: &str, place: &str, folder: PathBuf, size: (u16, u16), resume: bool, group: &Value, account: &Value, prompt: Option<&str>, bypass: bool, admin: bool, output: Channel<Value>) -> Value {
     let Some(claude) = find_claude() else {
         return json!({ "error": NO_CLAUDE });
@@ -387,15 +399,7 @@ fn launch(app: &AppHandle, id: &str, place: &str, folder: PathBuf, size: (u16, u
             .partition(|name| picked.as_ref().is_some_and(|picked| picked.contains(name)));
         crate::mcp::share_tokens(&accounts);
         let (allowed, denied, mcp, delegate_only) = accounts.chat_mcp(account["id"].as_str().unwrap_or_default(), &folder, topic, &workspaces, (&auto_on, &auto_delegates))?;
-        let main = accounts.main_account();
-        // Every account runs Main's frugal. Other plugins are passed explicitly to non-Main accounts.
-        let mut plugin_dirs: Vec<_> = accounts::frugal_dir(&main).into_iter().collect();
-        if account["id"] != MAIN {
-            let dir = Path::new(accounts::string(&main["configDir"]));
-            let installed = accounts::read_json(&dir.join("plugins/installed_plugins.json"), json!({}));
-            let main_settings = accounts::read_json(&dir.join("settings.json"), json!({}));
-            plugin_dirs.extend(crate::plugins::shared_plugin_dirs(&installed, &main_settings, &settings["pluginStates"], picked.as_deref()));
-        }
+        let plugin_dirs = chat_plugin_dirs(&accounts, account, &settings["pluginStates"], picked.as_deref());
         Ok((allowed, denied, mcp, delegate_only, topic.map(str::to_owned), workspaces.first().map(|w| w.to_string()), plugin_dirs, crate::plugins::enabled_plugins(&settings["pluginStates"], picked.as_deref())))
     })();
     let (allowed, denied, deck_mcp, delegate_only, deck_group, deck_workspace, plugin_dirs, enabled_plugins) = match prepared {
@@ -501,7 +505,9 @@ fn start(app: &AppHandle, options: StartOptions, output: Channel<Value>) -> Valu
     };
     let (account, frugal) = {
         let accounts = accounts.lock().unwrap();
-        (accounts.primary(), !resume && options.frugal == true && accounts::frugal_dir(&accounts.main_account()).is_some())
+        let account = accounts.primary();
+        let frugal = !resume && options.frugal == true && accounts.chat_frugal_dir(&account).is_some();
+        (account, frugal)
     };
     let prompt = frugal.then_some("/frugal:frugal");
     // Reopening an archived session brings its whole chat back to the sidebar.
@@ -740,6 +746,42 @@ pub fn chat_kill(chats: tauri::State<Chats>, id: String) {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use crate::accounts::{string, tests::TempDir, write_json};
+
+    #[test]
+    fn chat_plugins_use_the_store_and_only_fall_back_to_the_chat_accounts_frugal() {
+        let temp = TempDir::new();
+        let accounts = Accounts::new(temp.0.clone(), temp.0.join(".codex"));
+        let main = accounts.primary();
+        let side = accounts.prepare_account(&json!("Side")).unwrap();
+        let main_dir = Path::new(string(&main["configDir"]));
+        let side_dir = Path::new(string(&side["configDir"]));
+        let install = |config: &Path, entries: &[(&str, &str)]| {
+            let plugins: serde_json::Map<_, _> = entries.iter().map(|&(id, name)| {
+                let path = config.join("plugins/cache").join(name);
+                std::fs::create_dir_all(&path).unwrap();
+                (id.to_owned(), json!([{"installPath": path}]))
+            }).collect();
+            write_json(&config.join("plugins/installed_plugins.json"), &json!({"plugins": plugins})).unwrap();
+            write_json(&config.join("settings.json"), &json!({"enabledPlugins": {"other@m": true}})).unwrap();
+        };
+        let dirs = |account: &Value| chat_plugin_dirs(&accounts, account, &Value::Null, None);
+        assert!(dirs(&main).is_empty());
+        install(main_dir, &[("frugal@frugal", "main-frugal"), ("other@m", "main-other")]);
+        assert!(dirs(&side).is_empty());
+        assert_eq!(dirs(&main), [main_dir.join("plugins/cache/main-frugal")]);
+        install(side_dir, &[("frugal@frugal", "side-frugal"), ("other@m", "side-other")]);
+        assert_eq!(dirs(&side), [side_dir.join("plugins/cache/side-frugal")]);
+        std::fs::write(side_dir.join(".credentials.json"), "{}").unwrap();
+        assert!(accounts.finish_account(&side).unwrap());
+        accounts.set_primary(string(&side["id"])).unwrap();
+        let store = temp.0.join(".frugal-deck/store");
+        install(&store, &[("frugal@frugal", "deck-frugal"), ("other@m", "deck-other"), ("disabled@m", "disabled")]);
+        let expected = [store.join("plugins/cache/deck-frugal"), store.join("plugins/cache/deck-other")];
+        assert_eq!(accounts.primary()["id"], side["id"]);
+        assert_eq!(dirs(&accounts.primary()), expected);
+        assert_eq!(dirs(&main), expected);
+    }
 
     #[test]
     fn checks_ids_and_env() {

@@ -83,6 +83,9 @@ fn main() {
                 .and_then(|text| serde_json::from_str::<serde_json::Value>(&text).ok()).filter(|v| v.is_object()).unwrap_or_default();
             debug::init(app.handle().clone(), ui["debugLog"] == "true");
             let accounts = accounts::Accounts::new(home, codex_home);
+            if let Err(error) = accounts.migrate_deck_servers() {
+                debug_log!("mcp", "Failed to migrate Deck MCP servers: {error}");
+            }
             // Also covers accounts added to the Frugal pool outside the Deck.
             let _ = accounts.apply_keep_transcripts();
             app.manage(Mutex::new(accounts));

@@ -1,14 +1,14 @@
 // `claude mcp list` output: one server per health line, named and with its status.
 
 use serde_json::{json, Value};
-use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::Mutex;
 use std::thread;
 use std::time::Duration;
 use tauri::{AppHandle, Manager, State};
-use crate::accounts::{mcp_entry, mcp_scope, object, read_json, read_strict, run, write_json, Accounts};use crate::chat::{account_env, find_claude, NO_CLAUDE};
+use crate::accounts::{mcp_entry, mcp_scope, object, read_json, read_strict, run, write_json, Accounts};
+use crate::chat::{account_env, find_claude, NO_CLAUDE};
 
 const CHECKING: &str = "Checking MCP server health";
 // In the backup, the owner and place of the Deck's own servers, and the place of an account's user servers; account ids and folders never take them.
@@ -100,7 +100,7 @@ fn sources(a: &Accounts) -> Vec<(String, Value, Option<serde_json::Map<String, V
     let mut sources: Vec<_> = a.labeled_accounts().iter().map(|account| {
         (account["id"].as_str().unwrap_or_default().to_owned(), account["name"].clone(), read_strict(&a.claude_json(account), json!({})).ok().map(|config| places(&config)))
     }).collect();
-    sources.push((DECK.into(), json!("Deck"), Some(serde_json::Map::from_iter([(DECK.to_owned(), a.deck_servers())]))));
+    sources.push((DECK.into(), json!("Deck"), a.read_deck_servers().ok().map(|servers| serde_json::Map::from_iter([(DECK.to_owned(), servers)]))));
     sources
 }
 
@@ -294,24 +294,23 @@ pub fn list(accounts: &Mutex<Accounts>, scope: &Value) -> Value {
     let Some(claude) = find_claude() else { return json!({ "error": NO_CLAUDE }) };
     let global = scope["global"] == true;
     let signed;
-    let plugin;
     let (runs, folder, off, on, all, deck, sources, home, (accounts_off, no_delegate, kinds, delegate_only, auto)) = {
         let a = accounts.lock().unwrap();
         let now = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_millis() as i64);
-        signed = signed_in(&share_tokens(&a), &a.deck_servers(), now);
-        // Chats run the main account's frugal through --plugin-dir, so its server's command, which chats are allowed by, comes from that copy.
-        plugin = a.claude_accounts().iter().find(|account| account["id"] == crate::accounts::MAIN).and_then(crate::accounts::frugal_dir);
-        let runs: Vec<(Value, Value, HashMap<String, String>)> = a.labeled_accounts().iter().map(|account| (account["name"].clone(), account["id"].clone(), account_env(&a, account))).collect();
+        let deck = a.deck_servers();
+        signed = signed_in(&share_tokens(&a), &deck, now);
+        // Learn the server command from the same frugal copy each chat loads.
+        let runs: Vec<_> = a.labeled_accounts().iter().map(|account| (account["name"].clone(), account["id"].clone(), account_env(&a, account), a.chat_frugal_dir(account))).collect();
         let sources = sources(&a);
         let folder = if global { a.home.clone() } else { PathBuf::from(scope["folder"].as_str().unwrap_or_default()) };
         let list = |field: Option<Result<Value, _>>| field.and_then(Result::ok).unwrap_or_else(|| json!([]));
-        (runs, folder, list((!global).then(|| a.mcp_off(&scope))), list((!global).then(|| a.mcp_on(&scope))), a.mcp_global(), a.deck_servers(), sources, a.home.clone(), a.mcp_access())
+        (runs, folder, list((!global).then(|| a.mcp_off(&scope))), list((!global).then(|| a.mcp_on(&scope))), a.mcp_global(), deck, sources, a.home.clone(), a.mcp_access())
     };
     let removed = backup(&home, sources);
     let count = runs.len();
     let lists = thread::scope(|threads| {
-        let (claude, folder, plugin) = (&claude, &folder, &plugin);
-        let jobs: Vec<_> = runs.iter().map(|(name, id, env)| threads.spawn(move || {
+        let (claude, folder) = (&claude, &folder);
+        let jobs: Vec<_> = runs.iter().map(|(name, id, env, plugin)| threads.spawn(move || {
             let mut command = Command::new(claude);
             command.env_clear().envs(env);
             if let Some(dir) = plugin {

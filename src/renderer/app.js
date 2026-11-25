@@ -3812,7 +3812,7 @@ const mcpAskTokens = (text) => 1590 + Math.ceil(text.length / 4);
 function syncMcpAsk() {
   const text = $('mcp-ask').value.trim();
   $('mcp-ask-run').disabled = !text;
-  $('mcp-ask-cost').textContent = text ? `About ${mcpAskTokens(text).toLocaleString()} tokens on Haiku, main account` : '';
+  $('mcp-ask-cost').textContent = text ? `About ${mcpAskTokens(text).toLocaleString()} tokens on Haiku, primary account` : '';
 }
 $('mcp-ask').oninput = syncMcpAsk;
 $('mcp-ask').onkeydown = (event) => {
@@ -4383,12 +4383,14 @@ async function openUpdates() {
     rows.push(node('h3', 'update__heading', `frugal plugin ${frugal}`));
     const { version: latest, newer, dirty } = frugalLatest ?? {};
     const state = dirty ? 'The folder has uncommitted changes' : newer ? `Version ${latest} available` : latest ? 'Up to date' : 'The latest version could not be read';
-    const tip = dirty ? 'Commit or discard them, then update' : newer || !latest ? 'Update frugal on the main account; chats on every account load that copy' : 'Nothing newer to install';
+    const tip = dirty ? 'Commit or discard them, then update' : newer || !latest ? 'Update frugal in the Deck store' : 'Nothing newer to install';
     rows.push(updateRow(state, 'Update', tip, !dirty && (newer || !latest) ? updateFrugal : null));
     const fromFolder = frugalSource?.source === 'directory';
     const [kind, from] = fromFolder ? ['folder', frugalSource.path] : frugalSource?.repo ? ['GitHub', frugalSource.repo] : ['other', frugalSource?.url ?? 'unknown'];
     const sourceTip = fromFolder ? 'Install frugal from GitHub frugal-hq/frugal' : 'Install frugal from a folder that holds its marketplace, such as a clone of the repo';
     rows.push(updateRow(`Source: ${kind}`, fromFolder ? 'Use GitHub' : 'Use a folder', sourceTip, (button) => setFrugalSource(fromFolder, button), from));
+  } else {
+    rows.push(updateRow('frugal plugin', 'Install', 'Install frugal from GitHub in the Deck store', (button) => setFrugalSource(true, button)));
   }
   $('update-list').replaceChildren(...rows);
   $('update-status').textContent = '';
