@@ -353,6 +353,7 @@ impl Accounts {
                 "kind": if e["kind"].is_null() { "".to_owned() } else { js_string(&e["kind"]) },
                 "model": if e["model"].is_string() { e["model"].clone() } else { Value::Null },
                 "exhaustedUntil": if number(&e["exhausted_until"]) > at / 1000.0 { e["exhausted_until"].clone() } else { Value::Null },
+                "benchReason": e["bench_reason"].clone(),
                 "usedToday": if e["day"] == local_day(at) && e["used"].is_number() { e["used"].clone() } else { json!(0) },
                 "limits": if e["kind"] == "codex" { codex_limits(&self.codex_home) } else { Value::Null },
                 "caps": account_caps(id, &s), "capsApply": self.caps_apply(id)})

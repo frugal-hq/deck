@@ -206,6 +206,13 @@ let accountState = { primary: null, accounts: [], others: [] };
 const WARN_PCT = 80;
 const DAY_MS = 86400000;
 const resetDay = new Intl.DateTimeFormat('en-US', { weekday: 'short', hour: 'numeric', minute: '2-digit' });
+const failureLabels = {
+  causes: { account: 'Account', env: 'Environment', brief: 'Brief', code: 'Code', frugal: 'Frugal' },
+  limit: (time) => `Limit until ${time}`,
+  errors: (time) => `Errors until ${time}`,
+  benched: (ready, count) => `${ready} ready, ${count} benched`,
+};
+const benchTime = resetDay;
 const resetExact = new Intl.DateTimeFormat('en-US', { dateStyle: 'medium', timeStyle: 'short' });
 const compact = new Intl.NumberFormat('en-US', { notation: 'compact' });
 
@@ -557,11 +564,21 @@ function accountBlock(account, primary, chat, caps) {
 
 function drawOthers() {
   const { others } = accountState;
-  const limited = others.filter((other) => other.exhaustedUntil).length;
+  const benched = others.filter((other) => other.exhaustedUntil);
+  const ready = others.length - benched.length;
   $('usage-others').hidden = !others.length;
-  $('others-count').textContent = `${others.length - limited} ready${limited ? `, ${limited} at limit` : ''}`;
+  $('others-count').textContent = benched.some((other) => other.benchReason === 'errors')
+    ? failureLabels.benched(ready, benched.length)
+    : `${ready} ready${benched.length ? `, ${benched.length} at limit` : ''}`;
   $('others').replaceChildren(...others.flatMap((other) => {
-    const state = other.exhaustedUntil ? `Until ${resetDay.format(other.exhaustedUntil * 1000)}` : 'Ready';
+    let state = 'Ready';
+    if (other.exhaustedUntil) {
+      const until = other.exhaustedUntil * 1000;
+      const reason = other.benchReason;
+      state = reason === 'limit' || reason === 'errors'
+        ? failureLabels[reason](benchTime.format(until))
+        : `Until ${resetDay.format(until)}`;
+    }
     const limits = accountLimits(other).filter(([, limit]) => limit).map(([label, limit]) => limitRow(label, limit));
     return [
       accountName(other, [[other.kind, other.model].filter(Boolean).join(': ')]),
@@ -817,19 +834,39 @@ const taskSpan = (seconds) => (seconds == null ? '' : seconds < 60 ? `${seconds}
 const commandTitle = (check) => check.split(/;|&&/).map((part) => part.trim()).filter((part) => part && !/^(set|export|cd|taskkill)\b|^\w+=/.test(part)).join(' && ') || check;
 
 const isFailed = (task) => task.status === 'failed' || task.status === 'not delegated';
+const TASK_CAUSES = ['account', 'env', 'brief', 'code', 'frugal'];
+function taskCauseRank(task) {
+  const index = TASK_CAUSES.indexOf(task.cause);
+  return index < 0 ? TASK_CAUSES.length : index;
+}
+
+function taskCauseChip(cause) {
+  return TASK_CAUSES.includes(cause) ? node('span', 'tag tag--cause', failureLabels.causes[cause]) : null;
+}
+
 // Every failed try, from frugal 0.28.6 on; a job with no end logged was marked failed after 35 minutes.
 function whyFailed(task) {
   if (!isFailed(task)) return '';
-  const tries = (task.failures ?? []).map((f) => `- ${accountLabel(f.account)}${f.model ? ` (${f.model})` : ''}, ${taskSpan(f.seconds)}, exit ${f.exit}: ${f.reason}`);
-  if (!tries.length && !task.result) tries.push('No end was logged: the delegate hung, or its chat closed while it ran.');
-  return tries.length ? `Why it failed:\n${tries.join('\n')}` : '';
+  const tries = task.failures ?? [];
+  if (!tries.length) return task.result ? '' : 'Why it failed:\nNo end was logged: the delegate hung, or its chat closed while it ran.';
+  const details = node('span', '', 'Why it failed:');
+  for (const f of tries) {
+    details.append('\n- ');
+    const cause = taskCauseChip(f.cause);
+    if (cause) details.append(cause, ' ');
+    details.append(`${accountLabel(f.account)}${f.model ? ` (${f.model})` : ''}, ${taskSpan(f.seconds)}, exit ${f.exit}: ${f.reason}`);
+  }
+  return details;
 }
 
 function taskRow(task) {
   const row = node('div', 'info-panel__agent');
   const head = node('div', 'info-panel__agent-head');
   const title = task.check ? commandTitle(task.check) : task.description || task.name;
-  head.append(node('span', 'info-panel__agent-title', title), node('span', `info-panel__status is-${task.status.replace(' ', '-')}`, TASK_STATUS[task.status] ?? task.status));
+  const status = node('span', `info-panel__status is-${task.status.replace(' ', '-')}`, TASK_STATUS[task.status] ?? task.status);
+  const cause = isFailed(task) && taskCauseChip(task.cause);
+  if (cause) status.prepend(cause, ' ');
+  head.append(node('span', 'info-panel__agent-title', title), status);
   row.append(head);
   const cost = task.cost != null && `$${task.cost.toFixed(2)}`;
   const tokens = task.tokens && `${compact.format(task.tokens)} tokens`;
@@ -838,7 +875,7 @@ function taskRow(task) {
   if (meta) row.append(node('p', 'info-panel__muted', meta));
   const chat = task.chat && currentIndex?.sessions?.find((s) => s.id === task.chat)?.title;
   const label = (name, value) => (value ? `${name}: ${value}` : '');
-  row.dataset.tip = [
+  const details = [
     task.check ? label('Command', task.check) : label('Task', task.description),
     label('Status', TASK_STATUS[task.status] ?? task.status),
     whyFailed(task),
@@ -851,7 +888,14 @@ function taskRow(task) {
     label('Chat', chat),
     label('When', task.updatedAt && new Date(task.updatedAt).toLocaleString()),
     task.result ? `\n${task.result}` : '',
-  ].filter(Boolean).join('\n');
+  ].filter(Boolean);
+  const tip = node('span');
+  details.forEach((detail, index) => {
+    if (index) tip.append('\n');
+    tip.append(detail);
+  });
+  row.dataset.tip = tip.textContent;
+  row.tipContent = tip;
   return row;
 }
 
@@ -872,7 +916,7 @@ function drawSubagents(tasks) {
   const ended = tasks.filter((task) => !task.running).slice(0, 20);
   $('info-subagents').hidden = !tasks.length;
   drawTaskGroup('running', tasks.filter((task) => task.running));
-  drawTaskGroup('failed', ended.filter(isFailed));
+  drawTaskGroup('failed', ended.filter(isFailed).sort((a, b) => taskCauseRank(a) - taskCauseRank(b)));
   drawTaskGroup('cancelled', ended.filter((task) => task.status === 'cancelled'));
   drawTaskGroup('done', ended.filter((task) => !isFailed(task) && task.status !== 'cancelled'));
 }
@@ -4434,6 +4478,7 @@ function openTooltip() {
   const rich = tooltipTarget.tipRich;
   tooltip.classList.toggle('tooltip--rich', Boolean(rich));
   if (rich) tooltip.replaceChildren(richTip(rich));
+  else if (tooltipTarget.tipContent) tooltip.replaceChildren(tooltipTarget.tipContent);
   else tooltip.textContent = tooltipTarget.dataset.tip;
   tooltipTarget.setAttribute('aria-describedby', 'tooltip');
   tooltip.showPopover();

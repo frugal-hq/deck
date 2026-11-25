@@ -191,7 +191,7 @@ fn job_task(job: &Value, now: f64) -> Value {
     let mut task = Map::new();
     task.insert("name".into(), job["id"].clone());
     // JSON.stringify drops undefined fields, so a field the job never logged stays out.
-    for (key, from) in [("description", "brief"), ("model", "model"), ("account", "account"), ("cost", "cost"), ("kind", "kind"), ("level", "level"), ("tokens", "tokens"), ("failures", "failures")] {
+    for (key, from) in [("description", "brief"), ("model", "model"), ("account", "account"), ("cost", "cost"), ("kind", "kind"), ("level", "level"), ("tokens", "tokens"), ("failures", "failures"), ("cause", "cause")] {
         if let Some(value) = job.get(from) {
             task.insert(key.into(), value.clone());
         }

@@ -402,6 +402,7 @@ body:has(.info-panel:not([hidden])) { grid-template-columns: var(--sidebar-width
 .cap input[type="number"] { min-height: 24px; width: 3.25rem; padding-inline: var(--space-2xs); border: 0; border-radius: var(--radius-pill); background: var(--color-paper-3); color: var(--color-ink); font: inherit; font-variant-numeric: tabular-nums; }
 .tag { padding-inline: var(--space-xs); border-radius: var(--radius-pill); font-size: var(--text-xs); white-space: nowrap; }
 .tag--primary { background: var(--color-accent-soft); color: var(--color-accent); }
+.tag--cause { background: var(--color-control); color: var(--color-ink-2); }
 .usage .is-warn { color: var(--color-bad); }
 .usage__others summary { color: var(--color-muted); cursor: pointer; }
 .usage__count { float: inline-end; font-size: var(--text-xs); }
