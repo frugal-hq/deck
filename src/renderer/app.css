@@ -923,7 +923,7 @@ body { transition: opacity var(--dur-short) var(--ease-out); }
 .clean__busy { display: grid; gap: var(--space-2xs); }
 .clean__busy[hidden] { display: none; }
 .clean__choices { display: grid; gap: var(--space-md); min-inline-size: 0; margin: 0; padding: 0; border: 0; }
-#clean-copies-more summary { cursor: pointer; font-weight: 500; }
+#clean-copies-more summary { cursor: pointer; font-size: var(--text-sm); font-weight: 500; }
 #clean-copies-more summary:hover { color: var(--color-ink); }
 #clean-dialog .inventory td { white-space: pre-line; }
 #clean-dialog .inventory select { max-width: 100%; }
