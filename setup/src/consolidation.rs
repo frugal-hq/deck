@@ -298,12 +298,12 @@ pub(crate) async fn inventory() -> Value {
 pub(crate) fn remove(path: &Path, errors: &mut Vec<String>) {
     let result = if path.is_dir() { std::fs::remove_dir_all(path) } else { std::fs::remove_file(path) };
     if let Err(error) = result {
-        if error.kind() != std::io::ErrorKind::NotFound { errors.push(format!("{}: {error}", path.display())); }
+        if error.kind() != std::io::ErrorKind::NotFound { errors.push(path_error(path, error)); }
     }
 }
 
-fn path_error(path: &Path, error: impl std::fmt::Display) -> String {
-    format!("{}: {error}", path.display())
+pub(crate) fn path_error(path: &Path, error: impl std::fmt::Display) -> String {
+    crate::i18n::t("setup.error.path", &[("path", &path.display()), ("error", &error)])
 }
 
 fn plain_metadata(path: &Path) -> std::io::Result<fs::Metadata> {
@@ -831,18 +831,18 @@ pub(crate) fn restore_config() -> Result<(), String> {
     let file = consolidation_file(&home);
     let mut manifest = consolidation_manifest(&home)?;
     while let Some(backup) = manifest["backups"].as_array_mut().unwrap().pop() {
-        let zip = home.join(backup["zip"].as_str().ok_or("Backup has no zip path")?);
+        let zip = home.join(backup["zip"].as_str().ok_or_else(|| crate::i18n::t("setup.error.backup-no-zip", &[]))?);
         let backup_dir = home.join(".frugal-deck/backups");
         if zip.parent() != Some(backup_dir.as_path()) || zip.extension().is_none_or(|ext| ext != "zip") {
-            return Err(path_error(&zip, "Invalid backup path"));
+            return Err(crate::i18n::t("setup.error.invalid-backup-path", &[("path", &zip.display())]));
         }
         safe_relative(&home, &zip)?;
         let mut caches = Vec::new();
         let mut command = Command::new(system32("tar.exe"));
         command.arg("-x").arg("-f").arg(&zip).arg("-C").arg(&home).creation_flags(NO_WINDOW);
-        for change in backup["changes"].as_array().ok_or("Backup has no changes array")? {
-            for path in change["paths"].as_array().ok_or("Change has no paths array")? {
-                let path = home.join(path.as_str().ok_or("Expected a backup path")?);
+        for change in backup["changes"].as_array().ok_or_else(|| crate::i18n::t("setup.error.backup-no-changes", &[]))? {
+            for path in change["paths"].as_array().ok_or_else(|| crate::i18n::t("setup.error.backup-no-paths", &[]))? {
+                let path = home.join(path.as_str().ok_or_else(|| crate::i18n::t("setup.error.expected-backup-path", &[]))?);
                 let relative = safe_relative(&home, &path)?;
                 if change["action"] == "keep" && change["account"] == "Claude Desktop" {
                     command.arg("--exclude").arg(relative.to_string_lossy().replace('\\', "/"));

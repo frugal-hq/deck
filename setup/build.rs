@@ -5,6 +5,7 @@ const FILES: &[(&str, &str)] = &[
     ("ui/index.html", "index.html"),
     ("../src/renderer/tokens.css", "tokens.css"),
     ("../src/renderer/base.css", "base.css"),
+    ("../src/renderer/i18n.mjs", "i18n.mjs"),
     ("../node_modules/@fontsource/host-grotesk/400.css", "fonts/host-grotesk/400.css"),
     ("../node_modules/@fontsource/host-grotesk/500.css", "fonts/host-grotesk/500.css"),
 ];
@@ -22,6 +23,17 @@ fn main() {
         let name = entry.unwrap().file_name().into_string().unwrap();
         if name.ends_with("-400-normal.woff2") || name.ends_with("-500-normal.woff2") {
             fs::copy(Path::new(FONT_FILES).join(&name), dist.join("fonts/host-grotesk/files").join(&name)).unwrap();
+        }
+    }
+    let locales = Path::new("../src/renderer/locales");
+    println!("cargo:rerun-if-changed={}", locales.display());
+    fs::create_dir_all(dist.join("locales")).unwrap();
+    for entry in fs::read_dir(locales).unwrap() {
+        let path = entry.unwrap().path();
+        if path.extension().is_some_and(|ext| ext == "json") && path.is_file() {
+            println!("cargo:rerun-if-changed={}", path.display());
+            fs::copy(&path, dist.join("locales").join(path.file_name().unwrap()))
+                .unwrap_or_else(|error| panic!("{}: {error}", path.display()));
         }
     }
     println!("cargo:rerun-if-changed=../src-tauri/tauri.conf.json");

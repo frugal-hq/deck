@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<title>Frugal Deck Setup</title>
+<title data-i18n="setup.title">Frugal Deck Setup</title>
 <link rel="stylesheet" href="tokens.css">
 <link rel="stylesheet" href="base.css">
 <link rel="stylesheet" href="fonts/host-grotesk/400.css">
@@ -11,8 +11,9 @@
   html, body { height: 100%; }
   body { display: grid; grid-template-rows: 36px 1fr; overflow: hidden; font-size: var(--text-sm); user-select: none; }
   [hidden] { display: none !important; }
-  /* Until info() answers, no view is picked: only the progress bar shows. */
+  /* While the setup loads its language, only the progress bar shows. */
   body:not([data-view]) [data-views]:not(.progress) { display: none; }
+  body:not([data-view]) :is(.bar, .hero) { visibility: hidden; }
   .bar { display: flex; align-items: center; padding-inline: var(--space-sm) 0; -webkit-app-region: drag; }
   .bar button { -webkit-app-region: no-drag; }
   .mark { display: inline-flex; align-items: center; gap: var(--space-2xs); font-weight: 500; }
@@ -77,120 +78,104 @@
   <symbol id="logo" viewBox="36 35.5 184 184"><path fill="currentColor" fill-rule="evenodd" d="M101 54L70 54A24 24 0 0 0 46 78L46 177A24 24 0 0 0 70 201L101 201ZM65.5 89L85.5 89A5.5 5.5 0 0 1 85.5 100L65.5 100A5.5 5.5 0 0 1 65.5 89ZM65.5 122L85.5 122A5.5 5.5 0 0 1 85.5 133L65.5 133A5.5 5.5 0 0 1 65.5 122ZM65.5 155L85.5 155A5.5 5.5 0 0 1 85.5 166L65.5 166A5.5 5.5 0 0 1 65.5 155ZM109 54L186 54A24 24 0 0 1 210 78L210 177A24 24 0 0 1 186 201L109 201ZM140 166L140 132.5L132 132.5A9.5 9.5 0 0 1 132 113.5L140 113.5L140 111A31 31 0 0 1 171 80L177 80A9 9 0 0 1 177 98L171 98A13 13 0 0 0 158 111L158 113.5L162 113.5A9.5 9.5 0 0 1 162 132.5L158 132.5L158 166A9 9 0 0 1 140 166ZM179 122A9 9 0 1 0 197 122A9 9 0 1 0 179 122Z"/></symbol>
 </svg>
 <header class="bar">
-  <span id="mark" class="mark"><svg aria-hidden="true"><use href="#logo"/></svg>Frugal Deck Setup</span>
-  <button id="close" class="close" type="button" aria-label="Close"><svg class="icon" viewBox="0 0 16 16" aria-hidden="true"><path d="m4 4 8 8m0-8-8 8"/></svg></button>
+  <span id="mark" class="mark" data-i18n="setup.title"><svg aria-hidden="true"><use href="#logo"/></svg>Frugal Deck Setup</span>
+  <button id="close" class="close" type="button" aria-label="Close" data-i18n-aria-label="setup.close"><svg class="icon" viewBox="0 0 16 16" aria-hidden="true"><path d="m4 4 8 8m0-8-8 8"/></svg></button>
 </header>
 <main>
   <div class="hero">
     <svg aria-hidden="true"><use href="#logo"/></svg>
     <div>
-      <h1 id="title">Install Frugal Deck</h1>
+      <h1 id="title" data-i18n="setup.install.title">Install Frugal Deck</h1>
+      <span id="start-failed-title" hidden data-i18n="setup.error.start">The setup could not start</span>
       <p id="subtitle" class="muted"></p>
     </div>
   </div>
 
   <div class="content">
     <div class="content" data-views="about">
-      <p>Frugal Deck is a desktop client for Claude Code, built around the Frugal skill. It runs Claude Code's own terminal with tabs, groups and search, delegates work to your other accounts so your limits last longer, and leaves out the noise of Claude Desktop.</p>
-      <p class="note"><strong>Everything stays on this computer</strong>Frugal Deck has no servers and collects nothing. Your sessions, groups and settings live in your user folder. Claude Code talks to Anthropic as it always does.</p>
+      <p data-i18n="setup.about.description">Frugal Deck is a desktop client for Claude Code, built around the Frugal skill. It runs Claude Code's own terminal with tabs, groups and search, delegates work to your other accounts so your limits last longer, and leaves out the noise of Claude Desktop.</p>
+      <p class="note" data-i18n="setup.about.privacy"><strong data-i18n="setup.about.privacy-title">Everything stays on this computer</strong>Frugal Deck has no servers and collects nothing. Your sessions, groups and settings live in your user folder. Claude Code talks to Anthropic as it always does.</p>
       <p id="found" class="note note--found" hidden></p>
       <div id="external-field" hidden>
         <label class="check"><input id="external" type="checkbox" checked><span id="external-label"></span></label>
-        <p class="muted">They stay where they are; Frugal Deck only lists them. You can change this later in Settings.</p>
+        <p class="muted" data-i18n="setup.about.external-hint">They stay where they are; Frugal Deck only lists them. You can change this later in Settings.</p>
       </div>
-      <label id="language-field" class="field" hidden>Language
-        <select id="language">
-          <option value="en">English</option>
-          <option value="es">Español</option>
-          <option value="es-ES">Español (España)</option>
-          <option value="es-MX">Español (México)</option>
-          <option value="es-PE">Español (Perú)</option>
-          <option value="pt-BR">Português (Brasil)</option>
-          <option value="pt-PT">Português (Portugal)</option>
-          <option value="fr">Français</option>
-          <option value="de">Deutsch</option>
-          <option value="it">Italiano</option>
-          <option value="nl">Nederlands</option>
-          <option value="pl">Polski</option>
-          <option value="ru">Русский</option>
-          <option value="uk">Українська</option>
-          <option value="tr">Türkçe</option>
-          <option value="ja">日本語</option>
-          <option value="zh-CN">简体中文</option>
-          <option value="ko">한국어</option>
-        </select>
+      <label id="language-field" class="field" hidden data-i18n="setup.about.language">Language
+        <select id="language"></select>
       </label>
     </div>
 
     <form id="form" class="content" data-views="choose">
-      <label class="choice" id="choice-user"><input type="radio" name="mode" value="user"><span>Just for me</span><span class="muted">In your user folder. No administrator permission needed. Administrator chats ask for permission every time.</span></label>
-      <label class="choice" id="choice-machine"><input type="radio" name="mode" value="machine" checked><span>Everyone on this PC</span><span class="muted">In Program Files. Windows asks for administrator permission.</span></label>
-      <div id="folder-row" class="folder"><span>Install in</span><span id="folder-path" class="path muted"></span><button id="folder-change" class="btn btn--small" type="button">Change…</button></div>
-      <p id="folder-warn" class="warn" hidden>Administrator chats are safest in a folder only administrators can change, like Program Files.</p>
+      <label class="choice" id="choice-user"><input type="radio" name="mode" value="user"><span data-i18n="setup.install.user">Just for me</span><span class="muted" data-i18n="setup.install.user-hint">In your user folder. No administrator permission needed. Administrator chats ask for permission every time.</span></label>
+      <label class="choice" id="choice-machine"><input type="radio" name="mode" value="machine" checked><span data-i18n="setup.install.machine">Everyone on this PC</span><span class="muted" data-i18n="setup.install.machine-hint">In Program Files. Windows asks for administrator permission.</span></label>
+      <div id="folder-row" class="folder"><span data-i18n="setup.install.folder">Install in</span><span id="folder-path" class="path muted"></span><button id="folder-change" class="btn btn--small" type="button" data-i18n="setup.install.change-folder">Change…</button></div>
+      <p id="folder-warn" class="warn" hidden data-i18n="setup.install.folder-warning">Administrator chats are safest in a folder only administrators can change, like Program Files.</p>
     </form>
 
     <div class="content" data-views="clean" hidden>
-      <p>Frugal Deck keeps one copy of each plugin and MCP server and shares it with every Claude account. Pick what to import, keep or remove.</p>
+      <p data-i18n="setup.clean.description">Frugal Deck keeps one copy of each plugin and MCP server and shares it with every Claude account. Pick what to import, keep or remove.</p>
       <div class="presets">
-        <button id="clean-recommended" class="btn btn--small" type="button">Recommended</button>
-        <button id="clean-keep" class="btn btn--small" type="button">Keep everything</button>
+        <button id="clean-recommended" class="btn btn--small" type="button" data-i18n="setup.clean.recommended">Recommended</button>
+        <button id="clean-keep" class="btn btn--small" type="button" data-i18n="setup.keep-everything">Keep everything</button>
       </div>
-      <p class="muted">Everything changed is backed up first; uninstalling can restore it. Old plugin copies are not backed up: Claude Code downloads them again if needed.</p>
+      <p class="muted" data-i18n="setup.clean.backup-hint">Everything changed is backed up first; uninstalling can restore it. Old plugin copies are not backed up: Claude Code downloads them again if needed.</p>
       <table id="clean-plugins" class="inventory" hidden>
-        <caption>Plugins and MCP servers</caption>
-        <thead><tr><th scope="col">Name</th><th scope="col">Kind</th><th scope="col">Where</th><th scope="col">Store version</th><th scope="col">Status</th><th scope="col">Action</th></tr></thead>
+        <caption data-i18n="setup.clean.plugins">Plugins and MCP servers</caption>
+        <thead><tr><th scope="col" data-i18n="setup.clean.col.name">Name</th><th scope="col" data-i18n="setup.clean.col.kind">Kind</th><th scope="col" data-i18n="setup.clean.col.where">Where</th><th scope="col" data-i18n="setup.clean.col.store-version">Store version</th><th scope="col" data-i18n="setup.clean.col.status">Status</th><th scope="col" data-i18n="setup.clean.col.action">Action</th></tr></thead>
         <tbody></tbody>
       </table>
       <table id="clean-accounts" class="inventory" hidden>
-        <caption>Accounts</caption>
-        <thead><tr><th scope="col">Account</th><th scope="col">Action</th></tr></thead>
+        <caption data-i18n="setup.clean.accounts">Accounts</caption>
+        <thead><tr><th scope="col" data-i18n="setup.clean.col.account">Account</th><th scope="col" data-i18n="setup.clean.col.action">Action</th></tr></thead>
         <tbody></tbody>
       </table>
       <table id="clean-copies" class="inventory" hidden>
-        <caption>Old plugin copies</caption>
-        <thead><tr><th scope="col">Account</th><th scope="col">Path</th><th scope="col">Action</th></tr></thead>
+        <caption data-i18n="setup.clean.copies">Old plugin copies</caption>
+        <thead><tr><th scope="col" data-i18n="setup.clean.col.account">Account</th><th scope="col" data-i18n="setup.clean.col.path">Path</th><th scope="col" data-i18n="setup.clean.col.action">Action</th></tr></thead>
         <tbody></tbody>
       </table>
       <table id="clean-sessions" class="inventory" hidden>
-        <caption>Sessions <span class="warn">Removed sessions go to the backup zip.</span></caption>
-        <thead><tr><th scope="col">Account</th><th scope="col">Count</th><th scope="col">Size</th><th scope="col">Action</th></tr></thead>
+        <caption data-i18n="setup.clean.sessions">Sessions <span class="warn" data-i18n="setup.clean.sessions-warning">Removed sessions go to the backup zip.</span></caption>
+        <thead><tr><th scope="col" data-i18n="setup.clean.col.account">Account</th><th scope="col" data-i18n="setup.clean.col.count">Count</th><th scope="col" data-i18n="setup.clean.col.size">Size</th><th scope="col" data-i18n="setup.clean.col.action">Action</th></tr></thead>
         <tbody></tbody>
       </table>
     </div>
 
     <form id="remove-form" class="content" data-views="remove">
       <div class="presets">
-        <button id="keep-all" class="btn btn--small" type="button">Keep everything</button>
-        <button id="delete-all" class="btn btn--small" type="button">Delete everything</button>
+        <button id="keep-all" class="btn btn--small" type="button" data-i18n="setup.keep-everything">Keep everything</button>
+        <button id="delete-all" class="btn btn--small" type="button" data-i18n="setup.remove.delete-everything">Delete everything</button>
       </div>
-      <label class="choice" id="row-deck"><input type="checkbox" name="deck"><span>Delete sessions started in Frugal Deck</span><span class="muted" id="size-deck"></span></label>
-      <label class="choice choice--danger" id="row-claude"><input type="checkbox" name="claude"><span>Delete Claude Code CLI and Claude Desktop sessions</span><span class="muted" id="size-claude"></span><span class="warn">Claude Code and Claude Desktop lose them too.</span></label>
-      <label class="choice" id="row-groups"><input type="checkbox" name="groups"><span>Delete groups, workspaces and the index</span><span class="muted" id="size-groups"></span></label>
-      <label class="choice" id="row-settings"><input type="checkbox" name="settings"><span>Delete Frugal Deck settings</span><span class="muted">Your choices in Settings, the chats left open, and downloaded voice models.</span></label>
-      <label class="check"><input id="backup" type="checkbox"> Save a backup (.zip) in Documents first</label>
-      <label id="restore-field" class="check" hidden><input id="restore" type="checkbox" checked> Restore my original Claude configuration (from the Import and clean backup)</label>
+      <label class="choice" id="row-deck"><input type="checkbox" name="deck"><span data-i18n="setup.remove.delete-deck">Delete sessions started in Frugal Deck</span><span class="muted" id="size-deck"></span></label>
+      <label class="choice choice--danger" id="row-claude"><input type="checkbox" name="claude"><span data-i18n="setup.remove.delete-claude">Delete Claude Code CLI and Claude Desktop sessions</span><span class="muted" id="size-claude"></span><span class="warn" data-i18n="setup.remove.claude-warning">Claude Code and Claude Desktop lose them too.</span></label>
+      <label class="choice" id="row-groups"><input type="checkbox" name="groups"><span data-i18n="setup.remove.delete-groups">Delete groups, workspaces and the index</span><span class="muted" id="size-groups"></span></label>
+      <label class="choice" id="row-settings"><input type="checkbox" name="settings"><span data-i18n="setup.remove.delete-settings">Delete Frugal Deck settings</span><span class="muted" data-i18n="setup.remove.settings-hint">Your choices in Settings, the chats left open, and downloaded voice models.</span></label>
+      <label class="check" data-i18n="setup.remove.backup"><input id="backup" type="checkbox"> Save a backup (.zip) in Documents first</label>
+      <label id="restore-field" class="check" hidden data-i18n="setup.remove.restore"><input id="restore" type="checkbox" checked> Restore my original Claude configuration (from the Import and clean backup)</label>
     </form>
 
-    <div class="progress" role="progressbar" aria-label="Working" data-views="installing removing"></div>
+    <div class="progress" role="progressbar" aria-label="Working" data-i18n-aria-label="setup.working" data-views="installing removing"></div>
     <p id="message" class="muted" role="status" data-views="done failed removed"></p>
   </div>
 
   <div class="actions">
-    <label class="check" data-views="choose"><input id="open" type="checkbox" checked> Open Frugal Deck when done</label>
-    <span class="muted" data-views="remove">Frugal Deck closes if it is open.</span>
-    <button id="cancel" class="btn" type="button" data-views="about choose remove">Cancel</button>
-    <button id="continue" class="btn btn--primary" type="button" data-views="about">Continue</button>
-    <button id="install" class="btn btn--primary" type="submit" form="form" data-views="choose">Install</button>
-    <button id="clean-back" class="btn" type="button" data-views="clean" hidden>Back</button>
-    <button id="clean-skip" class="btn" type="button" data-views="clean" hidden>Skip</button>
-    <button id="clean-apply" class="btn btn--primary" type="button" data-views="clean" hidden>Apply and continue</button>
-    <button id="uninstall" class="btn btn--primary" type="submit" form="remove-form" data-views="remove">Uninstall</button>
-    <button id="retry" class="btn" type="button" data-views="failed">Try again</button>
-    <button id="reveal" class="btn" type="button" data-views="removed" hidden>Show backup</button>
-    <button id="finish" class="btn btn--primary" type="button" data-views="done failed removed">Close</button>
+    <label class="check" data-views="choose" data-i18n="setup.install.open"><input id="open" type="checkbox" checked> Open Frugal Deck when done</label>
+    <span class="muted" data-views="remove" data-i18n="setup.remove.closes-deck">Frugal Deck closes if it is open.</span>
+    <button id="cancel" class="btn" type="button" data-views="about choose remove" data-i18n="setup.cancel">Cancel</button>
+    <button id="continue" class="btn btn--primary" type="button" data-views="about" data-i18n="setup.continue">Continue</button>
+    <button id="install" class="btn btn--primary" type="submit" form="form" data-views="choose" data-i18n="setup.install.action">Install</button>
+    <button id="clean-back" class="btn" type="button" data-views="clean" hidden data-i18n="setup.back">Back</button>
+    <button id="clean-skip" class="btn" type="button" data-views="clean" hidden data-i18n="setup.clean.skip">Skip</button>
+    <button id="clean-apply" class="btn btn--primary" type="button" data-views="clean" hidden data-i18n="setup.clean.apply">Apply and continue</button>
+    <button id="uninstall" class="btn btn--primary" type="submit" form="remove-form" data-views="remove" data-i18n="setup.remove.action">Uninstall</button>
+    <button id="retry" class="btn" type="button" data-views="failed" data-i18n="setup.retry">Try again</button>
+    <button id="reveal" class="btn" type="button" data-views="removed" hidden data-i18n="setup.remove.show-backup">Show backup</button>
+    <button id="finish" class="btn btn--primary" type="button" data-views="done failed removed" data-i18n="setup.close">Close</button>
   </div>
 </main>
 <script type="module">
+  import { applyI18n, currentLanguage, languages, loadLocale, pickLanguage, t, tp } from './i18n.mjs';
+
   const { invoke } = window.__TAURI__.core;
   const { listen } = window.__TAURI__.event;
   const $ = (id) => document.getElementById(id);
@@ -204,42 +189,56 @@
     $('message').textContent = message;
   };
   const bytes = (n) => {
-    const units = ['B', 'KB', 'MB', 'GB', 'TB'];
+    const units = ['b', 'kb', 'mb', 'gb', 'tb'];
     let i = 0;
     while (n >= 1024 && i < units.length - 1) { n /= 1024; i++; }
-    return `${n.toFixed(i && n < 10 ? 1 : 0)} ${units[i]}`;
+    return t(`setup.size.${units[i]}`, { size: n.toFixed(i && n < 10 ? 1 : 0) });
   };
-  const sessions = (n) => `${n} ${n === 1 ? 'session' : 'sessions'}`;
+  const sessions = (count) => tp('setup.sessions', count);
   const quit = () => invoke('quit');
   $('close').onclick = quit;
   $('cancel').onclick = quit;
   $('finish').onclick = quit;
 
-  const { version, installed, uninstall, data, folders, consolidation } = await invoke('info').catch((error) => {
-    show('failed', 'The setup could not start', String(error));
+  const setLanguage = async (tag) => {
+    await loadLocale(tag);
+    applyI18n();
+    await invoke('set_language', { language: currentLanguage() });
+  };
+  let info;
+  try {
+    info = await invoke('info').catch((error) => ({ error }));
+    if (info.uninstall) {
+      $('mark').dataset.i18n = 'setup.remove.title';
+      document.querySelector('title').dataset.i18n = 'setup.remove.title';
+    }
+    await setLanguage(info.data?.language || pickLanguage(null));
+    if ('error' in info) throw info.error;
+  } catch (error) {
+    show('failed', $('start-failed-title').textContent, String(error));
     $('retry').hidden = true;
     throw error;
-  });
+  }
+  const { version, installed, uninstall, data, folders, consolidation } = info;
 
   if (uninstall) {
     // Uninstaller: what to keep. Rows with nothing on disk are left out.
-    $('mark').lastChild.textContent = 'Uninstall Frugal Deck';
     const choose = () => {
-      show('remove', 'Uninstall Frugal Deck');
-      $('subtitle').textContent = 'Anything you keep comes back if you install Frugal Deck again. Anything you delete cannot be recovered.';
+      show('remove', t('setup.remove.title'));
+      $('subtitle').textContent = t('setup.remove.description');
     };
     $('row-deck').hidden = !data?.deck.count;
-    $('size-deck').textContent = data ? `${sessions(data.deck.count)}, ${bytes(data.deck.bytes)}.` : '';
+    $('size-deck').textContent = data ? t('setup.remove.deck-size', { sessions: sessions(data.deck.count), size: bytes(data.deck.bytes) }) : '';
     $('row-claude').hidden = !data?.claude.count;
-    $('size-claude').textContent = data ? `${sessions(data.claude.count)}, ${bytes(data.claude.bytes)}. They live in the .claude folders of your accounts.` : '';
+    $('size-claude').textContent = data ? t('setup.remove.claude-size', { sessions: sessions(data.claude.count), size: bytes(data.claude.bytes) }) : '';
     $('row-groups').hidden = !data?.groups;
-    $('size-groups').textContent = data?.groups ? `How the Deck sorts your sessions: groups, workspaces, names, archive marks and its search index, ${bytes(data.groups.bytes)}.` : '';
+    $('size-groups').textContent = data?.groups ? t('setup.remove.groups-size', { size: bytes(data.groups.bytes) }) : '';
     $('row-settings').hidden = !data?.settings;
     $('restore-field').hidden = !consolidation;
     const boxes = () => [...$('remove-form').querySelectorAll('.choice:not([hidden]) input')];
     const update = () => {
       const deleting = boxes().some((box) => box.checked);
-      $('uninstall').textContent = deleting ? 'Delete and uninstall' : 'Uninstall';
+      $('uninstall').textContent = deleting ? t('setup.remove.delete-action') : t('setup.remove.action');
       $('uninstall').classList.toggle('btn--danger', deleting);
       $('uninstall').classList.toggle('btn--primary', !deleting);
     };
@@ -247,24 +246,26 @@
     $('keep-all').onclick = () => { for (const box of boxes()) box.checked = false; update(); };
     $('delete-all').onclick = () => { for (const box of boxes()) box.checked = true; update(); };
     $('retry').onclick = choose;
-    const steps = { close: 'Closing Frugal Deck', backup: 'Saving the backup', program: 'Removing the program. Windows may ask for administrator permission.', data: 'Deleting what you chose', done: '' };
-    await listen('step', (event) => ($('subtitle').textContent = steps[event.payload] ?? ''));
+    const steps = { close: 'setup.remove.step.close', backup: 'setup.remove.step.backup', program: 'setup.remove.step.program', data: 'setup.remove.step.data' };
+    await listen('step', (event) => {
+      $('subtitle').textContent = Object.hasOwn(steps, event.payload) ? t(steps[event.payload]) : '';
+    });
     $('remove-form').onsubmit = async (event) => {
       event.preventDefault();
       const form = $('remove-form').elements;
       const picked = Object.fromEntries(['deck', 'claude', 'groups', 'settings'].map((name) => [name, !$(`row-${name}`).hidden && form[name].checked]));
-      show('removing', 'Uninstalling Frugal Deck');
+      show('removing', t('setup.remove.uninstalling'));
       try {
         const result = await invoke('uninstall', { ...picked, backup: $('backup').checked, restore: !!consolidation && $('restore').checked });
         revealPath = result.backup;
         const kept = !Object.values(picked).some(Boolean);
-        const lines = [kept ? 'Your sessions, groups and settings are still here. Install Frugal Deck again to get them back.' : 'What you chose was deleted.'];
-        if (result.backup) lines.push(`Backup: ${result.backup}`);
-        if (result.errors.length) lines.push(`Some files could not be deleted:\n${result.errors.slice(0, 5).join('\n')}`);
-        show('removed', 'Frugal Deck is uninstalled', lines.join('\n\n'));
+        const lines = [kept ? t('setup.remove.kept') : t('setup.remove.deleted')];
+        if (result.backup) lines.push(t('setup.backup-location', { path: result.backup }));
+        if (result.errors.length) lines.push(t('setup.remove.errors', { errors: result.errors.slice(0, 5).join('\n') }));
+        show('removed', t('setup.remove.done'), lines.join('\n\n'));
         $('subtitle').textContent = '';
       } catch (error) {
-        show('failed', 'The uninstall stopped', String(error));
+        show('failed', t('setup.error.uninstall'), String(error));
         $('subtitle').textContent = '';
       }
     };
@@ -273,6 +274,18 @@
     update();
   } else {
     const choices = [];
+    const accountName = (account) => account === 'Deck store' ? t('setup.clean.deck-store') : account;
+    const scopeName = (scope) => {
+      const key = `setup.clean.scope.${scope}`;
+      const label = t(key);
+      return label === key ? scope : label;
+    };
+    const statuses = {
+      "can't import": 'setup.clean.status.cant-import',
+      'in store': 'setup.clean.status.in-store',
+      'newer in account': 'setup.clean.status.newer-in-account',
+      'not in store': 'setup.clean.status.not-in-store',
+    };
     const fill = (id, items, cells, actions) => {
       const table = $(id);
       const body = table.tBodies[0];
@@ -282,8 +295,8 @@
         const row = body.insertRow();
         for (const value of cells(item)) row.insertCell().textContent = value;
         const select = document.createElement('select');
-        select.setAttribute('aria-label', `Action for ${item.kind} ${item.name}`);
-        for (const action of actions(item)) select.add(new Option(action, action));
+        select.setAttribute('aria-label', t('setup.clean.action-for', { kind: t(`setup.clean.kind.${item.kind}`), name: item.name }));
+        for (const action of actions(item)) select.add(new Option(t(`setup.clean.action.${action}`), action));
         select.value = item.action;
         row.insertCell().append(select);
         choices.push({ item, select });
@@ -297,16 +310,16 @@
       if (!Object.values(inventory).some((items) => items.length)) return false;
       choices.length = 0;
       fill('clean-plugins', [...inventory.plugins, ...inventory.mcp], (item) => [
-        item.name, item.kind,
-        item.places.map((place) => [place.account, place.scope, place.version].filter(Boolean).join(' / ')).join('\n'),
-        item.store_version ?? '—', item.status,
+        item.name, t(`setup.clean.kind.${item.kind}`),
+        item.places.map((place) => [accountName(place.account), scopeName(place.scope), place.version].filter(Boolean).join(' / ')).join('\n'),
+        item.store_version ?? '—', t(statuses[item.status]),
       ], (item) => item.kind === 'mcp' && item.places.some((place) => place.scope === 'desktop')
         && item.places.every((place) => place.scope === 'desktop' || place.account === 'Deck store')
         ? ['keep', 'import'] : ['import', 'keep', 'remove']);
-      fill('clean-accounts', inventory.accounts, (item) => [item.account], () => ['import', 'keep']);
-      fill('clean-copies', inventory.copies, (item) => [item.account, item.name], () => ['remove', 'keep']);
-      fill('clean-sessions', inventory.sessions, (item) => [item.account, item.count, bytes(item.bytes)], () => ['keep', 'remove']);
-      show('clean', 'Import and clean');
+      fill('clean-accounts', inventory.accounts, (item) => [accountName(item.account)], () => ['import', 'keep']);
+      fill('clean-copies', inventory.copies, (item) => [accountName(item.account), item.name], () => ['remove', 'keep']);
+      fill('clean-sessions', inventory.sessions, (item) => [accountName(item.account), item.count, bytes(item.bytes)], () => ['keep', 'remove']);
+      show('clean', t('setup.clean.title'));
       $('subtitle').textContent = '';
       return true;
     };
@@ -319,43 +332,73 @@
       if (!actions.length) return lines;
       try {
         const { zip, errors } = await invoke('consolidate', { actions });
-        if (zip) lines.push(`Backup: ${zip}`);
-        if (errors.length) lines.push(`Import and clean errors:\n${errors.join('\n')}`);
+        if (zip) lines.push(t('setup.backup-location', { path: zip }));
+        if (errors.length) lines.push(t('setup.clean.errors', { errors: errors.join('\n') }));
       } catch (error) {
-        lines.push(`Import and clean stopped:\n${error}`);
+        lines.push(t('setup.error.clean', { error }));
       }
       return lines;
     };
 
-    const verb = installed ? (installed.version === version ? 'Reinstall' : 'Update') : 'Install';
-    const versionLine = installed
-      ? `Version ${installed.version} is installed ${installed.mode === 'machine' ? 'for everyone' : 'for you'}. This is version ${version}.`
-      : `Version ${version}`;
-    const about = () => { show('about', `${verb} Frugal Deck`); $('subtitle').textContent = versionLine; };
-    const choose = () => { show('choose', `${verb} Frugal Deck`); $('subtitle').textContent = versionLine; };
-    $('install').textContent = verb;
+    const operation = installed ? (installed.version === version ? 'reinstall' : 'update') : 'install';
+    const title = () => t(`setup.${operation}.title`);
+    const versionLine = () => installed
+      ? t(installed.mode === 'machine' ? 'setup.version.machine' : 'setup.version.user', { installed: installed.version, version })
+      : t('setup.version', { version });
+    const choose = () => { show('choose', title()); $('subtitle').textContent = versionLine(); };
     // Data from an earlier install: the Deck reads it again on start, so nothing needs restoring.
     const count = (data?.deck.count ?? 0) + (data?.claude.count ?? 0);
     // A fresh Deck with sessions from Claude Code or Claude Desktop asks whether to list them; the count is in that question.
     const askExternal = data?.claude.count > 0 && !data.settings;
-    const found = [count && !askExternal ? sessions(count) : '', data?.groups ? 'your groups and workspaces' : '', data?.settings ? 'your settings' : ''].filter(Boolean);
-    if (found.length) {
-      $('found').hidden = false;
-      $('found').textContent = `Found ${found.join(', ').replace(/, ([^,]*)$/, ' and $1')}. Frugal Deck opens with them as they were.`;
-    }
-    if (askExternal) {
-      const n = data.claude.count;
-      $('external-field').hidden = false;
-      $('external-label').textContent = n === 1 ? 'Show my existing Claude Code or Claude Desktop session in Frugal Deck' : `Show my ${n} existing Claude Code and Claude Desktop sessions in Frugal Deck`;
-    }
+    const about = () => {
+      $('install').textContent = t(`setup.${operation}.action`);
+      $('retry').onclick = choose;
+      const found = [
+        count && !askExternal ? sessions(count) : '',
+        data?.groups ? t('setup.about.found-groups') : '',
+        data?.settings ? t('setup.about.found-settings') : '',
+      ].filter(Boolean);
+      if (found.length) {
+        let items = found[0];
+        if (found.length > 1) {
+          const last = found.pop();
+          const first = found.reduce((first, last) => t('setup.about.found-list-comma', { first, last }));
+          items = t('setup.about.found-list-and', { first, last });
+        }
+        $('found').hidden = false;
+        $('found').textContent = t('setup.about.found', { items });
+      }
+      if (askExternal) {
+        const count = data.claude.count;
+        $('external-field').hidden = false;
+        $('external-label').textContent = tp('setup.about.external', count);
+      }
+      show('about', title());
+      $('subtitle').textContent = versionLine();
+    };
     // The language is asked only once; after that it changes in Settings.
     if (data && !data.language) {
-      const tags = [...$('language').options].map((option) => option.value);
-      const system = navigator.language;
-      const base = system.split('-')[0];
-      $('language').value = tags.find((tag) => tag.toLowerCase() === system.toLowerCase())
-        ?? (base === 'pt' ? 'pt-BR' : base === 'zh' ? 'zh-CN' : tags.find((tag) => tag === base)) ?? 'en';
+      const language = $('language');
+      language.append(...languages.map((tag) => {
+        const name = new Intl.DisplayNames([tag], { type: 'language' }).of(tag);
+        return new Option(name[0].toLocaleUpperCase(tag) + name.slice(1), tag);
+      }));
+      language.value = currentLanguage();
       $('language-field').hidden = false;
+      language.onchange = async () => {
+        language.disabled = $('continue').disabled = true;
+        try {
+          await setLanguage(language.value);
+          about();
+        } catch (error) {
+          language.value = currentLanguage();
+          $('subtitle').textContent = '';
+          show('failed', t('setup.error.language-change'), String(error));
+          $('retry').onclick = about;
+        } finally {
+          language.disabled = $('continue').disabled = false;
+        }
+      };
     }
     // An update stays where the installed copy is.
     if (installed) {
@@ -378,28 +421,27 @@
     $('folder-change').onclick = async () => { picked = (await invoke('pick_folder')) ?? picked; folderUpdate(); };
     folderUpdate();
     $('continue').onclick = choose;
-    $('retry').onclick = choose;
     about();
 
     $('clean-back').onclick = choose;
 
     const install = async (actions = []) => {
       const open = $('open').checked;
-      show('installing', installed ? 'Updating Frugal Deck' : 'Installing Frugal Deck');
-      if (actions.length) $('subtitle').textContent = 'Backing up and applying your choices.';
+      show('installing', installed ? t('setup.update.progress') : t('setup.install.progress'));
+      if (actions.length) $('subtitle').textContent = t('setup.clean.backing-up');
       const cleanLines = await consolidate(actions);
-      $('subtitle').textContent = 'Windows may ask for administrator permission.';
+      $('subtitle').textContent = t('setup.install.permission');
       try {
         if (data && !data.language) await invoke('set_ui', { key: 'language', value: $('language').value });
         if (!$('external-field').hidden && !$('external').checked) await invoke('set_ui', { key: 'showExternal', value: 'false' });
         await invoke('install', { everyone: mode() === 'machine', open, folder: installed ? null : folderNow() });
-        show('done', 'Frugal Deck is installed', [open ? 'It opens in a moment.' : 'Find it in the Start menu.', ...cleanLines].join('\n\n'));
+        show('done', t('setup.install.done'), [open ? t('setup.install.opening') : t('setup.install.start-menu'), ...cleanLines].join('\n\n'));
         // The Deck is already starting, so the setup steps aside.
         if (open && !cleanLines.length) setTimeout(quit, 1500);
       } catch (error) {
-        show('failed', 'The installation stopped', [String(error), ...cleanLines].join('\n\n'));
+        show('failed', t('setup.error.install'), [String(error), ...cleanLines].join('\n\n'));
       }
-      $('subtitle').textContent = `Version ${version}`;
+      $('subtitle').textContent = t('setup.version', { version });
     };
     $('clean-skip').onclick = () => install();
     $('clean-apply').onclick = () => install(pickedActions());
@@ -411,7 +453,7 @@
       try {
         if (!await scan()) await install();
       } catch (error) {
-        show('failed', 'The inventory stopped', String(error));
+        show('failed', t('setup.error.inventory'), String(error));
         $('subtitle').textContent = '';
       } finally {
         button.disabled = false;

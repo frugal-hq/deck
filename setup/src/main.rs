@@ -14,7 +14,7 @@ use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::OnceLock;
 use std::time::{Duration, Instant};
-use tauri::{webview::Color, AppHandle, Emitter, WebviewUrl, WebviewWindowBuilder};
+use tauri::{webview::Color, AppHandle, Emitter, WebviewUrl, WebviewWindow, WebviewWindowBuilder};
 use tauri_plugin_dialog::DialogExt;
 
 const NSIS: &[u8] = include_bytes!(env!("DECK_NSIS"));
@@ -160,19 +160,31 @@ async fn info() -> Value {
     })
 }
 
+fn window_title(uninstalling: bool) -> String {
+    i18n::t(if uninstalling { "setup.remove.title" } else { "setup.title" }, &[])
+}
+
+#[tauri::command]
+fn set_language(window: WebviewWindow, language: String) -> Result<(), String> {
+    i18n::set_language(&language);
+    window.set_title(&window_title(UNINSTALL_FROM.get().is_some())).map_err(|error| error.to_string())
+}
+
 // The installer's choices go in ui.json, which the Deck reads into localStorage on its first start.
 #[tauri::command]
 fn set_ui(key: String, value: String) -> Result<(), String> {
     match key.as_str() {
         "language" if !value.is_empty() && value.len() <= 16 && value.chars().all(|c| c.is_ascii_alphanumeric() || c == '-') => {}
-        "language" => return Err("Unknown language.".into()),
+        "language" => return Err(i18n::t("setup.error.unknown-language", &[])),
         "showExternal" if value == "true" || value == "false" => {}
-        _ => return Err("Unknown setting.".into()),
+        _ => return Err(i18n::t("setup.error.unknown-setting", &[])),
     }
     let file = ui_file(&home()?);
     let mut ui = read_json(&file).filter(Value::is_object).unwrap_or_else(|| json!({}));
-    ui[key] = json!(value);
-    write_json(&file, &ui).map_err(|error| error.to_string())
+    ui[&key] = json!(value);
+    write_json(&file, &ui).map_err(|error| error.to_string())?;
+    if key == "language" { i18n::set_language(&value); }
+    Ok(())
 }
 
 // The folder picker; the chosen folder always ends in "Frugal Deck".
@@ -187,7 +199,7 @@ async fn pick_folder(app: AppHandle) -> Option<String> {
 // NSIS reads /D= to the end of the line, unquoted, so the path must be plain.
 fn valid_folder(folder: &str) -> Result<(), String> {
     if folder.len() > 240 || folder.contains('"') || folder.chars().any(char::is_control) || !Path::new(folder).is_absolute() {
-        return Err("That install folder cannot be used.".into());
+        return Err(i18n::t("setup.error.invalid-folder", &[]));
     }
     Ok(())
 }
@@ -207,8 +219,8 @@ async fn install(everyone: bool, open: bool, folder: Option<String>) -> Result<(
         let _ = std::fs::remove_file(&nsis);
         match result {
             Ok(0) => Ok(()),
-            Ok(code) => Err(format!("The installer stopped with code {code}.")),
-            Err(error) if error.code().0 == CANCELLED => Err("Windows administrator permission was not granted.".to_owned()),
+            Ok(code) => Err(i18n::t("setup.error.installer-exit", &[("code", &code)])),
+            Err(error) if error.code().0 == CANCELLED => Err(i18n::t("error.administrator-permission-not-granted", &[])),
             Err(error) => Err(error.message()),
         }
     })
@@ -271,14 +283,14 @@ async fn uninstall(app: AppHandle, deck: bool, claude: bool, groups: bool, setti
             let deck_exe = dir.join("frugal-deck.exe");
             match run(&dir.join("uninstall.exe"), "/S") {
                 Ok(_) => {}
-                Err(error) if error.code().0 == CANCELLED => return Err("Windows administrator permission was not granted, so nothing was removed.".into()),
-                Err(error) => return Err(format!("The program could not be removed, so no data was deleted: {}", error.message())),
+                Err(error) if error.code().0 == CANCELLED => return Err(i18n::t("setup.error.uninstall-permission-denied", &[])),
+                Err(error) => return Err(i18n::t("setup.error.program-removal", &[("error", &error.message())])),
             }
             // uninstall.exe hands over to a copy of itself and exits at once, so wait for the Deck to be gone.
             let start = Instant::now();
             while deck_exe.exists() {
                 if start.elapsed() > Duration::from_secs(120) {
-                    return Err("The program is still being removed, so no data was deleted. Run the uninstaller again later.".into());
+                    return Err(i18n::t("setup.error.program-removal-timeout", &[]));
                 }
                 std::thread::sleep(Duration::from_millis(250));
             }
@@ -298,7 +310,7 @@ async fn uninstall(app: AppHandle, deck: bool, claude: bool, groups: bool, setti
             let file = dir.join("settings.json");
             if let Some(mut config) = read_json(&file).filter(|c| c["cleanupPeriodDays"].as_i64() == Some(KEEP_DAYS)) {
                 config.as_object_mut().unwrap().remove("cleanupPeriodDays");
-                if let Err(error) = write_json(&file, &config) { errors.push(format!("{}: {error}", file.display())); }
+                if let Err(error) = write_json(&file, &config) { errors.push(path_error(&file, error)); }
             }
         }
         if deck && claude { remove(&home.join(".frugal-deck").join("archive"), &mut errors); }
@@ -353,7 +365,7 @@ fn main() {
         .plugin(tauri_plugin_dialog::init())
         .setup(move |app| {
             WebviewWindowBuilder::new(app, "setup", WebviewUrl::default())
-                .title(if uninstalling { "Uninstall Frugal Deck" } else { "Frugal Deck Setup" })
+                .title(window_title(uninstalling))
                 .inner_size(600.0, 560.0)
                 .resizable(false)
                 .maximizable(false)
@@ -364,7 +376,7 @@ fn main() {
                 .build()?;
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![info, consolidation::inventory, consolidation::consolidate, consolidation::restore, set_ui, pick_folder, install, uninstall_command, reveal, quit])
+        .invoke_handler(tauri::generate_handler![info, consolidation::inventory, consolidation::consolidate, consolidation::restore, set_language, set_ui, pick_folder, install, uninstall_command, reveal, quit])
         .run(tauri::generate_context!())
         .expect("Frugal Deck Setup failed to start");
 }
