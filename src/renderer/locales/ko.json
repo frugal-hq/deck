@@ -564,7 +564,6 @@
   "settings.chats.mouse.tip": "Claude Code의 메뉴와 질문을 키보드 대신 클릭할 수 있습니다",
   "settings.chats.mouse.warn": "예상대로 작동하지 않을 수 있습니다. 시작에 실패하면 기본 렌더러로 되돌리는 Claude Code의 대체 동작이 무시됩니다. 채팅이 시작되지 않거나, 깜박이거나, 화면이 잘못 그려지면 끄십시오.",
   "settings.chats.title": "채팅",
-  "settings.close.label": "설정 닫기",
   "settings.debug.clear.tip": "이 콘솔과 debug.log 비우기",
   "settings.debug.console.label": "디버그 로그",
   "settings.debug.copied": "복사됨",

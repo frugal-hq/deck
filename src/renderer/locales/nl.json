@@ -578,7 +578,6 @@
   "settings.chats.mouse.tip": "Hiermee klik je op menu's en vragen in Claude Code in plaats van het toetsenbord te gebruiken",
   "settings.chats.mouse.warn": "Werkt mogelijk niet zoals verwacht. Het negeert de terugval van Claude Code naar de klassieke renderer na mislukte starts. Schakel dit uit als chats niet starten, flikkeren of verkeerd worden weergegeven.",
   "settings.chats.title": "Chats",
-  "settings.close.label": "Instellingen sluiten",
   "settings.debug.clear.tip": "Deze console en debug.log leegmaken",
   "settings.debug.console.label": "Debuglogboek",
   "settings.debug.copied": "Gekopieerd",

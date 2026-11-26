@@ -578,7 +578,6 @@
   "settings.chats.mouse.tip": "Ti consente di usare il mouse nei menu e nelle domande di Claude Code al posto della tastiera",
   "settings.chats.mouse.warn": "Potrebbe non funzionare come previsto. Scavalca il meccanismo di Claude Code che ripristina il motore classico dopo avvii non riusciti. Disattiva questa opzione se le chat non si avviano, sfarfallano o si visualizzano male.",
   "settings.chats.title": "Chat",
-  "settings.close.label": "Chiudi impostazioni",
   "settings.debug.clear.tip": "Svuota questa console e debug.log",
   "settings.debug.console.label": "Registro di debug",
   "settings.debug.copied": "Copiato",

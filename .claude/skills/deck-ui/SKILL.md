@@ -41,7 +41,7 @@ Reuse before adding. A new class that does the job of one below is a bug.
 - **Inputs:** one text input style: height `--size-control`, padding-inline `--space-md`, `--color-paper-3` fill, `--radius-pill`. Textareas: same fill and padding, `--radius-card`. Compact settings inputs use `--size-control-sm`.
 - **Rows:** height `--size-row`, `--radius-pill`. Hover `--color-highlight`. Selected `--color-accent-soft` with `--color-ink`.
 - **Tabs and segmented controls:** selected = `--color-control` plus inset highlight, everywhere.
-- **Dialogs:** native `<dialog>` with `showModal()`. Width `--dialog-sm|md|lg|xl`, padding `--space-md`, `margin-block-start: 12vh` (Settings excepted), `--color-paper-2`, `--radius-card`, `--shadow-card`. Title `--text-md`/500. Actions bottom right: Cancel (`.btn`) then the primary. Escape and Cancel close it and focus returns to the opener.
+- **Dialogs:** native `<dialog>` with `showModal()`. Width `--dialog-sm|md|lg|xl`, padding `--space-md`, `margin-block-start: 12vh` (Settings-layout dialogs excepted), `--color-paper-2`, `--radius-card`, `--shadow-card`. Title `--text-md`/500. Actions bottom right: Cancel (`.btn`) then the primary. Escape and Cancel close it and focus returns to the opener.
 - **Floating (menus, tooltips, popovers):** `--color-control-2`, `--shadow-float`, no border.
 - **Banners:** `.notice` pattern for every warning or info strip: `--radius-card`, padding `--space-xs` / `--space-sm`, `--text-sm`.
 - **Code and logs:** `--font-outlier`, `--color-paper-3`, `--radius-card`, `--color-ink-2`.

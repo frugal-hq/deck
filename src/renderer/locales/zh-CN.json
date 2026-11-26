@@ -564,7 +564,6 @@
   "settings.chats.mouse.tip": "让你在 Claude Code 中点击菜单和问题，而非使用键盘",
   "settings.chats.mouse.warn": "可能无法按预期工作。它覆盖了 Claude Code 在失败启动后回退到经典渲染器的机制。如果聊天启动失败、闪烁或显示错误，请关闭。",
   "settings.chats.title": "聊天",
-  "settings.close.label": "关闭设置",
   "settings.debug.clear.tip": "清空此控制台和 debug.log",
   "settings.debug.console.label": "调试日志",
   "settings.debug.copied": "已复制",

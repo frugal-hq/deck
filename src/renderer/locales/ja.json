@@ -564,7 +564,6 @@
   "settings.chats.mouse.tip": "キーボードを使わずに、Claude Code のメニューや質問をクリックできるようにします",
   "settings.chats.mouse.warn": "期待どおりに動作しない場合があります。起動に失敗した後に従来のレンダラーへフォールバックする Claude Code の動作を上書きします。チャットの起動に失敗する、ちらつく、正しく描画されない場合はオフにしてください。",
   "settings.chats.title": "チャット",
-  "settings.close.label": "設定を閉じる",
   "settings.debug.clear.tip": "このコンソールと debug.log を空にします",
   "settings.debug.console.label": "デバッグログ",
   "settings.debug.copied": "コピーしました",

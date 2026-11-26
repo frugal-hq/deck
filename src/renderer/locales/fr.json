@@ -578,7 +578,6 @@
   "settings.chats.mouse.tip": "Permet de cliquer dans les menus et questions de Claude Code au lieu d'utiliser le clavier",
   "settings.chats.mouse.warn": "Peut ne pas fonctionner comme prévu. Outrepasse le retour de Claude Code au moteur classique après des démarrages échoués. Désactivez si les chats échouent à démarrer, scintillent ou s'affichent mal.",
   "settings.chats.title": "Chats",
-  "settings.close.label": "Fermer les paramètres",
   "settings.debug.clear.tip": "Vider cette console et debug.log",
   "settings.debug.console.label": "Journal de débogage",
   "settings.debug.copied": "Copié",

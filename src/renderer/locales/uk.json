@@ -606,7 +606,6 @@
   "settings.chats.mouse.tip": "Дає змогу натискати пункти меню й варіанти відповідей у Claude Code замість використання клавіатури",
   "settings.chats.mouse.warn": "Може працювати не так, як очікується. Перешкоджає поверненню Claude Code до класичного режиму після невдалих запусків. Якщо чати не відкриваються, мерехтять або відображаються неправильно, вимкніть цей параметр.",
   "settings.chats.title": "Чати",
-  "settings.close.label": "Закрити налаштування",
   "settings.debug.clear.tip": "Очистити цю консоль і debug.log",
   "settings.debug.console.label": "Журнал налагодження",
   "settings.debug.copied": "Скопійовано",

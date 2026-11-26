@@ -542,7 +542,7 @@
         </div>
       </section>
     </div>
-    <button class="btn btn--icon settings__close" type="submit" aria-label="Close settings" data-tip="Close settings" data-i18n-aria-label="settings.close.label" data-i18n-tip="settings.close.label"><svg class="icon" aria-hidden="true"><use href="#i-x"/></svg></button>
+    <button class="btn btn--icon settings__close" type="submit" aria-label="Close" data-tip="Close" data-i18n-aria-label="common.close" data-i18n-tip="common.close"><svg class="icon" aria-hidden="true"><use href="#i-x"/></svg></button>
   </form>
 </dialog>
 <dialog id="mcp-dialog" class="organize settings" closedby="any" aria-labelledby="mcp-title">
@@ -610,9 +610,9 @@
       <div class="settings__footer">
         <p id="mcp-error" class="settings__message" role="status"></p>
         <button id="mcp-clean" class="btn" type="button" data-tip="Find plugins and MCP servers in every account, bring them into the Deck store and remove old copies, with a backup" data-i18n-tip="common.import-clean.tip" data-i18n="common.import-clean.label">Import and clean…</button>
-        <button id="mcp-close" class="btn" type="button" data-i18n="common.close">Close</button>
       </div>
     </div>
+    <button class="btn btn--icon settings__close" type="button" id="mcp-close" aria-label="Close" data-tip="Close" data-i18n-aria-label="common.close" data-i18n-tip="common.close"><svg class="icon" aria-hidden="true"><use href="#i-x"/></svg></button>
   </div>
 </dialog>
 <dialog id="mcp-access-dialog" class="organize access" closedby="any" aria-labelledby="mcp-access-title">
@@ -682,9 +682,9 @@
       <div class="settings__footer">
         <p id="plugins-error" class="settings__message" role="status"></p>
         <button id="plugins-clean" class="btn" type="button" data-tip="Find plugins and MCP servers in every account, bring them into the Deck store and remove old copies, with a backup" data-i18n-tip="common.import-clean.tip" data-i18n="common.import-clean.label">Import and clean…</button>
-        <button id="plugins-close" class="btn" type="button" data-i18n="common.close">Close</button>
       </div>
     </div>
+    <button class="btn btn--icon settings__close" type="button" id="plugins-close" aria-label="Close" data-tip="Close" data-i18n-aria-label="common.close" data-i18n-tip="common.close"><svg class="icon" aria-hidden="true"><use href="#i-x"/></svg></button>
   </div>
 </dialog>
 <dialog id="clean-dialog" class="organize settings" closedby="any" aria-labelledby="clean-title">
@@ -695,6 +695,7 @@
     <div class="settings__pane">
       <div class="settings__body">
         <section class="settings__section">
+          <h3 class="settings__title" data-i18n="clean.title">Import and clean</h3>
           <p class="settings__hint" data-i18n="clean.hint">Frugal Deck keeps one copy of each plugin and MCP server and shares it with every Claude account. Pick what to import, keep or remove. Everything changed is backed up first, except old plugin copies: Claude Code downloads them again if needed. Chats started or restarted afterward pick up the changes.</p>
           <div id="clean-busy" class="clean__busy" hidden>
             <p id="clean-step" class="settings__hint"></p>
@@ -737,6 +738,7 @@
         <button id="clean-apply" class="btn btn--primary" type="button" data-i18n="common.apply">Apply</button>
       </div>
     </div>
+    <button class="btn btn--icon settings__close" type="button" id="clean-close" aria-label="Close" data-tip="Close" data-i18n-aria-label="common.close" data-i18n-tip="common.close"><svg class="icon" aria-hidden="true"><use href="#i-x"/></svg></button>
   </div>
 </dialog>
 <dialog id="mcp-login" class="organize mcp-login" closedby="none" aria-labelledby="mcp-login-title">

@@ -606,7 +606,6 @@
   "settings.chats.mouse.tip": "Позволяет щёлкать по меню и вопросам в Claude Code вместо использования клавиатуры",
   "settings.chats.mouse.warn": "Может работать не так, как ожидается. Эта настройка отменяет возврат Claude Code к классическому рендереру после неудачных запусков. Отключите её, если чаты не запускаются, мерцают или отображаются неправильно.",
   "settings.chats.title": "Чаты",
-  "settings.close.label": "Закрыть настройки",
   "settings.debug.clear.tip": "Очистить эту консоль и debug.log",
   "settings.debug.console.label": "Журнал отладки",
   "settings.debug.copied": "Скопировано",

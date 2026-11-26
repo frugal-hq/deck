@@ -578,7 +578,6 @@
   "settings.chats.mouse.tip": "Permite clicar em menus e perguntas no Claude Code em vez de usar o teclado",
   "settings.chats.mouse.warn": "Pode não funcionar como esperado. Anula o fallback do Claude Code ao renderizador clássico após inícios com falha. Desative se chats não iniciarem, piscarem ou desenharem errado.",
   "settings.chats.title": "Chats",
-  "settings.close.label": "Fechar configurações",
   "settings.debug.clear.tip": "Esvaziar este console e o debug.log",
   "settings.debug.console.label": "Log de depuração",
   "settings.debug.copied": "Copiado",

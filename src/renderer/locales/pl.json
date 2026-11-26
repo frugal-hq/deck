@@ -606,7 +606,6 @@
   "settings.chats.mouse.tip": "Pozwala używać myszy w menu i przy pytaniach w Claude Code zamiast klawiatury",
   "settings.chats.mouse.warn": "Może działać nieprawidłowo. Zastępuje mechanizm powrotu do klasycznego trybu renderowania po nieudanych próbach uruchomienia Claude Code. Wyłącz tę opcję, jeśli czaty się nie uruchamiają, migoczą lub wyświetlają się nieprawidłowo.",
   "settings.chats.title": "Czaty",
-  "settings.close.label": "Zamknij ustawienia",
   "settings.debug.clear.tip": "Wyczyść tę konsolę i plik debug.log",
   "settings.debug.console.label": "Dziennik diagnostyczny",
   "settings.debug.copied": "Skopiowano",

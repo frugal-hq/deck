@@ -578,7 +578,6 @@
   "settings.chats.mouse.tip": "Klavye yerine Claude Code'da menü ve soruları tıklamanızı sağlar",
   "settings.chats.mouse.warn": "Beklendiği gibi çalışmayabilir. Başarısız başlangıçlardan sonra klasik oluşturucuya geri dönüş güvencesini geçersiz kılar. Sohbetler başlamazsa, titrerse veya yanlış çizilirse kapatın.",
   "settings.chats.title": "Sohbetler",
-  "settings.close.label": "Ayarları kapat",
   "settings.debug.clear.tip": "Bu konsolu ve debug.log'u boşalt",
   "settings.debug.console.label": "Hata ayıklama günlüğü",
   "settings.debug.copied": "Kopyalandı",

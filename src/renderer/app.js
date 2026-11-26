@@ -943,7 +943,9 @@ function whyFailed(task) {
 }
 
 function taskRow(task) {
-  const row = node('div', 'row');
+  // A button only so the details tooltip is reachable by keyboard; it has no click action.
+  const row = node('button', 'row row--interactive');
+  row.type = 'button';
   const main = node('div', 'row__main');
   const controls = node('div', 'row__controls');
   const title = task.check ? commandTitle(task.check) : task.description || task.name;
@@ -4385,6 +4387,7 @@ for (const [button, dialog] of [['plugins-clean', 'plugins-dialog'], ['mcp-clean
   $(button).onclick = () => { $(dialog).close(); openCleanDialog(); };
 }
 $('clean-cancel').onclick = () => $('clean-dialog').close();
+for (const id of ['mcp', 'plugins', 'clean']) $(id + '-close').onclick = () => $(id + '-dialog').close();
 $('clean-recommended').onclick = () => { for (const { item, select } of cleanChoices) select.value = item.action; };
 $('clean-keep').onclick = () => { for (const { select } of cleanChoices) select.value = 'keep'; };
 $('clean-apply').onclick = async () => {
@@ -4464,7 +4467,6 @@ $('plugins-install').onclick = async () => {
 };
 
 for (const prefix of ['mcp', 'plugins']) {
-  $(prefix + '-close').onclick = () => $(prefix + '-dialog').close();
   $(prefix + '-forget-picks').onclick = async () => {
     const button = $(prefix + '-forget-picks');
     button.disabled = true;
@@ -4791,7 +4793,8 @@ function updateRow(text, action, tip, run, detail, primary = false) {
   const controls = node('span', 'row__controls');
   label.append(node('span', 'row__name', text));
   if (detail) {
-    const line = node('span', 'row__meta', detail);
+    // A source path or repo stays on one line, full in the tooltip; an error wraps.
+    const line = node('span', run ? 'row__meta row__meta--path' : 'row__meta', detail);
     line.dataset.tip = detail;
     label.append(line);
   }
