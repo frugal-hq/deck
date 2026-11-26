@@ -3505,6 +3505,7 @@ for (const dialog of document.querySelectorAll('dialog.settings')) {
 function showSettingsSection(name) {
   name = showSection($('settings-dialog'), name);
   if (name === 'debug') debugConsole.scrollTop = debugConsole.scrollHeight;
+  if (name === 'updates' && !updatesBusy) loadUpdates();
   localStorage.setItem('settingsSection', name);
 }
 
@@ -4766,6 +4767,7 @@ $('workspace-undo').onclick = () => {
 const startInSessions = async () => startChat(await deck.defaultFolder());
 const startInPicked = async () => startChat(await deck.pickFolder());
 $('new').onclick = startInSessions;
+$('update-badge').onclick = () => openSettings('updates');
 $('start').onclick = startInSessions;
 $('pick').onclick = startInPicked;
 // Deck-wide actions; the ones for the open chat sit in the readout.
@@ -4778,42 +4780,8 @@ $('app-menu').onclick = () => {
     { label: t('settings.title'), run: () => openSettings(), icon: 'settings' },
     { label: t('mcp.title'), run: () => openMcpDialog({ global: true }), icon: 'plug' },
     { label: t('plugins.title'), run: openPluginsDialog, icon: 'puzzle' },
-    { label: t('dialog.update.title'), run: openUpdates, icon: 'update' },
   ], $('app-menu'));
 };
-// Installing closes the Deck, its chats with it, and the installer opens it again.
-async function installUpdate(source, button) {
-  for (const other of $('update-dialog').querySelectorAll('button')) other.disabled = true;
-  button?.setAttribute('aria-busy', 'true');
-  $('update-status').textContent = t('update.installing');
-  try {
-    await deck.installUpdate(source);
-  } catch (error) {
-    $('update-status').textContent = t('update.install-error', { error });
-    for (const other of $('update-dialog').querySelectorAll('button')) other.disabled = false;
-    button?.removeAttribute('aria-busy');
-  }
-}
-function updateRow(text, action, tip, run, detail, primary = false) {
-  const row = node('div', 'row');
-  const label = node('span', 'row__main');
-  const controls = node('span', 'row__controls');
-  label.append(node('span', 'row__name', text));
-  if (detail) {
-    // A source path or repo stays on one line, full in the tooltip; an error wraps.
-    const line = node('span', run ? 'row__meta row__meta--path' : 'row__meta', detail);
-    line.dataset.tip = detail;
-    label.append(line);
-  }
-  const button = document.createElement('button');
-  Object.assign(button, { type: 'button', className: primary && run ? 'btn btn--primary' : 'btn', textContent: action });
-  button.dataset.tip = tip;
-  button.onclick = () => run(button);
-  button.disabled = !run;
-  controls.append(button);
-  row.append(label, controls);
-  return row;
-}
 let tasksLoad = 0;
 // Every delegate job, from any chat: how many each account took today and in all, newest first.
 async function openTasks() {
@@ -4867,123 +4835,218 @@ async function openTasks() {
   $('tasks-list').replaceChildren(...rows);
 }
 $('tasks-retry').onclick = openTasks;
-// Each one updates from its own source. The Deck: GitHub releases, or the installers built in this exe's build folder
-// (only on the computer that built it). frugal: GitHub or a folder, as Claude Code records it. With nothing newer, the button is off.
-async function openUpdates() {
-  $('update-list').replaceChildren();
-  $('update-status').textContent = t('update.checking');
-  if (!$('update-dialog').open) $('update-dialog').showModal();
-  let found;
+let updateCheck;
+let updatesBusy = false;
+function checkUpdates() {
+  return updateCheck ??= deck.checkUpdates().then((found) => {
+    $('update-badge').hidden = !(found?.local || found?.remote || found?.frugalLatest?.newer);
+    return found;
+  }, (error) => {
+    $('update-badge').hidden = true;
+    throw error;
+  }).finally(() => { updateCheck = null; });
+}
+function pollUpdates() {
+  checkUpdates().catch(() => {});
+}
+
+function lockUpdates(button, locked) {
+  updatesBusy = locked;
+  for (const control of $('settings-updates').querySelectorAll('button')) control.disabled = locked;
+  if (locked) button.setAttribute('aria-busy', 'true');
+  else button.removeAttribute('aria-busy');
+}
+
+// Installing closes the Deck, its chats with it, and the installer opens it again.
+async function installUpdate(source, button) {
+  lockUpdates(button, true);
+  const status = $('update-status');
+  status.textContent = '';
   try {
-    found = await deck.checkUpdates();
-  } catch (failure) {
-    $('update-status').textContent = t('update.check-error', { error: failure?.message ?? failure });
-    const retry = node('button', 'btn', t('common.retry'));
-    retry.type = 'button';
-    retry.onclick = openUpdates;
-    const actions = node('div', 'organize__actions');
-    actions.append(retry);
-    $('update-list').replaceChildren(actions);
+    const file = source ?? await deck.pickInstaller();
+    if (!file) return;
+    status.textContent = t('update.installing');
+    await deck.installUpdate(file);
+  } catch (error) {
+    status.textContent = t('update.install-error', { error });
+  } finally {
+    lockUpdates(button, false);
+  }
+}
+
+function updateRow(text, action, tip, run, detail, primary = false) {
+  const row = node('div', 'row');
+  const label = node('div', 'row__main');
+  if (text) label.append(node('span', null, text));
+  if (detail) {
+    const line = node('p', 'settings__hint row__meta row__meta--path', detail);
+    line.dataset.tip = detail;
+    label.append(line);
+  }
+  row.append(label);
+  if (run) {
+    const controls = node('div', 'row__controls');
+    const button = node('button', primary ? 'btn btn--primary' : 'btn', action);
+    button.type = 'button';
+    button.disabled = updatesBusy;
+    button.dataset.tip = tip;
+    button.onclick = () => run(button);
+    controls.append(button);
+    row.append(controls);
+  }
+  return row;
+}
+
+function updateRetry(text, error) {
+  const state = node('div', 'empty');
+  const message = node('p', 'settings__hint row__meta', text);
+  message.setAttribute('role', 'status');
+  state.append(message);
+  if (error) state.append(node('p', 'settings__hint row__meta', error));
+  const retry = node('button', 'btn', t('common.retry'));
+  retry.type = 'button';
+  retry.disabled = updatesBusy;
+  retry.onclick = loadUpdates;
+  state.append(retry);
+  return state;
+}
+
+// The Deck checks GitHub releases and this exe's build folder. Frugal checks the source Claude Code records.
+async function loadUpdates() {
+  const deckList = $('update-deck-list');
+  const pluginList = $('update-plugin-list');
+  const status = $('update-status');
+  deckList.replaceChildren();
+  pluginList.replaceChildren();
+  status.textContent = t('update.checking');
+  let found, failure;
+  try {
+    // An update can finish while a background check still holds the previous version.
+    if (updatesBusy) await updateCheck?.catch(() => {});
+    found = await checkUpdates();
+  } catch (error) {
+    failure = error?.message ?? error;
+  }
+  status.textContent = '';
+  if (!found?.version) {
+    deckList.append(updateRetry(t('update.check-error'), failure));
     return;
   }
   const { version, local, remote, error, buildFolder, frugal, frugalSource, frugalLatest } = found;
   const install = t('update.install-tip');
-  const rows = [node('h3', 'dialog__section', t('update.deck-version', { version }))];
+  const versionHint = (version) => node('p', 'settings__hint', t('update.version', { version }));
+  const rows = [versionHint(version)];
   const fromBuilds = Boolean(buildFolder) && localStorage.getItem('deckUpdateSource') !== 'github';
-  // Only an install that is really available is the primary action, and only one per dialog: the Deck's first.
+  // The Deck gets the primary action when both have an update to install.
   const deckNewer = fromBuilds ? Boolean(local) : Boolean(remote?.url);
-  if (fromBuilds) rows.push(local ? updateRow(t('update.local.build', { date: new Date(local.built).toLocaleString() }), t('common.install'), install, (button) => installUpdate(local.path, button), undefined, true) : updateRow(t('update.local.no-build'), t('common.install'), t('update.nothing-new')));
-  else if (remote?.url) rows.push(updateRow(t('update.github.version', { version: remote.version }), t('common.install'), install, (button) => installUpdate(remote.url, button), undefined, true));
+  if (fromBuilds) rows.push(local ? updateRow(t('update.local.build', { date: new Date(local.built).toLocaleString() }), t('common.install'), install, (button) => installUpdate(local.path, button), undefined, true) : updateRow(t('update.local.no-build')));
+  else if (remote?.url) rows.push(updateRow(t('update.available', { version: remote.version }), t('common.install'), install, (button) => installUpdate(remote.url, button), undefined, true));
   else if (remote) rows.push(updateRow(t('update.github.no-installer', { version: remote.version }), t('common.open'), t('update.github.open-tip'), () => deck.openLink(remote.page)));
-  else rows.push(updateRow(error ? t('update.github.check-error') : t('update.current'), t('common.install'), error ? '' : t('update.nothing-new'), null, error));
+  else rows.push(error != null ? updateRetry(t('update.github.check-error'), error) : updateRow(t('update.current')));
   if (buildFolder) {
     const use = (source) => () => {
       localStorage.setItem('deckUpdateSource', source);
-      openUpdates();
+      loadUpdates();
     };
     rows.push(fromBuilds
       ? updateRow(t('update.source.local-builds'), t('update.source.use-github'), t('update.source.deck-github-tip'), use('github'), buildFolder)
       : updateRow(t('update.source.github'), t('update.source.use-builds'), t('update.source.builds-tip'), use('local'), 'frugal-hq/deck'));
-  }
-  rows.push(updateRow(t('update.file.label'), t('update.file.choose'), t('update.file.tip'), pickInstaller));
+  } else rows.push(updateRow(t('update.source.github'), undefined, undefined, undefined, 'frugal-hq/deck'));
+  rows.push(updateRow('', t('update.file.label'), t('update.file.tip'), (button) => installUpdate(null, button)));
+  deckList.replaceChildren(...rows);
+
+  const pluginRows = [];
   if (frugal) {
-    rows.push(node('h3', 'dialog__section', t('update.plugin.version', { version: frugal })));
+    pluginRows.push(versionHint(frugal));
     const { version: latest, newer, dirty } = frugalLatest ?? {};
-    const state = dirty ? t('update.plugin.dirty') : newer ? t('update.plugin.available', { version: latest }) : latest ? t('update.current') : t('update.plugin.unknown-version');
-    const tip = dirty ? t('update.plugin.dirty-tip') : newer || !latest ? t('update.plugin.update-tip') : t('update.nothing-new');
-    rows.push(updateRow(state, t('update.plugin.update'), tip, !dirty && (newer || !latest) ? updateFrugal : null, undefined, newer && !deckNewer));
-    const fromFolder = frugalSource?.source === 'directory';
-    const [kind, from] = fromFolder ? [t('update.source.folder'), frugalSource.path] : frugalSource?.repo ? ['GitHub', frugalSource.repo] : [t('update.source.other-kind'), frugalSource?.url ?? t('update.source.unknown')];
-    const sourceTip = fromFolder ? t('update.source.plugin-github-tip') : t('update.source.folder-tip');
-    rows.push(updateRow(t('update.source.label', { kind }), fromFolder ? t('update.source.use-github') : t('update.source.use-folder'), sourceTip, (button) => setFrugalSource(fromFolder, button), from));
+    if (dirty) pluginRows.push(updateRow(t('update.plugin.dirty'), undefined, undefined, undefined, t('update.plugin.dirty-tip')));
+    else if (newer) pluginRows.push(updateRow(t('update.available', { version: latest }), t('update.plugin.update'), t('update.plugin.update-tip'), updateFrugal, undefined, !deckNewer));
+    else pluginRows.push(latest ? updateRow(t('update.current')) : updateRetry(t('update.plugin.unknown-version')));
   } else {
-    rows.push(updateRow(t('update.plugin.label'), t('common.install'), t('update.plugin.install-tip'), (button) => setFrugalSource(true, button)));
+    pluginRows.push(updateRow(t('update.plugin.not-installed'), t('common.install'), t('update.plugin.install-tip'), (button) => setFrugalSource(true, button)));
   }
-  $('update-list').replaceChildren(...rows);
-  $('update-status').textContent = '';
+  const fromFolder = frugalSource?.source === 'directory';
+  const source = fromFolder ? frugalSource.path : frugalSource?.repo ?? frugalSource?.url;
+  const kind = fromFolder ? t('update.source.folder') : frugalSource?.repo ? 'GitHub' : source ? t('update.source.other-kind') : t('update.source.unknown');
+  const sourceTip = fromFolder ? t('update.source.plugin-github-tip') : t('update.source.folder-tip');
+  pluginRows.push(updateRow(t('update.source.label', { kind }), fromFolder ? t('update.source.use-github') : t('update.source.use-folder'), sourceTip, (button) => setFrugalSource(fromFolder, button), source));
+  pluginList.replaceChildren(...pluginRows);
 }
+
 async function setFrugalSource(github, button) {
-  button.disabled = true;
-  $('update-status').textContent = t('update.source.changing');
+  lockUpdates(button, true);
+  const status = $('update-plugin-status');
+  status.textContent = t('update.source.changing');
   try {
     const source = await deck.setFrugalSource(github);
-    if (source) return frugalChanged(t('update.source.changed', { source }));
-    $('update-status').textContent = '';
+    if (source) await frugalChanged(t('update.source.changed', { source }));
+    else status.textContent = '';
   } catch (error) {
-    $('update-status').textContent = t('update.source.error', { error });
+    status.textContent = t('update.source.error', { error });
+  } finally {
+    lockUpdates(button, false);
   }
-  button.disabled = false;
 }
+
 // New chats load the new frugal; open ones keep the copy they started with until they restart.
 async function frugalChanged(text) {
-  await openUpdates();
+  await loadUpdates();
   const open = restartable();
-  $('update-status').textContent = open.length ? t('update.plugin.load-on-restart', { text }) : t('update.plugin.load-on-start', { text });
-  if (open.length) $('update-list').append(updateRow(tp('update.restart.previous', open.length), t('update.restart.action'), t('update.restart.tip'), restartChats));
+  $('update-plugin-status').textContent = open.length ? t('update.plugin.load-on-restart', { text }) : t('update.plugin.load-on-start', { text });
+  const restart = $('update-plugin-restart');
+  restart.replaceChildren();
+  if (open.length) restart.append(updateRow(tp('update.restart.previous', open.length), t('update.restart.action'), t('update.restart.tip'), restartChats));
 }
 async function restartChats(button) {
-  const open = restartable();
-  const busy = await busyChats(open);
-  let restarting = open;
-  if (busy.length) {
-    const choice = await askBusy(busy, busy.length < open.length, {
-      title: t('update.restart.title'),
-      message: t('update.restart.message'),
-      cancel: t('update.restart.cancel-tip'),
-      idle: [t('update.restart.idle'), t('update.restart.idle-tip')],
-      all: [t('update.restart.all'), t('update.restart.all-tip')],
-    });
-    if (choice !== 'all' && choice !== 'idle') return;
-    if (choice === 'idle') {
-      restarting = open.filter((chat) => !busy.includes(chat));
-      const labels = busy.map((chat) => chat.name).join(', ');
-      deck.activityAdd('states', `Busy chats kept the previous frugal: ${labels}`);
+  lockUpdates(button, true);
+  try {
+    const open = restartable();
+    const busy = await busyChats(open);
+    let restarting = open;
+    if (busy.length) {
+      const choice = await askBusy(busy, busy.length < open.length, {
+        title: t('update.restart.title'),
+        message: t('update.restart.message'),
+        cancel: t('update.restart.cancel-tip'),
+        idle: [t('update.restart.idle'), t('update.restart.idle-tip')],
+        all: [t('update.restart.all'), t('update.restart.all-tip')],
+      });
+      if (choice !== 'all' && choice !== 'idle') return;
+      if (choice === 'idle') {
+        restarting = open.filter((chat) => !busy.includes(chat));
+        const labels = busy.map((chat) => chat.name).join(', ');
+        deck.activityAdd('states', `Busy chats kept the previous frugal: ${labels}`);
+      }
     }
+    for (const chat of restarting) await switchChat(chat, { id: chat.account }, true);
+    $('update-plugin-status').textContent = restarting.length < open.length
+      ? tp('update.restart.done-idle', restarting.length)
+      : tp('update.restart.done', restarting.length);
+    $('update-plugin-restart').replaceChildren();
+  } finally {
+    lockUpdates(button, false);
   }
-  button.disabled = true;
-  for (const chat of restarting) await switchChat(chat, { id: chat.account }, true);
-  $('update-status').textContent = restarting.length < open.length
-    ? tp('update.restart.done-idle', restarting.length)
-    : tp('update.restart.done', restarting.length);
-  button.closest('.row')?.remove();
 }
 async function updateFrugal(button) {
-  button.disabled = true;
-  $('update-status').textContent = t('update.plugin.updating');
+  lockUpdates(button, true);
+  const status = $('update-plugin-status');
+  status.textContent = t('update.plugin.updating');
   try {
     const result = await deck.updateFrugal();
     const message = t('update.plugin.result', { result });
-    if (/ updated from /.test(result)) return frugalChanged(message);
-    $('update-status').textContent = message;
+    if (/ updated from /.test(result)) await frugalChanged(message);
+    else {
+      await loadUpdates();
+      status.textContent = message;
+    }
   } catch (error) {
-    $('update-status').textContent = t('update.plugin.error', { error });
+    status.textContent = t('update.plugin.error', { error });
+  } finally {
+    lockUpdates(button, false);
   }
-  button.disabled = false;
 }
-async function pickInstaller(button) {
-  const file = await deck.pickInstaller();
-  if (file) installUpdate(file, button);
-}
+pollUpdates();
+setInterval(pollUpdates, 6 * 60 * 60 * 1000);
 render();
 for (const button of document.querySelectorAll('[data-window-action]')) {
   button.onclick = () => deck.windowAction(button.dataset.windowAction);

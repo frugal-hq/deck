@@ -54,6 +54,7 @@
   <nav id="tabs" class="tabs" data-tauri-drag-region aria-label="Open chats" data-i18n-aria-label="bar.tabs.label"></nav>
   <div class="bar__actions">
     <button id="new" class="btn btn--bar btn--icon" type="button" aria-label="New chat" data-tip="Start a new chat in the default folder" data-i18n-aria-label="bar.new.label" data-i18n-tip="bar.new.tip"><svg class="icon" aria-hidden="true"><use href="#i-plus"/></svg></button>
+    <button id="update-badge" class="btn btn--bar btn--icon" type="button" aria-label="Update available" data-tip="Update available" data-i18n-aria-label="bar.update.label" data-i18n-tip="bar.update.label" hidden><svg class="icon" aria-hidden="true"><use href="#i-update"/></svg></button>
     <button id="app-menu" class="btn btn--bar btn--icon" type="button" aria-label="Menu" aria-haspopup="menu" data-tip="Accounts, settings and a chat in another folder" data-i18n-aria-label="bar.menu.label" data-i18n-tip="bar.menu.tip"><svg class="icon" aria-hidden="true"><use href="#i-menu"/></svg></button>
   </div>
   <div class="window-controls" role="group" aria-label="Window" data-i18n-aria-label="bar.window.label">
@@ -327,16 +328,6 @@
     </div>
   </form>
 </dialog>
-<dialog id="update-dialog" class="organize" closedby="any" aria-labelledby="update-title">
-  <form method="dialog">
-    <h2 id="update-title" class="dialog__title" data-i18n="dialog.update.title">Updates</h2>
-    <p id="update-status" class="organize__text" role="status"></p>
-    <div id="update-list" class="update__list"></div>
-    <div class="organize__actions">
-      <button class="btn" type="submit" data-tip="Close updates" data-i18n-tip="dialog.update.close.tip" data-i18n="common.close">Close</button>
-    </div>
-  </form>
-</dialog>
 <dialog id="settings-dialog" class="organize settings" closedby="any" aria-labelledby="settings-title">
   <form method="dialog">
     <nav class="settings__nav" aria-label="Settings sections" data-i18n-aria-label="settings.nav.label">
@@ -350,6 +341,7 @@
       <button class="settings__tab" type="button" data-section="voice" data-i18n="settings.voice.title"><svg class="icon" aria-hidden="true"><use href="#i-mic"/></svg>Voice</button>
       <button class="settings__tab" type="button" data-section="privacy" data-i18n="settings.privacy.title"><svg class="icon" aria-hidden="true"><use href="#i-lock"/></svg>Privacy</button>
       <button class="settings__tab" type="button" data-section="activity" data-i18n="settings.activity.title"><svg class="icon" aria-hidden="true"><use href="#i-tasks"/></svg>Activity</button>
+      <button class="settings__tab" type="button" data-section="updates" data-i18n="settings.updates.title"><svg class="icon" aria-hidden="true"><use href="#i-update"/></svg>Updates</button>
       <button class="settings__tab" type="button" data-section="debug" data-i18n="settings.debug.title"><svg class="icon" aria-hidden="true"><use href="#i-bug"/></svg>Debug</button>
     </nav>
     <div class="settings__body">
@@ -526,6 +518,19 @@
             <button id="activity-retry" class="btn" type="button" hidden data-i18n="common.retry">Retry</button>
           </div>
           <pre id="activity-log" class="debug__console" role="log" tabindex="0" aria-label="Activity" hidden data-i18n-aria-label="settings.activity.title"></pre>
+        </div>
+      </section>
+      <section id="settings-updates" class="settings__section" data-section="updates" hidden>
+        <h3 class="settings__title" data-i18n="update.deck.label">Frugal Deck</h3>
+        <div class="settings__row">
+          <div id="update-deck-list" class="update__list"></div>
+          <p id="update-status" class="settings__hint row__meta" role="status"></p>
+        </div>
+        <h3 class="settings__title" data-i18n="update.plugin.label">Frugal plugin</h3>
+        <div class="settings__row">
+          <div id="update-plugin-list" class="update__list"></div>
+          <div id="update-plugin-restart" class="update__list"></div>
+          <p id="update-plugin-status" class="settings__hint row__meta" role="status"></p>
         </div>
       </section>
       <section class="settings__section" data-section="debug" hidden>
