@@ -3650,8 +3650,9 @@ $('settings-bypass').onchange = async (event) => {
 // A folder ({ folder }), or a sidebar group or workspace ({ group | workspace, folder }) whose servers go off on top of each chat's folder.
 // Only connected servers and the ones turned off are listed; the rest wait in the Add menu.
 let mcpScope = null;
-let mcpTouched = false;
 let mcpShown = null;
+// Saves queue on one promise, so quick toggles land in order.
+let mcpSaving = Promise.resolve();
 // `claude mcp list` health-checks every server, so a list stays cached and shows at once; a fresh one replaces it while untouched.
 const mcpCache = new Map();
 const mcpKey = (scope) => JSON.stringify([scope.global, scope.folder, scope.group, scope.workspace]);
@@ -3742,7 +3743,7 @@ function mcpRow(row) {
 
 const MCP_KINDS = { claude: 'Claude', codex: 'Codex', grok: 'Grok', opencode: 'OpenCode' };
 const MCP_MODES = { checked: t('mcp.access.label'), auto: t('mcp.access.auto.label'), delegates: t('mcp.access.delegates.label') };
-// Per server: the accounts whose chats load it, its chat mode and the delegate kinds that may use it. The Access dialog edits it; Save writes it.
+// Per server: the accounts whose chats load it, its chat mode and the delegate kinds that may use it. The Access dialog edits and saves it.
 const mcpAccess = new Map();
 
 function accessState(row) {
@@ -3770,10 +3771,14 @@ function openAccess(state) {
     label.append(input, text);
     return label;
   };
-  for (const radio of dialog.querySelectorAll('[name="mcp-access-mode"]')) radio.checked = radio.value === state.mode;
   const kinds = $('mcp-access-kinds');
   kinds.hidden = !state.kinds;
   kinds.querySelector('.access__list').replaceChildren(...Object.entries(MCP_KINDS).map(([kind, label]) => box(label, Boolean(state.kinds?.includes(kind)), kind)));
+  const sync = () => {
+    for (const radio of dialog.querySelectorAll('[name="mcp-access-mode"]')) radio.checked = radio.value === state.mode;
+    for (const input of kinds.querySelectorAll('input')) input.checked = Boolean(state.kinds?.includes(input.value));
+  };
+  sync();
   // Moving a server to the Deck lets every account and delegate run it.
   const move = $('mcp-access-move');
   move.replaceChildren();
@@ -3789,13 +3794,20 @@ function openAccess(state) {
       ? t('mcp.access.import-hint', { accounts: row.accounts.join(', ') })
       : t('mcp.access.move-hint', { target: row.everywhere.target })), button);
   }
-  dialog.returnValue = '';
-  dialog.onclose = () => {
-    if (dialog.returnValue !== 'ok') return;
-    mcpTouched = true;
+  showStatus('mcp-access-status', '');
+  // Each change saves at once; a failed save puts the previous choice back.
+  const onchange = dialog.onchange = () => {
+    const previous = { mode: state.mode, kinds: state.kinds };
     state.mode = dialog.querySelector('[name="mcp-access-mode"]:checked')?.value ?? 'checked';
     if (state.kinds) state.kinds = [...kinds.querySelectorAll('input:checked')].map((input) => input.value);
+    const next = { mode: state.mode, kinds: state.kinds };
     drawAccessButton(state);
+    saveMcp('mcp-access-status', () => {
+      if (state.mode !== next.mode || state.kinds !== next.kinds) return;
+      Object.assign(state, previous);
+      drawAccessButton(state);
+      if (dialog.open && dialog.onchange === onchange) sync();
+    });
   };
   dialog.showModal();
 }
@@ -3838,11 +3850,12 @@ async function removeMcp(row, button) {
   refreshMcp();
 }
 
-// After a change outside the checkboxes: a fresh list, drawn unless a box changed meanwhile.
+// After a change outside the checkboxes: a fresh list once queued saves land, drawn unless another save started meanwhile.
 function refreshMcp() {
   mcpCache.clear();
   const scope = mcpScope;
-  if (scope && $('mcp-dialog').open) fetchMcp(scope, 0).then((result) => { if (mcpScope === scope && !mcpTouched && $('mcp-dialog').open) drawMcp(result); });
+  const saving = mcpSaving;
+  if (scope && $('mcp-dialog').open) saving.then(() => fetchMcp(scope, 0)).then((result) => { if (mcpScope === scope && mcpSaving === saving && $('mcp-dialog').open) drawMcp(result); });
 }
 
 // An MCP sign-in in a window over the Deck: Claude Code on the chosen account opens /mcp, and closing the window ends it.
@@ -4025,8 +4038,8 @@ function drawMcpSuggestions(servers) {
 }
 
 async function openMcpDialog(scope) {
+  await mcpSaving; // Queued saves read the rows shown now.
   mcpScope = scope;
-  mcpTouched = false;
   mcpShown = null;
 
   $('mcp-folder').textContent = $('mcp-folder').title = scope.global ? t('mcp.scope.all') : scope.workspace ?? groupLabel(scope.group) ?? scope.folder;
@@ -4048,14 +4061,15 @@ async function openMcpDialog(scope) {
   $('mcp-list').replaceChildren(emptyState(t('common.loading')));
   $('mcp-error').hidden = true;
   $('mcp-dialog').showModal();
+  const saving = mcpSaving;
   const known = mcpCache.get(mcpKey(scope));
   const fresh = fetchMcp(scope, 30_000);
   if (known && known.pending !== fresh) {
     const cached = await known.pending;
-    if (mcpScope === scope && !mcpTouched && !cached?.error) drawMcp(cached);
+    if (mcpScope === scope && mcpSaving === saving && !cached?.error) drawMcp(cached);
   }
   const result = await fresh;
-  if (mcpScope === scope && !mcpTouched) drawMcp(result);
+  if (mcpScope === scope && mcpSaving === saving) drawMcp(result);
 }
 
 function syncMcpTarget() {
@@ -4074,7 +4088,11 @@ function showMcpForm(server) {
   (server.name ? $('mcp-new-add') : $('mcp-new-name')).focus();
 }
 
-$('mcp-dialog').onchange = (event) => { if (event.target.matches('input[data-name]')) mcpTouched = true; };
+$('mcp-dialog').onchange = ({ target }) => {
+  if (!target.matches('input[data-name]')) return;
+  const checked = target.checked;
+  saveMcp('mcp-error', () => { if (target.checked === checked) target.checked = !checked; });
+};
 // One Haiku request at low effort, as mcp_from_prompt in organizer.rs sends it: ~1,400 tokens of overhead, ~110 of instructions, ~80 out, plus the description.
 const mcpAskTokens = (text) => 1590 + Math.ceil(text.length / 4);
 function syncMcpAsk() {
@@ -4118,18 +4136,26 @@ $('mcp-new-add').onclick = async () => {
   message.hidden = false;
   if (result?.error) { message.textContent = result.error; return; }
   mcpCache.clear();
-  mcpTouched = true;
-  message.textContent = t('mcp.add.added', { name: server.name });
   $('mcp-new').hidden = true;
   const section = $('mcp-deck');
   section?.querySelector('.mcp__empty')?.remove();
   for (const input of $('mcp-dialog').querySelectorAll(`input[data-name="${CSS.escape(server.name)}"]`)) input.closest('label').remove();
-  section?.append(mcpRow(deckRow(server.name, server.transport === 'stdio' ? { type: 'stdio' } : { url: server.target }, true)));
+  const row = mcpRow(deckRow(server.name, server.transport === 'stdio' ? { type: 'stdio' } : { url: server.target }, true));
+  section?.append(row);
   showSection($('mcp-dialog'), 'servers');
   $('mcp-suggest').querySelector(`[data-name="${CSS.escape(server.name)}"]`)?.remove();
+  // On here at once; a failed save leaves it in the Deck, unchecked.
+  saveMcp('mcp-error', () => { row.querySelector('input').checked = false; }, t('mcp.add.added', { name: server.name }));
 };
-$('mcp-save').onclick = async () => {
-  if (!mcpScope || !mcpShown) { $('mcp-dialog').close(); return; }
+function saveMcp(status, revert, text = t('common.saved')) {
+  mcpSaving = mcpSaving.then(() => writeMcp().catch(String)).then((error) => {
+    if (error) revert();
+    showStatus(status, error || text, Boolean(error));
+  });
+}
+// Writes what the rows show when its turn in the queue comes; returns an error message or null.
+async function writeMcp() {
+  if (!mcpScope || !mcpShown) return null;
   // Only the difference from the global list is kept, and names this list did not show stay as they were.
   const inputs = [...$('mcp-dialog').querySelectorAll('.mcp__row input[data-name]')];
   const shown = new Set(inputs.map((input) => input.dataset.name));
@@ -4144,7 +4170,7 @@ $('mcp-save').onclick = async () => {
   }
   const scope = mcpScope.global ? { global: true } : { folder: mcpScope.folder, group: mcpScope.group, workspace: mcpScope.workspace };
   const saved = await deck.mcpSet(scope, [...off], [...on]).catch((error) => ({ error: String(error) }));
-  if (saved?.error) { showStatus('mcp-error', saved.error, true); return; }
+  if (saved?.error) return saved.error;
   // An account the list did not show keeps its setting.
   const access = {};
   for (const [name, state] of mcpAccess) {
@@ -4154,10 +4180,10 @@ $('mcp-save').onclick = async () => {
     if (state.kinds) access[name].kinds = state.kinds;
   }
   const applied = Object.keys(access).length ? await deck.mcpAccessSet(access).catch((error) => ({ error: String(error) })) : null;
-  if (applied?.error) { showStatus('mcp-error', applied.error, true); return; }
+  if (applied?.error) return applied.error;
   mcpCache.clear();
-  showStatus('mcp-error', t('common.saved'));
-};
+  return null;
+}
 let pluginsShown = null;
 let pluginSuggestion = null;
 let pluginsVisit = 0;
@@ -4188,12 +4214,41 @@ function drawPlugins(result, states = result.states) {
       label.append(input, text);
       group.append(label);
     }
+    row.dataset.state = state;
     row.append(info, group);
     return row;
   }));
   if (!result.plugins.length) $('plugins-list').append(emptyState(t('plugins.installed.empty')));
-  $('plugins-save').disabled = false;
 }
+
+// The row's radio and data-state hold the state the latest change asked for.
+function setPluginState(row, state) {
+  row.querySelector(`input[value="${state}"]`).checked = true;
+  row.dataset.state = state;
+}
+
+// Saves queue on one promise, so quick changes land in order; each writes what the rows show when its turn comes.
+let pluginsSaving = Promise.resolve();
+function savePlugins(revert, text = t('common.saved')) {
+  pluginsSaving = pluginsSaving.then(async () => {
+    if (!pluginsShown) return;
+    try {
+      await deck.pluginsSet(pluginStates());
+      showStatus('plugins-error', text);
+    } catch (error) {
+      revert();
+      showStatus('plugins-error', String(error), true);
+    }
+  });
+}
+
+$('plugins-list').onchange = ({ target }) => {
+  const row = target.closest('[data-plugin]');
+  if (!row) return;
+  const previous = row.dataset.state;
+  row.dataset.state = target.value;
+  savePlugins(() => { if (row.dataset.state === target.value) setPluginState(row, previous); });
+};
 
 function pluginStates() {
   const states = { ...pluginsShown.states };
@@ -4206,10 +4261,10 @@ function pluginStates() {
 }
 
 async function openPluginsDialog() {
+  await pluginsSaving; // Queued saves read the rows shown now.
   const visit = ++pluginsVisit;
   pluginsShown = null;
   pluginSuggestion = null;
-  $('plugins-save').disabled = true;
   $('plugins-confirm').hidden = true;
   $('plugins-error').hidden = true;
   $('plugins-request').value = '';
@@ -4317,7 +4372,6 @@ async function openCleanDialog() {
 }
 
 $('plugins-open').onclick = openPluginsDialog;
-$('plugins-cancel').onclick = () => $('plugins-dialog').close();
 for (const [button, dialog] of [['plugins-clean', 'plugins-dialog'], ['mcp-clean', 'mcp-dialog']]) {
   $(button).onclick = () => { $(dialog).close(); openCleanDialog(); };
 }
@@ -4362,16 +4416,6 @@ $('clean-apply').onclick = async () => {
 deck.onCleanProgress(({ done, total, step }) => {
   if (!$('clean-busy').hidden) cleanBusy(tp('clean.progress', total, { step, done }), done, total);
 });
-$('plugins-save').onclick = async () => {
-  if (!pluginsShown) return;
-  $('plugins-save').disabled = true;
-  try {
-    await deck.pluginsSet(pluginStates());
-    showStatus('plugins-error', t('common.saved'));
-  } catch (error) {
-    showStatus('plugins-error', String(error), true);
-  } finally { $('plugins-save').disabled = false; }
-};
 $('plugins-find').onclick = async () => {
   const request = $('plugins-request').value.trim();
   if (!request) return;
@@ -4395,7 +4439,6 @@ $('plugins-install').onclick = async () => {
   if (!pluginSuggestion || !pluginsShown) return;
   const visit = pluginsVisit;
   $('plugins-install').disabled = true;
-  $('plugins-save').disabled = true;
   try {
     const output = await deck.pluginInstall(pluginSuggestion);
     const result = await deck.pluginsList();
@@ -4408,10 +4451,11 @@ $('plugins-install').onclick = async () => {
     $('plugins-error').hidden = false;
   } catch (error) {
     if (visit === pluginsVisit) { $('plugins-error').textContent = String(error); $('plugins-error').hidden = false; }
-  } finally { $('plugins-install').disabled = false; $('plugins-save').disabled = !pluginsShown; }
+  } finally { $('plugins-install').disabled = false; }
 };
 
 for (const prefix of ['mcp', 'plugins']) {
+  $(prefix + '-close').onclick = () => $(prefix + '-dialog').close();
   $(prefix + '-forget-picks').onclick = async () => {
     const button = $(prefix + '-forget-picks');
     button.disabled = true;
@@ -4433,38 +4477,46 @@ for (const prefix of ['mcp', 'plugins']) {
     try {
       const reply = await deck.recommend(task);
       if (!$(prefix + '-dialog').open || (prefix === 'mcp' ? scope !== mcpScope : visit !== pluginsVisit)) return;
+      // Applied and saved at once; a failed save puts back each choice nobody changed since.
+      const undo = [];
       if (prefix === 'mcp') {
-        mcpTouched = true;
         for (const input of $('mcp-dialog').querySelectorAll('.mcp__row input[data-name]')) {
           const suggestion = reply.mcp[input.dataset.name];
           if (!suggestion || input.disabled) continue;
+          const checked = input.checked;
           input.checked = suggestion.state !== 'off';
+          undo.push(() => { if (input.checked !== checked) input.checked = checked; });
           input.closest('.mcp__row').dataset.tip = suggestion.why;
           const state = mcpAccess.get(input.dataset.name);
           if (!state) continue;
+          const mode = state.mode;
           state.mode = ['auto', 'delegates'].includes(suggestion.state) ? suggestion.state : 'checked';
+          const next = state.mode;
+          undo.push(() => { if (state.mode === next) { state.mode = mode; drawAccessButton(state); } });
           drawAccessButton(state);
         }
       } else {
         for (const row of $('plugins-list').querySelectorAll('[data-plugin]')) {
           const suggestion = reply.plugins[row.dataset.plugin];
           if (!suggestion) continue;
-          const radio = row.querySelector(`input[value="${CSS.escape(suggestion.state)}"]`);
-          if (radio) radio.checked = true;
+          if (row.querySelector(`input[value="${CSS.escape(suggestion.state)}"]`)) {
+            const previous = row.dataset.state;
+            setPluginState(row, suggestion.state);
+            undo.push(() => { if (row.dataset.state === suggestion.state) setPluginState(row, previous); });
+          }
           row.dataset.tip = suggestion.why;
         }
       }
       showSection($(prefix + '-dialog'), prefix === 'mcp' ? 'servers' : 'installed');
-      message.textContent = t('common.suggestions-applied');
-      message.hidden = false;
+      const revert = () => { for (const step of undo) step(); };
+      if (prefix === 'mcp') saveMcp('mcp-error', revert, t('common.suggestions-applied'));
+      else savePlugins(revert, t('common.suggestions-applied'));
     } catch (error) {
       message.textContent = String(error);
       message.hidden = false;
     } finally { button.disabled = false; }
   };
 }
-
-$('mcp-cancel').onclick = () => $('mcp-dialog').close();
 
 $('mcp-servers').onclick = () => {
   const chat = chats.get(activeId);

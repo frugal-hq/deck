@@ -577,7 +577,7 @@
           <h3 class="settings__title" data-i18n="mcp.recommend.title">Recommend</h3>
           <div class="settings__row">
             <label class="organize__field" data-i18n="common.task.label">What will you work on? <textarea id="mcp-task" maxlength="2000" placeholder="Fix the login page, write the release notes" data-i18n-placeholder="common.task.placeholder"></textarea></label>
-            <p class="settings__hint" data-i18n="mcp.recommend.hint">Haiku checks or unchecks each server and picks its mode. Nothing is saved until Save.</p>
+            <p class="settings__hint" data-i18n="mcp.recommend.hint">Haiku checks or unchecks each server and picks its mode.</p>
             <div class="organize__actions"><button id="mcp-recommend" class="btn" type="button" data-i18n="common.recommend">Recommend</button></div>
           </div>
           <div class="settings__row">
@@ -610,8 +610,7 @@
       <div class="settings__footer">
         <p id="mcp-error" class="settings__message" role="status"></p>
         <button id="mcp-clean" class="btn" type="button" data-tip="Find plugins and MCP servers in every account, bring them into the Deck store and remove old copies, with a backup" data-i18n-tip="common.import-clean.tip" data-i18n="common.import-clean.label">Import and clean…</button>
-        <button id="mcp-cancel" class="btn" type="button" data-i18n="common.cancel">Cancel</button>
-        <button id="mcp-save" class="btn btn--primary" type="button" data-i18n="common.save">Save</button>
+        <button id="mcp-close" class="btn" type="button" data-i18n="common.close">Close</button>
       </div>
     </div>
   </div>
@@ -632,8 +631,8 @@
     </fieldset>
     <div id="mcp-access-move" class="access__group"></div>
     <div class="organize__actions">
-      <button class="btn" type="submit" value="cancel" data-i18n="common.cancel">Cancel</button>
-      <button class="btn btn--primary" type="submit" value="ok" data-i18n="common.apply">Apply</button>
+      <p id="mcp-access-status" class="settings__message" role="status" hidden></p>
+      <button class="btn" type="submit" data-i18n="common.close">Close</button>
     </div>
   </form>
 </dialog>
@@ -649,14 +648,14 @@
       <div class="settings__body">
         <section class="settings__section" data-section="installed">
           <h3 class="settings__title" data-i18n="plugins.installed.title">Installed</h3>
-          <p class="settings__hint" data-i18n="plugins.installed.hint">On follows the Deck store's plugin settings. Auto lets frugal pick per folder. Save applies to chats started or restarted afterward.</p>
+          <p class="settings__hint" data-i18n="plugins.installed.hint">On follows the Deck store's plugin settings. Auto lets frugal pick per folder. Changes apply to chats started or restarted from now on.</p>
           <div id="plugins-list" class="mcp__list"></div>
         </section>
         <section class="settings__section" data-section="recommend" hidden>
           <h3 class="settings__title" data-i18n="plugins.recommend.title">Recommend</h3>
           <div class="settings__row">
             <label class="organize__field" data-i18n="common.task.label">What will you work on? <textarea id="plugins-task" maxlength="2000" placeholder="Fix the login page, write the release notes" data-i18n-placeholder="common.task.placeholder"></textarea></label>
-            <p class="settings__hint" data-i18n="plugins.recommend.hint">Haiku sets each plugin to On, Auto or Off. Nothing is saved until Save.</p>
+            <p class="settings__hint" data-i18n="plugins.recommend.hint">Haiku sets each plugin to On, Auto or Off.</p>
             <div class="organize__actions"><button id="plugins-recommend" class="btn" type="button" data-i18n="common.recommend">Recommend</button></div>
           </div>
           <div class="settings__row">
@@ -683,8 +682,7 @@
       <div class="settings__footer">
         <p id="plugins-error" class="settings__message" role="status"></p>
         <button id="plugins-clean" class="btn" type="button" data-tip="Find plugins and MCP servers in every account, bring them into the Deck store and remove old copies, with a backup" data-i18n-tip="common.import-clean.tip" data-i18n="common.import-clean.label">Import and clean…</button>
-        <button id="plugins-cancel" class="btn" type="button" data-i18n="common.cancel">Cancel</button>
-        <button id="plugins-save" class="btn btn--primary" type="button" data-i18n="common.save">Save</button>
+        <button id="plugins-close" class="btn" type="button" data-i18n="common.close">Close</button>
       </div>
     </div>
   </div>
