@@ -4226,7 +4226,7 @@ function fillClean(id, items, cells) {
   const table = $(id);
   const body = table.tBodies[0];
   table.hidden = !items.length;
-  $(tp('clean.item-count', items.length);
+  $(`${id}-count`).textContent = tp('clean.item-count', items.length);
   body.replaceChildren();
   for (const item of items) {
     const row = body.insertRow();
