@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict';
 import { readFileSync, readdirSync } from 'node:fs';
 import { join } from 'node:path';
+import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
 const allowlist = [
@@ -143,6 +144,12 @@ for (const [file, code] of scanSources) {
       report(file, match.index, `undefined custom property ${match[1]}`, sources.get(file).slice(match.index, match.index + match[0].length));
     }
   }
+}
+
+// `node --check app.js` skips ES module files, so parse each renderer module from stdin as a module.
+for (const file of readdirSync(renderer).filter((name) => /\.(m?js)$/.test(name))) {
+  const parse = spawnSync(process.execPath, ['--input-type=module', '--check'], { input: readFileSync(join(renderer, file)), encoding: 'utf8' });
+  if (parse.status !== 0) failures.push(`${file}: ${parse.stderr.split('\n').slice(0, 4).join(' ')}`);
 }
 
 assert.equal(failures.length, 0, `\n${failures.join('\n')}`);
