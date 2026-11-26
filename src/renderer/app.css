@@ -194,11 +194,6 @@ body:has(.info-panel:not([hidden])) { grid-template-columns: var(--sidebar-width
 .info-panel__row { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: baseline; gap: var(--space-xs); padding: var(--space-2xs) var(--space-xs); font-size: var(--text-sm); }
 .info-panel dt, .info-panel__muted { color: var(--color-muted); }
 .info-panel dd { margin: 0; color: var(--color-ink-2); text-align: end; overflow-wrap: anywhere; white-space: pre-line; font-variant-numeric: tabular-nums; }
-.info-panel__agent { padding: var(--space-xs); font-size: var(--text-sm); overflow-wrap: anywhere; }
-.info-panel__agent-head { display: flex; align-items: baseline; justify-content: space-between; gap: var(--space-xs); color: var(--color-ink-2); }
-.info-panel__agent-head .info-panel__muted { flex: none; font-size: var(--text-xs); }
-.info-panel__agent p { margin-top: var(--space-2xs); }
-.info-panel__agent-title { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .info-panel__status { flex: none; color: var(--color-muted); font-size: var(--text-xs); }
 .info-panel__status.is-running { color: var(--color-cool); }
 .info-panel__status.is-failed, .info-panel__status.is-not-delegated { color: var(--color-bad); }
@@ -376,15 +371,14 @@ body:has(.info-panel:not([hidden])) { grid-template-columns: var(--sidebar-width
 .usage__all { justify-self: start; min-height: var(--size-control-xs); margin-inline-start: calc(-1 * var(--space-xs)); padding-inline: var(--space-xs); font-size: var(--text-xs); }
 .accounts { display: grid; gap: var(--space-sm); }
 .accounts > * + *, .usage__others, .usage > .meter:not([hidden]) ~ .accounts { padding-block-start: var(--space-sm); border-block-start: var(--rule-hair) solid var(--color-rule); }
-.account__head { display: flex; align-items: center; justify-content: space-between; gap: var(--space-xs); }
+/* The head row lines its name up with the limits under it. */
+.account > .row { padding-inline: 0; }
 /* Block, not the button's flex, so a long name ends in an ellipsis. */
 .btn.account__name { display: block; min-height: 0; max-width: 100%; margin-inline-start: calc(-1 * var(--space-xs)); padding: 0 var(--space-xs); overflow: hidden; font-weight: 400; text-align: start; text-overflow: ellipsis; }
 .btn.is-linked.account__name { color: var(--color-ink); }
-.account__head .account__name { flex: 1; }
 .account__more { width: var(--size-control-xs); min-height: var(--size-control-xs); padding: 0; background: none; box-shadow: none; }
 .account { display: grid; gap: var(--space-2xs); }
 .accounts__heading + .account { padding-block-start: 0; border-block-start: 0; }
-.account__head .btn:not(.account__name) { min-height: var(--size-control-xs); padding-inline: var(--space-xs); }
 .accounts__heading { max-width: none; margin: 0; color: var(--color-muted); font-size: var(--text-xs); font-weight: 500; }
 .limit { display: grid; grid-template-columns: 1fr auto auto; align-items: baseline; column-gap: var(--space-sm); row-gap: var(--space-3xs); margin-block-start: var(--space-2xs); font-variant-numeric: tabular-nums; }
 .limit__reset { color: var(--color-muted); font-size: var(--text-xs); white-space: nowrap; }
@@ -442,7 +436,10 @@ meter::-webkit-meter-even-less-good-value { background: var(--color-bad); border
 .organize { width: min(var(--dialog-sm), 90vw); max-height: 88vh; margin: 12vh auto auto; padding: var(--space-md); border: var(--rule-hair) solid var(--color-rule); box-shadow: var(--shadow-card); border-radius: var(--radius-card); background: var(--color-paper-2); color: var(--color-ink); }
 .organize::backdrop { background: var(--color-scrim); }
 .organize form { display: grid; gap: var(--space-sm); }
-.organize__title { margin: 0; overflow: hidden; font-size: var(--text-md); font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }
+.dialog__title { margin: 0; overflow: hidden; font-size: var(--text-md); font-weight: 500; text-overflow: ellipsis; white-space: nowrap; }
+/* A group heading inside a dialog's list: Servers, Removed, the Deck and plugin versions. */
+.dialog__section { margin: 0 0 var(--space-2xs); padding-inline: var(--space-xs); color: var(--color-muted); font-size: var(--text-xs); font-weight: 500; }
+.dialog__section:not(:first-child) { margin-block-start: var(--space-xs); }
 .organize__text { margin: 0; color: var(--color-muted); font-size: var(--text-sm); overflow-wrap: anywhere; }
 .organize__check { display: flex; align-items: center; gap: var(--space-xs); font-size: var(--text-sm); }
 .organize__check[hidden] { display: none; }
@@ -468,26 +465,16 @@ meter::-webkit-meter-even-less-good-value { background: var(--color-bad); border
 .mcp-login[open] { display: grid; gap: var(--space-sm); }
 .mcp-login p { margin: 0; }
 .mcp-login__head { display: flex; align-items: end; gap: var(--space-sm); }
-.mcp-login__head .organize__title { flex: 1; margin: 0; }
+.mcp-login__head .dialog__title { flex: 1; }
 .mcp-login__term { height: min(28rem, 65dvh); padding: var(--space-xs); border-radius: var(--radius-card); background: var(--color-paper-3); color: var(--color-ink-2); font-family: var(--font-outlier); }
 .mcp__folder { color: var(--color-muted); font-size: var(--text-xs); word-break: break-all; }
 .mcp__note { word-break: normal; }
 .mcp__message { color: var(--color-muted); font-size: var(--text-sm); }
 .mcp__list { display: grid; gap: var(--space-md); }
 .mcp__section { display: grid; gap: var(--space-3xs); }
-.mcp__title { margin: 0 0 var(--space-2xs); padding-inline: var(--space-xs); color: var(--color-muted); font-size: var(--text-xs); font-weight: 500; }
-/* One row per server or plugin: checkbox, name, status, then its buttons, all on one line. */
-.mcp__row { display: flex; align-items: center; gap: var(--space-xs); min-width: 0; min-height: var(--size-control-lg); padding: var(--space-2xs) var(--space-xs); border-radius: var(--radius-pill); font-size: var(--text-sm); transition: background-color var(--dur-micro) var(--ease-out); }
-.mcp__row:hover { background: var(--color-highlight); }
-.mcp__row:has(:checked) { background: var(--color-accent-soft); color: var(--color-ink); }
-.mcp__row .btn { flex: none; }
-.mcp__row .btn--bar[data-mode] { color: var(--color-accent); }
-.mcp__info { display: grid; flex: 1; min-width: 0; }
-.mcp__desc { overflow: hidden; color: var(--color-muted); font-size: var(--text-xs); text-overflow: ellipsis; white-space: nowrap; }
-.mcp__row .segmented { flex: 0 0 11rem; }
+.row__controls .btn--bar[data-mode] { color: var(--color-accent); }
+.row__controls > .segmented { width: 11rem; }
 .mcp__cost { flex: 1; }
-.mcp__name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.mcp__status { flex: none; max-width: 50%; margin-inline-start: auto; overflow: hidden; color: var(--color-muted); font-size: var(--text-xs); text-overflow: ellipsis; white-space: nowrap; }
 .mcp__empty { color: var(--color-muted); font-size: var(--text-sm); }
 .mcp__chips { display: flex; flex-wrap: wrap; gap: var(--space-2xs); }
 .mcp__form { gap: var(--space-xs); }
@@ -507,11 +494,6 @@ meter::-webkit-meter-even-less-good-value { background: var(--color-bad); border
 #update-status:empty { display: none; }
 .tasks { width: min(var(--dialog-md), 90vw); }
 .tasks__list { max-height: 60vh; overflow-y: auto; scrollbar-width: thin; }
-.update__row { display: flex; justify-content: space-between; align-items: center; gap: var(--space-sm); font-size: var(--text-sm); }
-.update__row > span { display: grid; min-width: 0; }
-.update__heading { margin: var(--space-xs) 0 0; color: var(--color-ink-2); font-size: var(--text-sm); font-weight: 500; }
-.update__row > .btn { flex: none; }
-.update__detail { overflow: hidden; color: var(--color-muted); font-size: var(--text-xs); text-overflow: ellipsis; white-space: nowrap; }
 .organize__check input { appearance: none; display: grid; place-content: center; width: 16px; height: 16px; margin: 0; border: 0; border-radius: var(--radius-sm); background: var(--color-paper-3); cursor: pointer; transition: background-color var(--dur-micro) var(--ease-out); }
 .organize__check input::before { content: ""; width: var(--icon-sm); height: var(--icon-sm); background: var(--color-accent-ink); mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m3.5 8.5 3 3 6-7'/%3E%3C/svg%3E") center / contain no-repeat; scale: 0.5; opacity: 0; transition: scale var(--dur-micro) var(--ease-out), opacity var(--dur-micro) var(--ease-out); }
 .organize__check input:hover { background: var(--color-paper); }
@@ -523,6 +505,24 @@ meter::-webkit-meter-even-less-good-value { background: var(--color-bad); border
 .organize__check:has(input) { cursor: pointer; }
 .organize__check input.settings__range, .organize__check input.settings__range:hover { appearance: auto; display: block; width: 140px; height: auto; background: none; accent-color: var(--color-accent); }
 .organize__check input.settings__range::before { content: none; }
+/* One list row: name with an optional meta line under it, then trailing status and inline actions. After .organize__check, which a row's label may also carry. */
+.row { display: flex; align-items: center; gap: var(--space-xs); min-width: 0; min-height: var(--size-row); padding: var(--space-2xs) var(--space-xs); border-radius: var(--radius-pill); font-size: var(--text-sm); }
+.row__main { display: grid; flex: 1 1 0; grid-template-columns: minmax(0, 1fr); align-items: center; column-gap: var(--space-xs); min-width: 0; }
+.row__main:has(> input) { grid-template-columns: auto minmax(0, 1fr); }
+.row__main > input { grid-row: span 2; }
+.row__name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.row__meta { min-width: 0; color: var(--color-muted); font-size: var(--text-xs); overflow-wrap: anywhere; }
+.row__controls { display: flex; flex: 0 1 auto; align-items: center; gap: var(--space-2xs); min-width: 0; max-width: 60%; }
+.row__controls > * { flex: none; }
+.row__controls:empty { display: none; }
+.row__controls > .row__meta { flex: 0 1 auto; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.row__controls .btn { min-height: var(--size-control-xs); padding-inline: var(--space-xs); }
+.row__controls .btn.btn--icon { width: var(--size-control-xs); padding: 0; }
+.row--interactive { transition: background-color var(--dur-micro) var(--ease-out); }
+button.row--interactive { width: 100%; border: 0; background: none; color: inherit; font: inherit; font-size: var(--text-sm); text-align: start; cursor: pointer; }
+.row--interactive:hover:not(:disabled) { background: var(--color-highlight); }
+button.row--interactive:active:not(:disabled) { filter: brightness(0.92); scale: 0.97; }
+.row:is([aria-current], [aria-selected="true"], :has(> .row__main > input:checked)) { background: var(--color-accent-soft); color: var(--color-ink); }
 .settings__select { min-height: var(--size-control-sm); padding-inline: var(--space-xs); border: 0; border-radius: var(--radius-pill); background: var(--color-paper-3); color: var(--color-ink); font: inherit; }
 .settings__select[type="number"] { flex: none; width: 5rem; padding-inline: var(--space-sm) var(--space-2xs); font-variant-numeric: tabular-nums; }
 .settings__accent { margin: 0; padding: 0; border: 0; font-size: var(--text-sm); }
@@ -879,7 +879,7 @@ body { transition: opacity var(--dur-short) var(--ease-out); }
 #settings-dialog { margin-block-start: 8vh; }
 .settings :is(form, .settings__frame) { position: relative; display: grid; grid-template-columns: 12rem minmax(0, 1fr); gap: 0; height: 100%; }
 .settings__nav { display: flex; flex-direction: column; gap: var(--space-3xs); padding: var(--space-md) var(--space-xs); border-right: var(--rule-hair) solid var(--color-rule); background: var(--color-paper); overflow-y: auto; }
-.settings__heading { margin: 0 0 var(--space-sm); padding-inline: var(--space-xs); font-size: var(--text-md); font-weight: 500; }
+.settings .dialog__title { margin: 0 0 var(--space-sm); padding-inline: var(--space-xs); }
 .settings__tab { display: flex; align-items: center; gap: var(--space-xs); min-height: var(--size-row); padding-inline: var(--space-xs); border: 0; border-radius: var(--radius-pill); background: none; color: var(--color-ink-2); font: inherit; font-size: var(--text-sm); text-align: start; cursor: pointer; transition: background-color var(--dur-micro) var(--ease-out), color var(--dur-micro) var(--ease-out); }
 .settings__tab:hover:not(:disabled) { background: var(--color-highlight); color: var(--color-ink); }
 .settings__tab[aria-current] .icon { color: var(--color-accent); }
@@ -912,7 +912,7 @@ body { transition: opacity var(--dur-short) var(--ease-out); }
 @media (max-width: 40rem) {
   .settings :is(form, .settings__frame) { grid-template-columns: minmax(0, 1fr); grid-template-rows: auto minmax(0, 1fr); }
   .settings__nav { flex-direction: row; border-right: 0; border-bottom: var(--rule-hair) solid var(--color-rule); overflow-x: auto; }
-  .settings__heading, .settings__scope { display: none; }
+  .settings .dialog__title, .settings__scope { display: none; }
 }
 #clean-dialog { width: min(var(--dialog-xl), 96vw); height: min(44rem, 90vh); }
 #clean-dialog .inventory { width: 100%; border-collapse: collapse; overflow-wrap: break-word; font-size: var(--text-sm); }
@@ -930,14 +930,8 @@ body { transition: opacity var(--dur-short) var(--ease-out); }
 #clean-status { white-space: pre-line; }
 /* Account switch: busy chats in the dialog and in the tabs. */
 .switch__list { display: grid; gap: var(--space-3xs); max-height: 40vh; overflow-y: auto; }
-.switch__chat { display: flex; justify-content: space-between; gap: var(--space-sm); min-height: var(--size-row); padding-inline: var(--space-sm); border: 0; border-radius: var(--radius-pill); background: var(--color-paper-3); color: var(--color-ink); font: inherit; font-size: var(--text-sm); text-align: start; cursor: pointer; }
-.switch__chat:hover:not(:disabled) { background: var(--color-highlight); }
-.switch__chat:active:not(:disabled) { filter: brightness(0.92); scale: 0.97; }
-.switch__chat[aria-current] { background: var(--color-accent-soft); color: var(--color-ink); }
-.switch__name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.switch__status { flex: none; color: var(--color-muted); font-size: var(--text-xs); align-self: center; }
 .tab--busy { border-radius: var(--radius-pill); box-shadow: inset 0 0 0 2px var(--color-bad); }
 
 :is(.session, .tab__open, .tab__close, option, .menu__item, .term-badge__dot, .settings__tab, select, textarea, input[type="text"], input[type="search"], input[type="password"], input[type="email"], input[type="url"], input[type="number"], input[type="range"], input:not([type])):is(:disabled, :disabled:hover) { color: var(--color-muted); cursor: not-allowed; filter: none; }
 :is(.sort__chip, .access__choice, .segmented label):is(:has(:disabled), :has(:disabled):hover) { color: var(--color-muted); cursor: not-allowed; }
-:is(.window-control, .prompt-edit__remove, .term-badge__action, .term-dock__btn, .term-mic__record, .term-mic__more, .switch__chat):is(:disabled, :disabled:hover, :disabled:active) { background: var(--color-paper-3); box-shadow: none; color: var(--color-muted); cursor: not-allowed; filter: none; scale: 1; }
+:is(.window-control, .prompt-edit__remove, .term-badge__action, .term-dock__btn, .term-mic__record, .term-mic__more, button.row--interactive):is(:disabled, :disabled:hover, :disabled:active) { background: var(--color-paper-3); box-shadow: none; color: var(--color-muted); cursor: not-allowed; filter: none; scale: 1; }

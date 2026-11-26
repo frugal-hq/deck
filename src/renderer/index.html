@@ -177,7 +177,7 @@
 </dialog>
 <dialog id="organize" class="organize" closedby="any" aria-labelledby="organize-title">
   <form id="organize-form" method="dialog">
-    <h2 id="organize-title" class="organize__title"></h2>
+    <h2 id="organize-title" class="dialog__title"></h2>
     <label class="organize__check" data-i18n="organize.pin.label"><input id="organize-pinned" type="checkbox"> Pin to top</label>
     <label class="organize__field" data-tip="Places this chat directly in a workspace, outside its group" data-i18n-tip="organize.workspace.tip" data-i18n="organize.workspace.label">Workspace<input id="organize-space" placeholder="No workspace" autocomplete="off" spellcheck="false" data-i18n-placeholder="organize.workspace.placeholder"></label>
     <label class="organize__field" data-tip="Pick a workspace to place this chat in it outside any group, or a group under it" data-i18n-tip="organize.group.tip" data-i18n="organize.group.label">Group<input id="organize-group" placeholder="No group" autocomplete="off" spellcheck="false" data-i18n-placeholder="organize.group.placeholder"></label>
@@ -192,14 +192,14 @@
   </form>
 </dialog>
 <dialog id="archived-dialog" class="organize" closedby="any" aria-labelledby="archived-title">
-  <h2 id="archived-title" class="organize__title" data-i18n="dialog.archived.title">Archived</h2>
+  <h2 id="archived-title" class="dialog__title" data-i18n="dialog.archived.title">Archived</h2>
   <p id="archived-empty" class="sidebar__status" data-i18n="dialog.archived.empty">No archived chats.</p>
   <ul id="archived-list" class="archived"></ul>
 </dialog>
 <div id="menu" class="menu" popover="auto" role="menu" aria-label="Options" data-i18n-aria-label="menu.label"></div>
 <dialog id="account-dialog" class="organize" aria-labelledby="account-title">
   <form id="account-form">
-    <h2 id="account-title" class="organize__title" data-i18n="account.title">Add account</h2>
+    <h2 id="account-title" class="dialog__title" data-i18n="account.title">Add account</h2>
     <div class="segmented" role="radiogroup" aria-label="Account kind" data-i18n-aria-label="account.kind.label">
       <label><input type="radio" name="account-kind" value="claude" checked>Claude</label>
       <label><input type="radio" name="account-kind" value="codex">Codex</label>
@@ -228,7 +228,7 @@
 </dialog>
 <dialog id="ask-dialog" class="organize" closedby="any" aria-labelledby="ask-title">
   <form id="ask-form" method="dialog">
-    <h2 id="ask-title" class="organize__title"></h2>
+    <h2 id="ask-title" class="dialog__title"></h2>
     <p id="ask-text" class="organize__text"></p>
     <label id="ask-field" class="organize__field" data-i18n="dialog.ask.name.label">Name<input id="ask-value" required maxlength="40" pattern=".*\S.*" autocomplete="off" spellcheck="false"></label>
     <div class="organize__actions">
@@ -239,7 +239,7 @@
 </dialog>
 <dialog id="workspace-dialog" class="organize" closedby="any" aria-labelledby="workspace-title">
   <form id="workspace-form" method="dialog">
-    <h2 id="workspace-title" class="organize__title"></h2>
+    <h2 id="workspace-title" class="dialog__title"></h2>
     <label class="organize__field" data-i18n="dialog.workspace.name.label">Workspace<input id="workspace-name" placeholder="No workspace" autocomplete="off" spellcheck="false" data-i18n-placeholder="organize.workspace.placeholder"></label>
     <div class="organize__actions">
       <button id="workspace-cancel" class="btn" type="button" data-tip="Close without saving" data-i18n-tip="dialog.workspace.cancel.tip" data-i18n="common.cancel">Cancel</button>
@@ -250,7 +250,7 @@
 <dialog id="sort-dialog" class="organize" closedby="any" aria-labelledby="sort-title">
   <form method="dialog">
     <div class="sort__head">
-      <h2 id="sort-title" class="organize__title" data-i18n="sort.title">Organize chats</h2>
+      <h2 id="sort-title" class="dialog__title" data-i18n="sort.title">Organize chats</h2>
       <div class="segmented" role="radiogroup" aria-label="Group by" data-i18n-aria-label="sort.view.label">
         <label data-tip="Group chats by project folder" data-i18n-tip="sort.view.folders.tip" data-i18n="sort.view.folders.label"><input type="radio" name="session-view" value="folders">Folders</label>
         <label data-tip="Group chats by subject" data-i18n-tip="sort.view.topics.tip" data-i18n="sort.view.topics.label"><input type="radio" name="session-view" value="topics">Topics</label>
@@ -291,7 +291,7 @@
 </dialog>
 <dialog id="switch-dialog" class="organize" closedby="any" aria-labelledby="switch-title" aria-describedby="switch-message">
   <form method="dialog">
-    <h2 id="switch-title" class="organize__title"></h2>
+    <h2 id="switch-title" class="dialog__title"></h2>
     <p id="switch-message" class="organize__text"></p>
     <div id="switch-list" class="switch__list"></div>
     <div class="organize__actions">
@@ -303,7 +303,7 @@
 </dialog>
 <dialog id="close-dialog" class="organize" closedby="any" aria-labelledby="close-title" aria-describedby="close-message">
   <form method="dialog">
-    <h2 id="close-title" class="organize__title" data-i18n="dialog.close.title">Close this chat?</h2>
+    <h2 id="close-title" class="dialog__title" data-i18n="dialog.close.title">Close this chat?</h2>
     <p id="close-message" class="organize__text"></p>
     <label class="organize__check" data-i18n="dialog.close.skip.label"><input id="close-skip" type="checkbox"> Don't ask again (change it in Settings)</label>
     <div class="organize__actions">
@@ -314,7 +314,7 @@
 </dialog>
 <dialog id="tasks-dialog" class="organize tasks" closedby="any" aria-labelledby="tasks-title">
   <form method="dialog">
-    <h2 id="tasks-title" class="organize__title" data-i18n="dialog.tasks.title">Delegate tasks</h2>
+    <h2 id="tasks-title" class="dialog__title" data-i18n="dialog.tasks.title">Delegate tasks</h2>
     <p id="tasks-summary" class="organize__text" role="status"></p>
     <div id="tasks-list" class="tasks__list"></div>
     <div class="organize__actions">
@@ -325,7 +325,7 @@
 </dialog>
 <dialog id="update-dialog" class="organize" closedby="any" aria-labelledby="update-title">
   <form method="dialog">
-    <h2 id="update-title" class="organize__title" data-i18n="dialog.update.title">Updates</h2>
+    <h2 id="update-title" class="dialog__title" data-i18n="dialog.update.title">Updates</h2>
     <p id="update-status" class="organize__text" role="status"></p>
     <div id="update-list" class="update__list"></div>
     <div class="organize__actions">
@@ -336,7 +336,7 @@
 <dialog id="settings-dialog" class="organize settings" closedby="any" aria-labelledby="settings-title">
   <form method="dialog">
     <nav class="settings__nav" aria-label="Settings sections" data-i18n-aria-label="settings.nav.label">
-      <h2 id="settings-title" class="settings__heading" data-i18n="settings.title">Settings</h2>
+      <h2 id="settings-title" class="dialog__title" data-i18n="settings.title">Settings</h2>
       <button class="settings__tab" type="button" data-section="general" aria-current="page" data-i18n="settings.general.title"><svg class="icon" aria-hidden="true"><use href="#i-settings"/></svg>General</button>
       <button class="settings__tab" type="button" data-section="appearance" data-i18n="settings.appearance.title"><svg class="icon" aria-hidden="true"><use href="#i-palette"/></svg>Appearance</button>
       <button class="settings__tab" type="button" data-section="chats" data-i18n="settings.chats.title"><svg class="icon" aria-hidden="true"><use href="#i-terminal"/></svg>Chats</button>
@@ -548,7 +548,7 @@
 <dialog id="mcp-dialog" class="organize settings" closedby="any" aria-labelledby="mcp-title">
   <div class="settings__frame">
     <nav class="settings__nav" aria-label="MCP sections" data-i18n-aria-label="mcp.nav.label">
-      <h2 id="mcp-title" class="settings__heading" data-i18n="mcp.title">MCP servers</h2>
+      <h2 id="mcp-title" class="dialog__title" data-i18n="mcp.title">MCP servers</h2>
       <p id="mcp-folder" class="settings__scope"></p>
       <button class="settings__tab" type="button" data-section="servers" aria-current="page" data-i18n="mcp.servers.title"><svg class="icon" aria-hidden="true"><use href="#i-plug"/></svg>Servers</button>
       <button id="mcp-tab-failing" class="settings__tab" type="button" data-section="failing" hidden data-i18n="mcp.failing.title"><svg class="icon" aria-hidden="true"><use href="#i-x"/></svg>Not connected<span class="settings__count"></span></button>
@@ -617,7 +617,7 @@
 </dialog>
 <dialog id="mcp-access-dialog" class="organize access" closedby="any" aria-labelledby="mcp-access-title">
   <form method="dialog">
-    <h2 id="mcp-access-title" class="organize__title"></h2>
+    <h2 id="mcp-access-title" class="dialog__title"></h2>
     <fieldset class="access__group">
       <legend class="access__legend" data-i18n="mcp.access.chats.legend">In chats</legend>
       <label class="access__choice"><input type="radio" name="mcp-access-mode" value="checked"><span data-i18n="mcp.access.checked.label">As checked<small data-i18n="mcp.access.checked.hint">On where its box is checked.</small></span></label>
@@ -639,7 +639,7 @@
 <dialog id="plugins-dialog" class="organize settings" closedby="any" aria-labelledby="plugins-title">
   <div class="settings__frame">
     <nav class="settings__nav" aria-label="Plugin sections" data-i18n-aria-label="plugins.nav.label">
-      <h2 id="plugins-title" class="settings__heading" data-i18n="plugins.title">Plugins</h2>
+      <h2 id="plugins-title" class="dialog__title" data-i18n="plugins.title">Plugins</h2>
       <button class="settings__tab" type="button" data-section="installed" aria-current="page" data-i18n="plugins.installed.title"><svg class="icon" aria-hidden="true"><use href="#i-puzzle"/></svg>Installed</button>
       <button class="settings__tab" type="button" data-section="recommend" data-i18n="plugins.recommend.title"><svg class="icon" aria-hidden="true"><use href="#i-tasks"/></svg>Recommend</button>
       <button class="settings__tab" type="button" data-section="install" data-i18n="plugins.install.title"><svg class="icon" aria-hidden="true"><use href="#i-update"/></svg>Install</button>
@@ -690,7 +690,7 @@
 <dialog id="clean-dialog" class="organize settings" closedby="any" aria-labelledby="clean-title">
   <div class="settings__frame">
     <nav class="settings__nav" aria-label="Import and clean" data-i18n-aria-label="clean.title">
-      <h2 id="clean-title" class="settings__heading" data-i18n="clean.title">Import and clean</h2>
+      <h2 id="clean-title" class="dialog__title" data-i18n="clean.title">Import and clean</h2>
     </nav>
     <div class="settings__pane">
       <div class="settings__body">
@@ -741,7 +741,7 @@
 </dialog>
 <dialog id="mcp-login" class="organize mcp-login" closedby="none" aria-labelledby="mcp-login-title">
   <div class="mcp-login__head">
-    <h2 id="mcp-login-title" class="organize__title"></h2>
+    <h2 id="mcp-login-title" class="dialog__title"></h2>
     <label class="organize__field" data-i18n="mcp-login.account.label">Account <select id="mcp-login-account"></select></label>
     <button id="mcp-login-close" class="btn btn--icon" type="button" aria-label="Close" data-tip="Close and end this sign-in" data-i18n-aria-label="common.close" data-i18n-tip="mcp-login.close.tip"><svg class="icon" aria-hidden="true"><use href="#i-x"/></svg></button>
   </div>
@@ -750,7 +750,7 @@
 </dialog>
 <dialog id="confirm-dialog" class="organize" closedby="any" aria-labelledby="confirm-title" aria-describedby="confirm-message">
   <form method="dialog">
-    <h2 id="confirm-title" class="organize__title"></h2>
+    <h2 id="confirm-title" class="dialog__title"></h2>
     <p id="confirm-message" class="sort__warning" role="note"></p>
     <div class="organize__actions">
       <button class="btn" type="submit" value="cancel" autofocus data-i18n="common.cancel">Cancel</button>
@@ -760,7 +760,7 @@
 </dialog>
 <dialog id="trust-dialog" class="organize" closedby="any" aria-labelledby="trust-title" aria-describedby="trust-warning">
   <form method="dialog">
-    <h2 id="trust-title" class="organize__title" data-i18n="dialog.trust.title">Always trust folders?</h2>
+    <h2 id="trust-title" class="dialog__title" data-i18n="dialog.trust.title">Always trust folders?</h2>
     <p id="trust-warning" class="sort__warning" role="note" data-i18n="dialog.trust.warning">Frugal Deck will accept Claude Code's trust check for you in every folder you open here. Claude Code will be able to read, edit, and execute files there, and a folder's own settings and hooks can run commands as soon as the chat starts. A folder you downloaded or did not write could harm your computer or expose your files and credentials.</p>
     <div class="organize__actions">
       <button class="btn" type="submit" value="cancel" autofocus data-tip="Keep asking for each folder" data-i18n-tip="dialog.trust.cancel.tip" data-i18n="common.cancel">Cancel</button>

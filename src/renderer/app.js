@@ -595,18 +595,21 @@ function capsBlock(account) {
 // frugal: blocks are redrawn on every status line, so keyboard focus on Use is lost when a reading arrives.
 function accountBlock(account, primary, chat, caps) {
   const block = node('section', 'account');
-  const head = node('div', 'account__head');
+  const head = node('div', 'row');
+  const main = node('div', 'row__main');
+  const controls = node('div', 'row__controls');
   const age = account.limits?.at ? t('account.read-ago', { duration: spanText(Date.now() - account.limits.at) }) : '';
-  head.append(accountName(account, [account.configDir, primary ? '' : age]));
-  if (account.id === accountState.primary) head.append(node('span', 'tag tag--primary', t('account.primary')));
+  main.append(accountName(account, [account.configDir, primary ? '' : age]));
+  if (account.id === accountState.primary) controls.append(node('span', 'tag tag--primary', t('account.primary')));
   if (account.signedIn && (!primary || switchable(account).length)) {
     const button = node('button', 'btn', t('account.use'));
     button.type = 'button';
     button.dataset.tip = switchable(account).length ? t('account.use.restart-tip') : t('account.use.new-tip');
     button.onclick = () => useAccount(account);
-    head.append(button);
+    controls.append(button);
   }
-  head.append(withMenu(block, account));
+  controls.append(withMenu(block, account));
+  head.append(main, controls);
   block.append(head, ...loginLines(account));
   const limits = accountLimits(account).filter(([, limit]) => limit);
   if (limits.length) block.append(...limits.map(([label, limit]) => limitRow(label, limit)));
@@ -715,9 +718,13 @@ function askBusy(busy, someIdle, text) {
   [$('switch-idle').textContent, $('switch-idle').dataset.tip] = text.idle;
   [$('switch-all').textContent, $('switch-all').dataset.tip] = text.all;
   $('switch-list').replaceChildren(...busy.map((chat) => {
-    const item = node('button', 'switch__chat');
+    const item = node('button', 'row row--interactive');
     item.type = 'button';
-    item.append(node('span', 'switch__name', chat.name), node('span', 'switch__status', isWorking(chat) ? STATUS_LABEL[chat.status] : t('task.waiting')));
+    const main = node('span', 'row__main');
+    main.append(node('span', 'row__name', chat.name));
+    const controls = node('span', 'row__controls');
+    controls.append(node('span', 'row__meta', isWorking(chat) ? STATUS_LABEL[chat.status] : t('task.waiting')));
+    item.append(main, controls);
     item.onclick = () => activate(chat.id);
     return item;
   }));
@@ -936,19 +943,21 @@ function whyFailed(task) {
 }
 
 function taskRow(task) {
-  const row = node('div', 'info-panel__agent');
-  const head = node('div', 'info-panel__agent-head');
+  const row = node('div', 'row');
+  const main = node('div', 'row__main');
+  const controls = node('div', 'row__controls');
   const title = task.check ? commandTitle(task.check) : task.description || task.name;
   const status = node('span', `info-panel__status is-${checkFailed(task) ? 'check-failed' : task.status.replace(' ', '-')}`, taskStatus(task));
   const cause = isFailed(task) && taskCauseChip(task.cause);
   if (cause) status.prepend(cause, ' ');
-  head.append(node('span', 'info-panel__agent-title', title), status);
-  row.append(head);
+  main.append(node('span', 'row__name', title));
+  controls.append(status);
+  row.append(main, controls);
   const cost = task.cost != null && t('common.cost-usd', { amount: task.cost.toFixed(2) });
   const tokens = task.tokens && tp('task.tokens', task.tokens, { count: compact.format(task.tokens) });
   const seconds = task.running ? Math.round((Date.now() - task.updatedAt) / 1000) : task.seconds;
   const meta = [taskAccount(task), task.model, task.level, taskSpan(seconds), tokens, cost].filter(Boolean).join(' · ');
-  if (meta) row.append(node('p', 'info-panel__muted', meta));
+  if (meta) main.append(node('span', 'row__meta', meta));
   const chat = task.chat && currentIndex?.sessions?.find((s) => s.id === task.chat)?.title;
   const label = (name, value) => (value ? t('common.label-value', { label: name, value }) : '');
   const details = [
@@ -3682,7 +3691,9 @@ function mcpStatus(status) {
 
 // Checked means on in the chats this dialog applies to.
 function mcpRow(row) {
-  const label = node('label', 'organize__check mcp__row');
+  const item = node('div', 'row row--interactive');
+  const label = node('label', 'row__main organize__check');
+  const controls = node('div', 'row__controls');
   const input = document.createElement('input');
   input.type = 'checkbox';
   input.checked = row.checked;
@@ -3690,24 +3701,22 @@ function mcpRow(row) {
   // Frugal's own servers are always on: the Deck delegates through them.
   if (row.name.startsWith('plugin:frugal:')) {
     input.checked = input.disabled = true;
-    label.dataset.tip = t('mcp.frugal.always-tip');
+    item.dataset.tip = t('mcp.frugal.always-tip');
   }
   if (row.deck) input.dataset.deck = '1';
-  label.append(input, node('span', 'mcp__name', row.name));
+  label.append(input, node('span', 'row__name', row.name));
+  item.append(label, controls);
   if (row.status) {
-    const status = node('span', 'mcp__status', row.status);
+    const status = node('span', 'row__meta', row.status);
     status.title = row.title ?? row.status;
-    label.append(status);
+    controls.append(status);
   }
   if (row.signIn) {
     const button = node('button', 'btn btn--bar', row.signIn);
     button.type = 'button';
     button.dataset.tip = row.signInOn.length ? t('mcp.sign-in.accounts-tip', { accounts: row.signInOn.join(', ') }) : t('mcp.sign-in.shared-tip');
-    button.onclick = (event) => {
-      event.preventDefault();
-      openMcpLogin(row);
-    };
-    label.append(button);
+    button.onclick = () => openMcpLogin(row);
+    controls.append(button);
   }
   if (row.access) {
     const state = accessState(row);
@@ -3716,13 +3725,10 @@ function mcpRow(row) {
     button.type = 'button';
     button.setAttribute('aria-haspopup', 'dialog');
     button.dataset.tip = row.delegable ? t('mcp.access.kinds-tip') : t('mcp.access.chat-tip');
-    button.onclick = (event) => {
-      event.preventDefault();
-      openAccess(state);
-    };
+    button.onclick = () => openAccess(state);
     state.button = button;
     drawAccessButton(state);
-    label.append(button);
+    controls.append(button);
   }
   if (row.removable) {
     const button = node('button', 'btn btn--bar btn--icon');
@@ -3732,13 +3738,10 @@ function mcpRow(row) {
     button.dataset.tip = row.deck
       ? t('mcp.remove.deck-tip')
       : t('mcp.remove.accounts-tip', { accounts: row.accounts.join(', ') });
-    button.onclick = (event) => {
-      event.preventDefault();
-      removeMcp(row, button);
-    };
-    label.append(button);
+    button.onclick = () => removeMcp(row, button);
+    controls.append(button);
   }
-  return label;
+  return item;
 }
 
 const MCP_KINDS = { claude: 'Claude', codex: 'Codex', grok: 'Grok', opencode: 'OpenCode' };
@@ -3845,7 +3848,7 @@ async function removeMcp(row, button) {
     return;
   }
   message.textContent = t('mcp.remove.done', { name: row.name });
-  button.closest('.mcp__row').remove();
+  button.closest('.row').remove();
   mcpAccess.delete(row.name);
   refreshMcp();
 }
@@ -3917,9 +3920,11 @@ $('mcp-login-close').onclick = closeMcpLogin;
 
 // A server the backup holds that is gone from its account, folder or the Deck; Restore puts its saved config back.
 function removedRow(entry) {
-  const row = node('div', 'organize__check mcp__row');
+  const row = node('div', 'row');
+  const main = node('div', 'row__main');
+  const controls = node('div', 'row__controls');
   const where = entry.folder ? t('mcp.removed.location', { account: entry.account, folder: entry.folder }) : entry.account;
-  const status = node('span', 'mcp__status', where);
+  const status = node('span', 'row__meta', where);
   status.title = t('mcp.removed.location-tip', { target: entry.target, where });
   const button = node('button', 'btn btn--bar', t('common.restore'));
   button.type = 'button';
@@ -3937,13 +3942,15 @@ function removedRow(entry) {
     mcpCache.clear();
     row.remove();
   };
-  row.append(node('span', 'mcp__name', entry.name), status, button);
+  main.append(node('span', 'row__name', entry.name));
+  controls.append(status, button);
+  row.append(main, controls);
   return row;
 }
 
 function mcpSection(title, rows, empty) {
   const section = node('section', 'mcp__section');
-  section.append(node('h4', 'mcp__title', title));
+  section.append(node('h4', 'dialog__section', title));
   if (rows.length) section.append(...rows.map(mcpRow));
   else section.append(node('p', 'mcp__empty', empty));
   return section;
@@ -4139,7 +4146,7 @@ $('mcp-new-add').onclick = async () => {
   $('mcp-new').hidden = true;
   const section = $('mcp-deck');
   section?.querySelector('.mcp__empty')?.remove();
-  for (const input of $('mcp-dialog').querySelectorAll(`input[data-name="${CSS.escape(server.name)}"]`)) input.closest('label').remove();
+  for (const input of $('mcp-dialog').querySelectorAll(`input[data-name="${CSS.escape(server.name)}"]`)) input.closest('.row').remove();
   const row = mcpRow(deckRow(server.name, server.transport === 'stdio' ? { type: 'stdio' } : { url: server.target }, true));
   section?.append(row);
   showSection($('mcp-dialog'), 'servers');
@@ -4157,7 +4164,7 @@ function saveMcp(status, revert, text = t('common.saved')) {
 async function writeMcp() {
   if (!mcpScope || !mcpShown) return null;
   // Only the difference from the global list is kept, and names this list did not show stay as they were.
-  const inputs = [...$('mcp-dialog').querySelectorAll('.mcp__row input[data-name]')];
+  const inputs = [...$('mcp-dialog').querySelectorAll('.row input[data-name]')];
   const shown = new Set(inputs.map((input) => input.dataset.name));
   const kept = (names) => new Set((names ?? []).filter((name) => !shown.has(name)));
   const global = new Set(mcpShown.global ?? []);
@@ -4191,12 +4198,13 @@ let pluginsVisit = 0;
 function drawPlugins(result, states = result.states) {
   pluginsShown = result;
   $('plugins-list').replaceChildren(...result.plugins.map((plugin, index) => {
-    const row = node('div', 'mcp__row');
+    const row = node('div', 'row');
     row.dataset.plugin = plugin.id;
-    const info = node('div', 'mcp__info');
-    info.append(node('span', 'mcp__name', plugin.id));
+    const info = node('div', 'row__main');
+    const controls = node('div', 'row__controls');
+    info.append(node('span', 'row__name', plugin.id));
     if (plugin.description) {
-      const description = node('span', 'mcp__desc', plugin.description);
+      const description = node('span', 'row__meta', plugin.description);
       description.title = plugin.description;
       info.append(description);
     }
@@ -4215,7 +4223,8 @@ function drawPlugins(result, states = result.states) {
       group.append(label);
     }
     row.dataset.state = state;
-    row.append(info, group);
+    controls.append(group);
+    row.append(info, controls);
     return row;
   }));
   if (!result.plugins.length) $('plugins-list').append(emptyState(t('plugins.installed.empty')));
@@ -4480,13 +4489,13 @@ for (const prefix of ['mcp', 'plugins']) {
       // Applied and saved at once; a failed save puts back each choice nobody changed since.
       const undo = [];
       if (prefix === 'mcp') {
-        for (const input of $('mcp-dialog').querySelectorAll('.mcp__row input[data-name]')) {
+        for (const input of $('mcp-dialog').querySelectorAll('.row input[data-name]')) {
           const suggestion = reply.mcp[input.dataset.name];
           if (!suggestion || input.disabled) continue;
           const checked = input.checked;
           input.checked = suggestion.state !== 'off';
           undo.push(() => { if (input.checked !== checked) input.checked = checked; });
-          input.closest('.mcp__row').dataset.tip = suggestion.why;
+          input.closest('.row').dataset.tip = suggestion.why;
           const state = mcpAccess.get(input.dataset.name);
           if (!state) continue;
           const mode = state.mode;
@@ -4777,12 +4786,12 @@ async function installUpdate(source, button) {
   }
 }
 function updateRow(text, action, tip, run, detail, primary = false) {
-  const row = document.createElement('div');
-  row.className = 'update__row';
-  const label = document.createElement('span');
-  label.textContent = text;
+  const row = node('div', 'row');
+  const label = node('span', 'row__main');
+  const controls = node('span', 'row__controls');
+  label.append(node('span', 'row__name', text));
   if (detail) {
-    const line = node('span', 'update__detail', detail);
+    const line = node('span', 'row__meta', detail);
     line.dataset.tip = detail;
     label.append(line);
   }
@@ -4791,7 +4800,8 @@ function updateRow(text, action, tip, run, detail, primary = false) {
   button.dataset.tip = tip;
   button.onclick = () => run(button);
   button.disabled = !run;
-  row.append(label, button);
+  controls.append(button);
+  row.append(label, controls);
   return row;
 }
 let tasksLoad = 0;
@@ -4868,7 +4878,7 @@ async function openUpdates() {
   }
   const { version, local, remote, error, buildFolder, frugal, frugalSource, frugalLatest } = found;
   const install = t('update.install-tip');
-  const rows = [node('h3', 'update__heading', t('update.deck-version', { version }))];
+  const rows = [node('h3', 'dialog__section', t('update.deck-version', { version }))];
   const fromBuilds = Boolean(buildFolder) && localStorage.getItem('deckUpdateSource') !== 'github';
   // Only an install that is really available is the primary action, and only one per dialog: the Deck's first.
   const deckNewer = fromBuilds ? Boolean(local) : Boolean(remote?.url);
@@ -4887,7 +4897,7 @@ async function openUpdates() {
   }
   rows.push(updateRow(t('update.file.label'), t('update.file.choose'), t('update.file.tip'), pickInstaller));
   if (frugal) {
-    rows.push(node('h3', 'update__heading', t('update.plugin.version', { version: frugal })));
+    rows.push(node('h3', 'dialog__section', t('update.plugin.version', { version: frugal })));
     const { version: latest, newer, dirty } = frugalLatest ?? {};
     const state = dirty ? t('update.plugin.dirty') : newer ? t('update.plugin.available', { version: latest }) : latest ? t('update.current') : t('update.plugin.unknown-version');
     const tip = dirty ? t('update.plugin.dirty-tip') : newer || !latest ? t('update.plugin.update-tip') : t('update.nothing-new');
@@ -4945,7 +4955,7 @@ async function restartChats(button) {
   $('update-status').textContent = restarting.length < open.length
     ? tp('update.restart.done-idle', restarting.length)
     : tp('update.restart.done', restarting.length);
-  button.closest('.update__row')?.remove();
+  button.closest('.row')?.remove();
 }
 async function updateFrugal(button) {
   button.disabled = true;
