@@ -51,6 +51,11 @@ export function t(key, vars = {}) {
   return message === undefined ? key : interpolate(message, vars);
 }
 
+export function tp(key, count, vars = {}) {
+  const form = `${key}.${new Intl.PluralRules(currentLanguage()).select(count)}`;
+  return t(Object.hasOwn(messages, form) ? form : `${key}.other`, { count, ...vars });
+}
+
 export function applyI18n(root = document) {
   const elements = [...root.querySelectorAll(selector)];
   if (root.matches?.(selector)) elements.unshift(root);
