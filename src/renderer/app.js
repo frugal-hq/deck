@@ -3805,8 +3805,8 @@ async function useEverywhere(row, button) {
 
 // Unlike its checkbox, which applies to this folder, group or workspace, removing reaches every folder and delegated work.
 async function removeMcp(row, button) {
-  const where = row.deck ? t('mcp.remove.deck-scope') : t('mcp.remove.account-scope', { accounts: row.accounts.join(', ') });
-  if (!await askConfirm(t('organize.remove.title', { name: row.name }), t('mcp.remove.text', { where }), t('common.remove'))) return;
+  const text = row.deck ? t('mcp.remove.deck-text') : t('mcp.remove.account-text', { accounts: row.accounts.join(', ') });
+  if (!await askConfirm(t('organize.remove.title', { name: row.name }), text, t('common.remove'))) return;
   button.disabled = true;
   const result = await deck.mcpRemove(row.name, Boolean(row.deck), mcpScope).catch((error) => ({ error: String(error) }));
   const message = $('mcp-error');
