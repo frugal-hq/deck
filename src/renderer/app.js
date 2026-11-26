@@ -4,7 +4,7 @@ import { matchSessions } from './palette.mjs';
 import { groupChats, buildTree } from './chats.mjs';
 import { trustPromptKey } from './trust.mjs';
 import { trimSilence, encodeWav, joinChunks } from './voice.mjs';
-import { loadLocale, applyI18n, t, tp } from './i18n.mjs';
+import { loadLocale, applyI18n, t, tp, languages } from './i18n.mjs';
 
 await loadLocale();
 applyI18n();
@@ -4525,6 +4525,16 @@ $('settings-import-external').onclick = async () => {
 };
 $('settings-ai-excerpts').onchange = (event) => localStorage.setItem('aiSearchExcerpts', event.target.checked);
 $('settings-reopen').onchange = (event) => localStorage.setItem('reopenChats', event.target.checked);
+$('settings-language').append(new Option(t('settings.general.language.auto'), ''), ...languages.map((tag) => {
+  const name = new Intl.DisplayNames([tag], { type: 'language' }).of(tag);
+  return new Option(name[0].toLocaleUpperCase(tag) + name.slice(1), tag);
+}));
+$('settings-language').value = languages.includes(localStorage.getItem('language')) ? localStorage.getItem('language') : '';
+$('settings-language').onchange = (event) => {
+  if (event.target.value) localStorage.setItem('language', event.target.value);
+  else localStorage.removeItem('language');
+  location.reload();
+};
 $('settings-tooltips').onchange = (event) => localStorage.setItem('tooltipPlacement', event.target.value);
 $('settings-always-trust').onchange = (event) => {
   if (!event.target.checked) {

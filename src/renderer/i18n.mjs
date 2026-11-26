@@ -1,4 +1,4 @@
-const SUPPORTED = ['en', 'es', 'es-ES', 'es-PE', 'es-MX', 'pt-PT', 'pt-BR', 'ru', 'tr', 'fr', 'de', 'it', 'ja', 'zh-CN', 'ko', 'pl', 'uk', 'nl'];
+export const languages = ['en', 'es', 'es-ES', 'es-PE', 'es-MX', 'pt-PT', 'pt-BR', 'ru', 'tr', 'fr', 'de', 'it', 'ja', 'zh-CN', 'ko', 'pl', 'uk', 'nl'];
 const DEFAULT_VARIANTS = { pt: 'pt-BR', zh: 'zh-CN' };
 const attributes = ['tip', 'aria-label', 'placeholder', 'title'];
 const selector = ['[data-i18n]', ...attributes.map(name => `[data-i18n-${name}]`)].join(', ');
@@ -6,7 +6,7 @@ const selector = ['[data-i18n]', ...attributes.map(name => `[data-i18n-${name}]`
 let language = 'en';
 let messages = Object.create(null);
 
-export function pickLanguage(stored = globalThis.localStorage?.getItem('language'), preferred = globalThis.navigator?.languages ?? [], supported = SUPPORTED) {
+export function pickLanguage(stored = globalThis.localStorage?.getItem('language'), preferred = globalThis.navigator?.languages ?? [], supported = languages) {
   const tags = [...supported];
   if (tags.includes(stored)) return stored;
   for (const preference of preferred) {
@@ -21,7 +21,7 @@ export function pickLanguage(stored = globalThis.localStorage?.getItem('language
 }
 
 export function chain(tag) {
-  return [...new Set([tag, tag.split('-')[0], 'en'].filter(candidate => SUPPORTED.includes(candidate)))];
+  return [...new Set([tag, tag.split('-')[0], 'en'].filter(candidate => languages.includes(candidate)))];
 }
 
 export async function loadLocale(tag = pickLanguage()) {
