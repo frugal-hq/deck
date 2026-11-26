@@ -772,7 +772,7 @@ mod tests {
         assert_eq!(dirs(&main), [main_dir.join("plugins/cache/main-frugal")]);
         install(side_dir, &[("frugal@frugal", "side-frugal"), ("other@m", "side-other")]);
         assert_eq!(dirs(&side), [side_dir.join("plugins/cache/side-frugal")]);
-        std::fs::write(side_dir.join(".credentials.json"), "{}").unwrap();
+        std::fs::write(side_dir.join(".credentials.json"), r#"{"claudeAiOauth":{"accessToken":"t"}}"#).unwrap();
         assert!(accounts.finish_account(&side).unwrap());
         accounts.set_primary(string(&side["id"])).unwrap();
         let store = temp.0.join(".frugal-deck/store");

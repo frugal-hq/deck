@@ -614,7 +614,9 @@ pub fn frugal_install(config_dir: &Path) -> Value {
 pub fn frugal_dir(config_dir: &Path) -> Option<PathBuf> {
     Some(PathBuf::from(frugal_install(config_dir)["installPath"].as_str()?)).filter(|dir| dir.is_dir())
 }
-fn is_signed_in(a: &Value) -> bool { Path::new(string(&a["configDir"])).join(".credentials.json").exists() }
+// Logging out leaves .credentials.json with an empty accessToken.
+pub(crate) fn has_claude_token(dir: &Path) -> bool { read_json(&dir.join(".credentials.json"), json!({}))["claudeAiOauth"]["accessToken"].as_str().is_some_and(|token| !token.is_empty()) }
+fn is_signed_in(a: &Value) -> bool { has_claude_token(Path::new(string(&a["configDir"]))) }
 
 pub fn ensure_onboarded(dir: &Path) -> Result<()> {
     let file = dir.join(".claude.json");
@@ -1169,7 +1171,7 @@ pub(crate) mod tests {
         let main = t.0.join(".claude/settings.json");
         write_json(&main, &json!({"model": "opus", "cleanupPeriodDays": 7})).unwrap();
         let other = a.prepare_account(&json!("Side")).unwrap();
-        fs::write(Path::new(string(&other["configDir"])).join(".credentials.json"), "{}").unwrap();
+        fs::write(Path::new(string(&other["configDir"])).join(".credentials.json"), r#"{"claudeAiOauth":{"accessToken":"t"}}"#).unwrap();
         assert!(a.finish_account(&other).unwrap());
         let side = Path::new(string(&other["configDir"])).join("settings.json");
         a.set_keep_transcripts(true).unwrap();
@@ -1290,8 +1292,10 @@ pub(crate) mod tests {
         let account = a.prepare_account(&json!("  Work Account!  ")).unwrap();
         assert_eq!(account["id"], "work-account");
         assert!(!a.finish_account(&account).unwrap());
+        fs::write(Path::new(string(&account["configDir"])).join(".credentials.json"), r#"{"claudeAiOauth":{"accessToken":"","refreshToken":""}}"#).unwrap();
+        assert!(!a.finish_account(&account).unwrap());
         let config = PathBuf::from(string(&account["configDir"]));
-        fs::write(config.join(".credentials.json"), "token").unwrap();
+        fs::write(config.join(".credentials.json"), r#"{"claudeAiOauth":{"accessToken":"t"}}"#).unwrap();
         write_json(&config.join(".claude.json"), &json!({"keep": 1, "oauthAccount": {"emailAddress": "Work@Example.com"}})).unwrap();
         assert!(a.finish_account(&account).unwrap());
         assert_eq!(read_json(&config.join(".claude.json"), Value::Null)["keep"], 1);
@@ -1356,7 +1360,7 @@ pub(crate) mod tests {
         fs::write(config.join(".claude.json"), "{broken").unwrap();
         assert!(ensure_onboarded(&config).is_err());
         assert_eq!(fs::read_to_string(config.join(".claude.json")).unwrap(), "{broken");
-        fs::write(config.join(".credentials.json"), "token").unwrap();
+        fs::write(config.join(".credentials.json"), r#"{"claudeAiOauth":{"accessToken":"t"}}"#).unwrap();
         assert!(a.finish_account(&json!({"id": "x", "configDir": config})).is_err());
         assert!(!a.settings_file().exists());
         write_json(&a.frugal_file(), &json!({"accounts": []})).unwrap();
@@ -1412,7 +1416,7 @@ pub(crate) mod tests {
         assert_eq!(a.primary()["id"], MAIN);
         for config in [dir.0.join(".claude"), work.clone()] {
             fs::create_dir_all(&config).unwrap();
-            fs::write(config.join(".credentials.json"), "token").unwrap();
+            fs::write(config.join(".credentials.json"), r#"{"claudeAiOauth":{"accessToken":"t"}}"#).unwrap();
         }
         write_json(&dir.0.join(".claude.json"), &json!({"oauthAccount": {"emailAddress": "same@example.com"}})).unwrap();
         write_json(&work.join(".claude.json"), &json!({"oauthAccount": {"emailAddress": "Same@Example.com"}})).unwrap();
@@ -1466,7 +1470,7 @@ pub(crate) mod tests {
         let mut a = dir.accounts();
         for name in ["one", "two"] {
             let account = a.prepare_account(&json!(name)).unwrap();
-            fs::write(Path::new(string(&account["configDir"])).join(".credentials.json"), "token").unwrap();
+            fs::write(Path::new(string(&account["configDir"])).join(".credentials.json"), r#"{"claudeAiOauth":{"accessToken":"t"}}"#).unwrap();
             a.finish_account(&account).unwrap();
         }
         let claude = dir.0.join("fake-claude.cmd");
@@ -1522,7 +1526,7 @@ pub(crate) mod tests {
         let dir = TempDir::new();
         let a = dir.accounts();
         let side = a.prepare_account(&json!("Side")).unwrap();
-        fs::write(Path::new(string(&side["configDir"])).join(".credentials.json"), "{}").unwrap();
+        fs::write(Path::new(string(&side["configDir"])).join(".credentials.json"), r#"{"claudeAiOauth":{"accessToken":"t"}}"#).unwrap();
         assert!(a.finish_account(&side).unwrap());
         let side_id = string(&side["id"]);
         a.set_primary(side_id).unwrap();

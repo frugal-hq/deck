@@ -58,7 +58,7 @@ fn snapshot(home: &Path) -> Snapshot {
     for account in read(&home.join(".frugal/accounts.json")).unwrap_or_default()["accounts"].as_array().into_iter().flatten() {
         let Some(id) = account["id"].as_str() else { continue };
         let dir = account["config_dir"].as_str().map(PathBuf::from);
-        let claude_token = || dir.as_ref().and_then(|dir| read(&dir.join(".credentials.json"))).is_some_and(|c| c["claudeAiOauth"]["accessToken"].is_string());
+        let claude_token = || dir.as_ref().is_some_and(|dir| crate::accounts::has_claude_token(dir));
         s.logged_in.insert(id.to_owned(), account["needs_login"] != true && (account["kind"] != "claude" || claude_token()));
         if let Some(cache) = dir.and_then(|dir| read(&dir.join("mcp-needs-auth-cache.json"))) {
             s.needs_auth.insert(id.to_owned(), cache.as_object().map(|names| names.keys().cloned().collect()).unwrap_or_default());
