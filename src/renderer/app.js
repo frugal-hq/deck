@@ -1653,7 +1653,7 @@ accountForm.onsubmit = async (event) => {
         if (kind === 'gemini' && $('account-paid').checked) args.push('--paid');
         // Clear the input immediately; the key lives only in this invocation's stdin.
         let pending;
-        try { pending = deck.accountCli(args, kind === 'gemini' ? `${$('account-key').value}\n` : null); }
+        try { pending = deck.accountCli(args, kind === 'gemini' && auth !== 'google' ? `${$('account-key').value}\n` : null); }
         finally { $('account-key').value = ''; }
         const result = accountResult(await pending, true);
         if (result.ok !== true || result.id !== id || result.kind !== kind || typeof result.loggedIn !== 'boolean') throw new Error(t('account.error.add'));
