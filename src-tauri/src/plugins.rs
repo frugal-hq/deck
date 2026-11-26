@@ -7,7 +7,7 @@ use std::sync::Mutex;
 use std::time::Duration;
 use tauri::{AppHandle, Emitter, Manager, State};
 use crate::accounts::{array, is_frugal, object, read_json, read_strict, run, string, Accounts};
-use crate::chat::{account_env, claude_env, find_claude, NO_CLAUDE};
+use crate::chat::{account_env, claude_env, find_claude, no_claude};
 
 type Result<T> = std::result::Result<T, String>;
 const FRUGAL: &str = "frugal@frugal";
@@ -51,9 +51,9 @@ fn auto_candidates(settings: &Value) -> Vec<String> {
 }
 
 fn validate_picked(reply: Value, candidates: &[String]) -> Result<Vec<String>> {
-    if reply.as_object().is_none_or(|fields| fields.len() != 1) { return Err("Invalid Auto picks.".into()); }
-    let picked = reply["picked"].as_array().ok_or("Invalid Auto picks.")?;
-    picked.iter().map(|name| name.as_str().filter(|name| candidates.iter().any(|candidate| candidate == name)).map(str::to_owned).ok_or_else(|| "Invalid Auto picks.".into())).collect()
+    if reply.as_object().is_none_or(|fields| fields.len() != 1) { return Err(crate::i18n::t("error.invalid-auto-picks", &[]).into()); }
+    let picked = reply["picked"].as_array().ok_or_else(|| crate::i18n::t("error.invalid-auto-picks", &[]))?;
+    picked.iter().map(|name| name.as_str().filter(|name| candidates.iter().any(|candidate| candidate == name)).map(str::to_owned).ok_or_else(|| crate::i18n::t("error.invalid-auto-picks", &[]).into())).collect()
 }
 
 // The picker is injected so cache, resume and failure paths never need a live Claude process in tests.
@@ -61,7 +61,7 @@ fn auto_pick(entry: &Value, candidates: &[String], prompt: Option<&str>, resume:
     if prompt.is_none() && entry["candidates"] == json!(candidates) {
         if let Ok(picked) = validate_picked(json!({ "picked": entry["picked"] }), candidates) { return Ok((picked, false)); }
     }
-    if resume { return Err("No cached Auto picks for this chat.".into()); }
+    if resume { return Err(crate::i18n::t("error.no-cached-auto-picks", &[]).into()); }
     Ok((validate_picked(pick()?, candidates)?, true))
 }
 
@@ -123,7 +123,7 @@ pub fn plugins_list(accounts: State<'_, Mutex<Accounts>>) -> Value { list(&accou
 
 #[tauri::command]
 pub fn plugins_set(accounts: State<'_, Mutex<Accounts>>, states: Value) -> Result<()> {
-    if !states.is_object() { return Err("Invalid request.".into()); }
+    if !states.is_object() { return Err(crate::i18n::t("error.invalid-request", &[]).into()); }
     let accounts = accounts.lock().unwrap();
     let mut settings = accounts.load();
     object(&mut settings).insert("pluginStates".into(), filter_states(&states));
@@ -157,7 +157,7 @@ fn catalog(accounts: &Accounts) -> Result<Value> {
 }
 
 fn command(accounts: &Accounts, env: HashMap<String, String>) -> Result<Command> {
-    let mut command = Command::new(find_claude().ok_or(NO_CLAUDE)?);
+    let mut command = Command::new(find_claude().ok_or_else(no_claude)?);
     command.env_clear().envs(env).current_dir(&accounts.home).stdin(Stdio::null());
     Ok(command)
 }
@@ -168,8 +168,8 @@ fn haiku_command(accounts: &Accounts) -> Result<Command> {
 
 fn parse_reply(output: &[u8]) -> Result<Value> {
     let reply: Value = serde_json::from_slice(output).map_err(|e| e.to_string())?;
-    if reply["is_error"] == true { return Err(reply["result"].as_str().unwrap_or("Claude failed.").into()); }
-    serde_json::from_str(reply["result"].as_str().ok_or("Claude returned no result.")?).map_err(|e| e.to_string())
+    if reply["is_error"] == true { return Err(reply["result"].as_str().map_or_else(|| crate::i18n::t("error.claude-failed", &[]), str::to_owned).into()); }
+    serde_json::from_str(reply["result"].as_str().ok_or_else(|| crate::i18n::t("error.claude-no-result", &[]))?).map_err(|e| e.to_string())
 }
 
 // Discovery, recommendations and Auto picks use the primary account and the same bounded Haiku call.
@@ -179,16 +179,16 @@ fn haiku(command: &mut Command, prompt: &str, timeout: Duration) -> Result<Value
 }
 
 fn validate_find(reply: Value, catalog: &Value) -> Result<Value> {
-    let fields = reply.as_object().ok_or("Invalid plugin suggestion.")?;
+    let fields = reply.as_object().ok_or_else(|| crate::i18n::t("error.invalid-plugin-suggestion", &[]))?;
     if fields.len() == 1 && reply["none"].as_str().is_some_and(|s| !s.trim().is_empty()) { return Ok(reply); }
-    let id = reply["id"].as_str().ok_or("Invalid plugin suggestion.")?;
-    if fields.len() != 2 || id == FRUGAL || !valid_id(id) || catalog.get(id).is_none() || !reply["why"].as_str().is_some_and(|s| !s.trim().is_empty()) { return Err("Invalid plugin suggestion.".into()); }
+    let id = reply["id"].as_str().ok_or_else(|| crate::i18n::t("error.invalid-plugin-suggestion", &[]))?;
+    if fields.len() != 2 || id == FRUGAL || !valid_id(id) || catalog.get(id).is_none() || !reply["why"].as_str().is_some_and(|s| !s.trim().is_empty()) { return Err(crate::i18n::t("error.invalid-plugin-suggestion", &[]).into()); }
     Ok(reply)
 }
 
 #[tauri::command]
 pub async fn plugin_find(app: AppHandle, request: String) -> Result<Value> {
-    if request.trim().is_empty() || request.encode_utf16().count() > 2000 { return Err("Invalid request.".into()); }
+    if request.trim().is_empty() || request.encode_utf16().count() > 2000 { return Err(crate::i18n::t("error.invalid-request", &[]).into()); }
     tauri::async_runtime::spawn_blocking(move || {
         let (catalog, mut command) = {
             let state = app.state::<Mutex<Accounts>>();
@@ -206,7 +206,7 @@ pub async fn plugin_install(app: AppHandle, id: String) -> Result<String> {
         let mut command = {
             let state = app.state::<Mutex<Accounts>>();
             let accounts = state.lock().unwrap();
-            if id == FRUGAL || !valid_id(&id) || catalog(&accounts)?.get(&id).is_none() { return Err("Unknown plugin.".into()); }
+            if id == FRUGAL || !valid_id(&id) || catalog(&accounts)?.get(&id).is_none() { return Err(crate::i18n::t("error.unknown-plugin", &[]).into()); }
             command(&accounts, claude_env(&accounts, Some(&accounts.store_dir())))?
         };
         command.args(["plugin", "install", &id]);
@@ -242,12 +242,12 @@ pub async fn plugins_update(app: AppHandle, names: Vec<String>) -> Result<Vec<St
 }
 
 fn validate_recommend(reply: Value, mcp: &Value, plugins: &Value) -> Result<Value> {
-    if reply.as_object().is_none_or(|fields| fields.len() != 2) { return Err("Invalid recommendation.".into()); }
+    if reply.as_object().is_none_or(|fields| fields.len() != 2) { return Err(crate::i18n::t("error.invalid-recommendation", &[]).into()); }
     for (field, known, states) in [("mcp", mcp, &["on", "auto", "delegates", "off"][..]), ("plugins", plugins, &["on", "auto", "off"][..])] {
-        let items = reply[field].as_object().ok_or("Invalid recommendation.")?;
+        let items = reply[field].as_object().ok_or_else(|| crate::i18n::t("error.invalid-recommendation", &[]))?;
         for (name, item) in items {
             if is_frugal(name) || name == FRUGAL || known.get(name).is_none() || item.as_object().is_none_or(|fields| fields.len() != 2)
-                || !item["state"].as_str().is_some_and(|state| states.contains(&state)) || !item["why"].as_str().is_some_and(|why| !why.trim().is_empty()) { return Err("Invalid recommendation.".into()); }
+                || !item["state"].as_str().is_some_and(|state| states.contains(&state)) || !item["why"].as_str().is_some_and(|why| !why.trim().is_empty()) { return Err(crate::i18n::t("error.invalid-recommendation", &[]).into()); }
         }
     }
     Ok(reply)
@@ -255,7 +255,7 @@ fn validate_recommend(reply: Value, mcp: &Value, plugins: &Value) -> Result<Valu
 
 #[tauri::command]
 pub async fn recommend(app: AppHandle, task: String) -> Result<Value> {
-    if task.trim().is_empty() || task.encode_utf16().count() > 2000 { return Err("Invalid request.".into()); }
+    if task.trim().is_empty() || task.encode_utf16().count() > 2000 { return Err(crate::i18n::t("error.invalid-request", &[]).into()); }
     tauri::async_runtime::spawn_blocking(move || {
         let (mcp, plugins, mut command) = {
             let state = app.state::<Mutex<Accounts>>();

@@ -15,12 +15,11 @@ use tauri::{ipc::Channel, AppHandle, Emitter, Manager, State};
 use crate::accounts::{self, Accounts, MAIN};
 use crate::index::{self, Index};
 
-pub const NO_CLAUDE: &str = "claude.exe not found in PATH. Install Claude Code and reopen Deck.";
+pub fn no_claude() -> String { crate::i18n::t("error.no-claude", &[]) }
 // Under a frame, so typing still echoes at once.
 const BATCH: Duration = Duration::from_millis(4);
 // main.js IDLE_MS: a chat restarts only once Claude has been quiet this long.
 const IDLE: Duration = Duration::from_millis(2000);
-const INVALID: &str = "Invalid request.";
 
 // Electron's chatInfo; a sign-in terminal has none.
 struct Info {
@@ -151,7 +150,7 @@ const fn is_size(n: u16) -> bool {
 }
 
 fn invalid() -> Value {
-    json!({ "error": INVALID })
+    json!({ "error": crate::i18n::t("error.invalid-request", &[]) })
 }
 
 pub fn find_claude() -> Option<PathBuf> {
@@ -237,7 +236,7 @@ fn must_wait(indexed: bool, restart: bool, quiet: Duration) -> bool {
 // Outside the install folder: Program Files needs admin rights and an update or uninstall could remove it.
 #[tauri::command]
 pub fn folder_default(chats: tauri::State<Chats>) -> Result<PathBuf, String> {
-    let folder = std::env::var_os("USERPROFILE").map(PathBuf::from).ok_or("No user folder.")?.join("Frugal Deck").join("Sessions");
+    let folder = std::env::var_os("USERPROFILE").map(PathBuf::from).ok_or_else(|| crate::i18n::t("error.no-user-folder", &[]))?.join("Frugal Deck").join("Sessions");
     std::fs::create_dir_all(&folder).map_err(|error| error.to_string())?;
     chats.picked.lock().unwrap().insert(folder.clone());
     Ok(folder)
@@ -274,7 +273,7 @@ fn pump(mut reader: Box<dyn Read + Send>, output: &Channel<Value>, activity: &Ac
 // Output arrives as strings on the channel and the exit as {exit}, so the exit never overtakes the last output.
 // on_exit runs after the terminal leaves the live chats and before {exit} is sent.
 #[allow(clippy::too_many_arguments)]
-fn spawn(app: &AppHandle, id: &str, command: CommandBuilder, (cols, rows): (u16, u16), info: Option<Info>, output: Channel<Value>, fail: &str, on_exit: impl FnOnce(&AppHandle, u32) + Send + 'static) -> Result<(), Value> {
+fn spawn(app: &AppHandle, id: &str, command: CommandBuilder, (cols, rows): (u16, u16), info: Option<Info>, output: Channel<Value>, fail: bool, on_exit: impl FnOnce(&AppHandle, u32) + Send + 'static) -> Result<(), Value> {
     let chats = app.state::<Chats>();
     // Administrator chats wait on the UAC prompt; closing one there must not leave it running unseen.
     let cancelled = Arc::new(AtomicBool::new(false));
@@ -299,10 +298,10 @@ fn spawn(app: &AppHandle, id: &str, command: CommandBuilder, (cols, rows): (u16,
     };
     let mut live = chats.live.lock().unwrap();
     chats.launching.lock().unwrap().remove(id);
-    let (master, reader, writer, mut child) = started.map_err(|error| json!({ "error": format!("{fail}{error}") }))?;
+    let (master, reader, writer, mut child) = started.map_err(|error| json!({ "error": if fail { crate::i18n::t("error.claude-start-failed", &[("error", &error)]) } else { error } }))?;
     if cancelled.load(Ordering::Relaxed) {
         let _ = child.kill();
-        return Err(json!({ "error": "The chat was closed before it started." }));
+        return Err(json!({ "error": crate::i18n::t("error.chat-closed-before-start", &[]) }));
     }
     let activity = Arc::new(Activity { muted: AtomicBool::new(false), last_output: Mutex::new(Instant::now()) });
     let (done, exited) = mpsc::channel();
@@ -363,7 +362,7 @@ fn chat_plugin_dirs(accounts: &Accounts, account: &Value, states: &Value, picked
 #[allow(clippy::too_many_arguments)]
 fn launch(app: &AppHandle, id: &str, place: &str, folder: PathBuf, size: (u16, u16), resume: bool, group: &Value, account: &Value, prompt: Option<&str>, bypass: bool, admin: bool, output: Channel<Value>) -> Value {
     let Some(claude) = find_claude() else {
-        return json!({ "error": NO_CLAUDE });
+        return json!({ "error": no_claude() });
     };
     let accounts = app.state::<Mutex<Accounts>>();
     let index = app.state::<Index>();
@@ -406,7 +405,7 @@ fn launch(app: &AppHandle, id: &str, place: &str, folder: PathBuf, size: (u16, u
     })();
     let (allowed, denied, deck_mcp, delegate_only, deck_group, deck_workspace, plugin_dirs, enabled_plugins) = match prepared {
         Ok(prepared) => prepared,
-        Err(error) => return json!({ "error": format!("Failed to start Claude: {error}") }),
+        Err(error) => return json!({ "error": crate::i18n::t("error.claude-start-failed", &[("error", &error)]) }),
     };
     let bridge = app.state::<crate::statusline::StatusBridge>();
     let pairs: Vec<_> = env.iter().map(|(k, v)| (k.into(), v.into())).collect();
@@ -472,7 +471,7 @@ fn launch(app: &AppHandle, id: &str, place: &str, folder: PathBuf, size: (u16, u
     let info = Info { account: account["id"].as_str().unwrap_or_default().to_owned(), folder, bypass, admin, voice };
     let exit_token = token.clone();
     let exit_id = id.to_owned();
-    if let Err(error) = spawn(app, id, command, size, Some(info), output, "Failed to start Claude: ", move |app, _| {
+    if let Err(error) = spawn(app, id, command, size, Some(info), output, true, move |app, _| {
         let bridge = app.state::<crate::statusline::StatusBridge>();
         bridge.release(&exit_token);
         bridge.save_edit(&exit_id, None);
@@ -568,7 +567,7 @@ fn switch_account(app: &AppHandle, o: SwitchOptions, output: Channel<Value>) -> 
     // Anthropic voice turns on at launch (Claude Code reads the voice setting only then), so a chat started without it restarts once.
     let flags_changed = bypass != info.bypass || admin != info.admin || (crate::voice::anthropic_voice() && !info.voice);
     if !o.restart && must_wait(session.is_some(), moving || flags_changed, chat.activity.last_output.lock().unwrap().elapsed()) {
-        return json!({ "error": "Claude is working. Switch accounts when it is idle." });
+        return json!({ "error": crate::i18n::t("error.claude-busy-switch", &[]) });
     }
     // A bypass or administrator toggle restarts on the chat's own account, which is no reason to make it the primary.
     if moving || (!flags_changed && !o.restart) {
@@ -588,7 +587,7 @@ fn switch_account(app: &AppHandle, o: SwitchOptions, output: Channel<Value>) -> 
         if o.restart && !moving && !flags_changed {
             return json!({ "ok": true, "account": account_id });
         }
-        return json!({ "error": "Send a first message before switching this chat. New chats will use this account." });
+        return json!({ "error": crate::i18n::t("error.switch-needs-first-message", &[]) });
     };
     let mut chat = live.remove(&o.id).unwrap();
     chat.activity.muted.store(true, Ordering::Relaxed);
@@ -618,18 +617,18 @@ pub fn accounts_login(app: AppHandle, chats: State<Chats>, accounts: State<Mutex
                 !matches!(key.as_str(), "CLAUDE_CONFIG_DIR" | "CODEX_HOME" | "GROK_HOME" | "XDG_DATA_HOME" | "GEMINI_CLI_HOME") || value.contains('\0')) {
             return invalid();
         }
-        let Some(exe) = find_cli(&argv[0]) else { return json!({"error": format!("{} not found in PATH.", argv[0])}); };
+        let Some(exe) = find_cli(&argv[0]) else { return json!({"error": crate::i18n::t("error.not-found-in-path", &[("name", &argv[0])])}); };
         let mut env = clean_env();
         env.extend(o.env);
         let cmd = match login_command(exe, &argv[1..], env, &accounts.lock().unwrap().home) {
             Ok(cmd) => cmd,
             Err(error) => return error,
         };
-        return spawn(&app, &o.id, cmd, (o.cols, o.rows), None, output, "", |_, _| {})
+        return spawn(&app, &o.id, cmd, (o.cols, o.rows), None, output, false, |_, _| {})
             .map_or_else(|error| error, |()| json!({"ok": true}));
     }
     let Some(claude) = find_claude().or_else(|| find_cli("claude")) else {
-        return json!({ "error": NO_CLAUDE });
+        return json!({ "error": no_claude() });
     };
     let a = accounts.lock().unwrap();
     let account = match &o.account_id {
@@ -649,7 +648,7 @@ pub fn accounts_login(app: AppHandle, chats: State<Chats>, accounts: State<Mutex
     drop(a);
     let existing = o.account_id.is_some();
     let login_id = o.id.clone();
-    let result = spawn(&app, &o.id, command, (o.cols, o.rows), None, output, "", move |app, code| {
+    let result = spawn(&app, &o.id, command, (o.cols, o.rows), None, output, false, move |app, code| {
         let accounts = app.state::<Mutex<Accounts>>();
         let mut a = accounts.lock().unwrap();
         if existing {
@@ -693,7 +692,7 @@ pub fn mcp_login(app: AppHandle, chats: State<Chats>, accounts: State<Mutex<Acco
         return invalid();
     }
     let Some(claude) = find_claude() else {
-        return json!({ "error": NO_CLAUDE });
+        return json!({ "error": no_claude() });
     };
     let a = accounts.lock().unwrap();
     let Some(account) = a.claude_accounts().into_iter().find(|account| account["id"] == o.account_id.as_str()) else {
@@ -714,7 +713,7 @@ pub fn mcp_login(app: AppHandle, chats: State<Chats>, accounts: State<Mutex<Acco
     }
     drop(a);
     command.arg("/mcp");
-    spawn(&app, &o.id, command, (o.cols, o.rows), None, output, "", |_, _| {}).map_or_else(|error| error, |()| json!({ "ok": true }))
+    spawn(&app, &o.id, command, (o.cols, o.rows), None, output, false, |_, _| {}).map_or_else(|error| error, |()| json!({ "ok": true }))
 }
 
 #[tauri::command]

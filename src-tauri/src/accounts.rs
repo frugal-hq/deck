@@ -30,7 +30,7 @@ pub(crate) fn read_strict(file: &Path, fallback: Value) -> Result<Value> {
 pub(crate) fn read_json(file: &Path, fallback: Value) -> Value { read_strict(file, fallback.clone()).unwrap_or(fallback) }
 
 pub(crate) fn write_json(file: &Path, data: &Value) -> Result<()> {
-    fs::create_dir_all(file.parent().ok_or("No parent folder.")?)?;
+    fs::create_dir_all(file.parent().ok_or_else(|| crate::i18n::t("error.no-parent-folder", &[]))?)?;
     let mut temporary = file.as_os_str().to_owned();
     temporary.push(".tmp");
     fs::write(&temporary, serde_json::to_vec_pretty(data)?)?;
@@ -151,9 +151,9 @@ impl Accounts {
 
     fn mcp_key(scope: &Value) -> Result<String> {
         for kind in ["workspace", "group"] {
-            if truthy(&scope[kind]) { return Ok(format!("{kind}:{}", scope[kind].as_str().ok_or("Invalid scope.")?.to_lowercase())); }
+            if truthy(&scope[kind]) { return Ok(format!("{kind}:{}", scope[kind].as_str().ok_or_else(|| crate::i18n::t("error.invalid-scope", &[]))?.to_lowercase())); }
         }
-        let resolved = resolve(Path::new(scope["folder"].as_str().ok_or("Invalid folder.")?))?.to_string_lossy().into_owned();
+        let resolved = resolve(Path::new(scope["folder"].as_str().ok_or_else(|| crate::i18n::t("error.invalid-folder", &[]))?))?.to_string_lossy().into_owned();
         Ok(if cfg!(windows) { resolved.to_lowercase() } else { resolved })
     }
     // mcpOff and mcpOn: the servers, from any account or the Deck's own (mcpServers), turned off or on in a scope against mcpGlobal.
@@ -176,7 +176,7 @@ impl Accounts {
     fn store_mcp_config(&self) -> Result<Value> {
         let config = read_strict(&self.store_mcp_file(), json!({}))?;
         if !config.is_object() || config.get("mcpServers").is_some_and(|servers| !servers.is_object()) {
-            return Err("Invalid Deck store MCP configuration.".into());
+            return Err(crate::i18n::t("error.invalid-deck-store-mcp-config", &[]).into());
         }
         Ok(config)
     }
@@ -187,7 +187,7 @@ impl Accounts {
     pub(crate) fn migrate_deck_servers(&self) -> Result<()> {
         let mut settings = read_strict(&self.settings_file(), json!({}))?;
         let Some(old) = settings.get("mcpServers") else { return Ok(()); };
-        let old = old.as_object().ok_or("Invalid Deck MCP configuration.")?;
+        let old = old.as_object().ok_or_else(|| crate::i18n::t("error.invalid-deck-mcp-config", &[]))?;
         let mut config = self.store_mcp_config()?;
         let servers = object(config.as_object_mut().unwrap().entry("mcpServers").or_insert_with(|| json!({})));
         for (name, server) in old { servers.entry(name.clone()).or_insert_with(|| server.clone()); }
@@ -476,8 +476,8 @@ impl Accounts {
             else if !id.ends_with('-') { id.push('-'); }
         }
         let id: String = id.trim_matches('-').chars().take(32).collect();
-        if !valid_id(&id) { return Err("Use letters or numbers in the account name.".into()); }
-        if self.claude_accounts().iter().chain(self.frugal_accounts().iter()).any(|a| a["id"] == id) { return Err(format!("An account named {id} already exists.").into()); }
+        if !valid_id(&id) { return Err(crate::i18n::t("error.account-name-letters", &[]).into()); }
+        if self.claude_accounts().iter().chain(self.frugal_accounts().iter()).any(|a| a["id"] == id) { return Err(crate::i18n::t("error.account-exists", &[("id", &id)]).into()); }
         let dir = self.home.join(format!(".claude-{id}"));
         fs::create_dir_all(dir.join("projects"))?;
         Ok(json!({"id": id, "name": clean, "configDir": dir}))
@@ -626,7 +626,7 @@ pub fn ensure_onboarded(dir: &Path) -> Result<()> {
 }
 
 fn with_frugal_lock<T>(file: &Path, work: impl FnOnce() -> Result<T>) -> Result<T> {
-    let lock = file.parent().ok_or("No parent folder.")?.join("files.lock");
+    let lock = file.parent().ok_or_else(|| crate::i18n::t("error.no-parent-folder", &[]))?.join("files.lock");
     fs::create_dir_all(lock.parent().unwrap())?;
     let mut handle = None;
     for _ in 0..500 {
@@ -647,7 +647,7 @@ fn join_frugal_pool(a: &Value, file: &Path) -> Result<()> {
     with_frugal_lock(file, || {
         let mut data = read_strict(file, json!({"accounts": []}))?;
         let mut entries = array(&data["accounts"]).to_vec();
-        if !data["accounts"].is_null() && !data["accounts"].is_array() { return Err("Invalid accounts list.".into()); }
+        if !data["accounts"].is_null() && !data["accounts"].is_array() { return Err(crate::i18n::t("error.invalid-accounts-list", &[]).into()); }
         entries.push(json!({"id": a["id"], "kind": "claude", "enabled": true, "used": 0, "day": "", "config_dir": a["configDir"]}));
         object(&mut data).insert("accounts".into(), json!(entries));
         write_json(file, &data)
@@ -657,7 +657,7 @@ fn leave_frugal_pool(id: &str, file: &Path) -> Result<()> {
     with_frugal_lock(file, || {
         let mut data = read_strict(file, Value::Null)?;
         let entries = array(&data["accounts"]);
-        if !data["accounts"].is_null() && !data["accounts"].is_array() { return Err("Invalid accounts list.".into()); }
+        if !data["accounts"].is_null() && !data["accounts"].is_array() { return Err(crate::i18n::t("error.invalid-accounts-list", &[]).into()); }
         let kept: Vec<Value> = entries.iter().filter(|e| !(e["kind"] == "claude" && e["id"] == id)).cloned().collect();
         if kept.len() != entries.len() { data["accounts"] = json!(kept); write_json(file, &data)?; }
         Ok(())
@@ -694,10 +694,10 @@ fn move_missing(from: &Path, to: &Path) -> Result<()> {
 }
 
 pub fn share_transcript(file: &Path, dir: &Path) -> Result<()> {
-    let parent = file.parent().ok_or("No project folder.")?;
+    let parent = file.parent().ok_or_else(|| crate::i18n::t("error.no-project-folder", &[]))?;
     let source = fs::canonicalize(parent)?;
     let projects = dir.join("projects");
-    let target = projects.join(parent.file_name().ok_or("No project name.")?);
+    let target = projects.join(parent.file_name().ok_or_else(|| crate::i18n::t("error.no-project-name", &[]))?);
     fs::create_dir_all(&projects)?;
     if !target.exists() {
         #[cfg(windows)]
@@ -716,7 +716,7 @@ pub fn share_transcript(file: &Path, dir: &Path) -> Result<()> {
         return Ok(());
     }
     if fs::canonicalize(&target)?.to_string_lossy().to_lowercase() == source.to_string_lossy().to_lowercase() { return Ok(()); }
-    let link = target.join(file.file_name().ok_or("No transcript name.")?);
+    let link = target.join(file.file_name().ok_or_else(|| crate::i18n::t("error.no-transcript-name", &[]))?);
     if !link.exists() { fs::hard_link(file, link)?; }
     Ok(())
 }
@@ -883,8 +883,8 @@ pub fn run(command: &mut Command, timeout: Duration) -> Result<Vec<u8>> {
     };
     let out = stdout.join().map_err(|_| "stdout reader failed")??;
     let err = stderr.join().map_err(|_| "stderr reader failed")??;
-    if start.elapsed() >= timeout { return Err("Command timed out.".into()); }
-    if overflow.load(Ordering::Relaxed) { return Err("Command output exceeded maxBuffer.".into()); }
+    if start.elapsed() >= timeout { return Err(crate::i18n::t("error.command-timed-out", &[]).into()); }
+    if overflow.load(Ordering::Relaxed) { return Err(crate::i18n::t("error.command-max-buffer-exceeded", &[]).into()); }
     if !status?.success() { return Err(String::from_utf8_lossy(&err).into_owned().into()); }
     Ok(out)
 }
@@ -928,8 +928,8 @@ fn cli_lines(app: &AppHandle, command: &mut Command, stdin: Option<String>, time
     let last = stdout.join().map_err(|_| "stdout reader failed")??;
     stderr.join().map_err(|_| "stderr reader failed")??;
     input?;
-    if start.elapsed() >= timeout { return Err("Command timed out.".into()); }
-    if overflow.load(Ordering::Relaxed) { return Err("Command output exceeded maxBuffer.".into()); }
+    if start.elapsed() >= timeout { return Err(crate::i18n::t("error.command-timed-out", &[]).into()); }
+    if overflow.load(Ordering::Relaxed) { return Err(crate::i18n::t("error.command-max-buffer-exceeded", &[]).into()); }
     Ok(json!({"code": status?.code().unwrap_or(1), "last": last}))
 }
 
@@ -951,17 +951,17 @@ fn valid_cli_args(args: &[String], stdin: Option<&str>) -> bool {
 
 #[tauri::command]
 pub async fn account_cli(app: AppHandle, args: Vec<String>, stdin: Option<String>) -> std::result::Result<Value, String> {
-    if !valid_cli_args(&args, stdin.as_deref()) { return Err("Invalid request.".into()); }
+    if !valid_cli_args(&args, stdin.as_deref()) { return Err(crate::i18n::t("error.invalid-request", &[]).into()); }
     tauri::async_runtime::spawn_blocking(move || { (|| -> Result<Value> {
         let script = {
             let accounts = app.state::<Mutex<Accounts>>();
             let a = accounts.lock().unwrap();
-            a.chat_frugal_dir(&a.primary()).ok_or("Install frugal in the Deck store first.")?.join("accounts/server.py")
+            a.chat_frugal_dir(&a.primary()).ok_or_else(|| crate::i18n::t("error.install-frugal-first", &[]))?.join("accounts/server.py")
         };
         // Old add commands opened an external terminal; reject those before registration.
         let source = fs::read_to_string(&script)?;
         if !source.contains("login-command") || !source.contains("status") {
-            return Err("Update frugal to add this kind of account.".into());
+            return Err(crate::i18n::t("error.update-frugal-for-kind", &[]).into());
         }
         let timeout = Duration::from_secs(if args[0] == "add" { 600 } else { 30 });
         let mut command = Command::new("python");
@@ -972,12 +972,12 @@ pub async fn account_cli(app: AppHandle, args: Vec<String>, stdin: Option<String
 
 #[tauri::command]
 pub async fn install_cli(app: AppHandle, kind: String) -> std::result::Result<Value, String> {
-    if kind != "claude" { return Err("Invalid request.".into()); }
+    if kind != "claude" { return Err(crate::i18n::t("error.invalid-request", &[]).into()); }
     tauri::async_runtime::spawn_blocking(move || { (|| -> Result<Value> {
         if crate::chat::find_claude().is_some() || crate::chat::find_cli("claude").is_some() {
             return Ok(json!({"code": 0, "last": "", "skipped": true}));
         }
-        let npm = crate::chat::find_cli("npm").ok_or("Install Node.js (https://nodejs.org) first, then try again.")?;
+        let npm = crate::chat::find_cli("npm").ok_or_else(|| crate::i18n::t("error.install-node-first", &[]))?;
         let mut command = Command::new(npm);
         command.args(["install", "-g", "@anthropic-ai/claude-code"]);
         cli_lines(&app, &mut command, None, Duration::from_secs(600))
@@ -1029,7 +1029,7 @@ pub fn accounts_set_cap(app: AppHandle, accounts: State<Mutex<Accounts>>, id: St
 #[tauri::command]
 pub fn accounts_set_primary(app: AppHandle, accounts: State<Mutex<Accounts>>, id: String) -> std::result::Result<Value, String> {
     let mut a = accounts.lock().unwrap();
-    if !a.claude_accounts().iter().any(|a| a["id"] == id) { return Ok(json!({"error": "Invalid request."})); }
+    if !a.claude_accounts().iter().any(|a| a["id"] == id) { return Ok(json!({"error": crate::i18n::t("error.invalid-request", &[])})); }
     a.set_primary(&id).and_then(|()| publish(&app, &mut a)).map_err(|e| e.to_string())?;
     read_now(&app, &id);
     Ok(json!({"ok": true}))
@@ -1063,7 +1063,6 @@ pub async fn accounts_refresh(app: AppHandle) {
     }).await;
 }
 
-const IN_USE: &str = "Close the chats on this account first, then open Accounts in the top bar.";
 fn find_account(accounts: &Mutex<Accounts>, id: &str) -> Option<Value> { accounts.lock().unwrap().claude_accounts().into_iter().find(|a| a["id"] == id) }
 
 #[tauri::command]
@@ -1072,15 +1071,15 @@ pub async fn accounts_logout(app: AppHandle, id: String) -> Value {
         let accounts = app.state::<Mutex<Accounts>>();
         let account = find_account(&accounts, &id);
         let claude = crate::chat::find_claude();
-        let Some(account) = account else { return json!({"error": "Invalid request."}); };
-        let Some(claude) = claude else { return json!({"error": crate::chat::NO_CLAUDE}); };
-        if app.state::<crate::chat::Chats>().open_accounts().contains(&id) { return json!({"error": IN_USE}); }
+        let Some(account) = account else { return json!({"error": crate::i18n::t("error.invalid-request", &[])}); };
+        let Some(claude) = claude else { return json!({"error": crate::chat::no_claude()}); };
+        if app.state::<crate::chat::Chats>().open_accounts().contains(&id) { return json!({"error": crate::i18n::t("error.account-in-use", &[])}); }
         let mut command = Command::new(claude);
         {
             let a = accounts.lock().unwrap();
             command.args(["auth", "logout"]).env_clear().envs(crate::chat::account_env(&a, &account)).current_dir(&a.home);
         }
-        let result = run(&mut command, Duration::from_secs(30)).map_or_else(|e| json!({"error": format!("Sign out failed: {e}")}), |_| json!({"ok": true}));
+        let result = run(&mut command, Duration::from_secs(30)).map_or_else(|e| json!({"error": crate::i18n::t("error.sign-out-failed", &[("error", &e)])}), |_| json!({"ok": true}));
         let mut a = accounts.lock().unwrap();
         a.clear_emails();
         let _ = publish(&app, &mut a);
@@ -1094,14 +1093,14 @@ pub async fn accounts_logout(app: AppHandle, id: String) -> Value {
 pub async fn accounts_remove(app: AppHandle, id: String) -> Value {
     tauri::async_runtime::spawn_blocking(move || {
         let accounts = app.state::<Mutex<Accounts>>();
-        if id == MAIN || find_account(&accounts, &id).is_none() { return json!({"error": "Invalid request."}); }
-        if app.state::<crate::chat::Chats>().open_accounts().contains(&id) { return json!({"error": IN_USE}); }
+        if id == MAIN || find_account(&accounts, &id).is_none() { return json!({"error": crate::i18n::t("error.invalid-request", &[])}); }
+        if app.state::<crate::chat::Chats>().open_accounts().contains(&id) { return json!({"error": crate::i18n::t("error.account-in-use", &[])}); }
         drop(REFRESHING.lock());
         let mut a = accounts.lock().unwrap();
         let result = match a.remove_account(&id) {
             Ok(true) => json!({"ok": true}),
-            Ok(false) => json!({"error": "Invalid request."}),
-            Err(e) => json!({"error": format!("Delete failed: {e}")}),
+            Ok(false) => json!({"error": crate::i18n::t("error.invalid-request", &[])}),
+            Err(e) => json!({"error": crate::i18n::t("error.delete-failed", &[("error", &e)])}),
         };
         let _ = publish(&app, &mut a);
         drop(a);
@@ -1124,11 +1123,11 @@ pub(crate) fn mcp_scope(input: &Value) -> Option<Value> {
 }
 #[tauri::command]
 pub fn mcp_set(app: AppHandle, accounts: State<Mutex<Accounts>>, scope: Value, names: Value, on: Option<Value>) -> std::result::Result<Value, String> {
-    let Some(scope) = mcp_scope(&scope) else { return Ok(json!({"error": "Invalid folder."})); };
+    let Some(scope) = mcp_scope(&scope) else { return Ok(json!({"error": crate::i18n::t("error.invalid-folder", &[])})); };
     let on = on.unwrap_or_else(|| json!([]));
     let valid = |list: &Value| list.as_array().is_some_and(|a| a.len() <= 200 && a.iter().all(|n| n.as_str().is_some_and(|s| s.encode_utf16().count() <= 200)));
     if !valid(&names) || !valid(&on) {
-        return Ok(json!({"error": "Invalid list."}));
+        return Ok(json!({"error": crate::i18n::t("error.invalid-list", &[])}));
     }
     let mut a = accounts.lock().unwrap();
     if scope["global"] == true { return a.set_mcp_global(&on).map(|()| json!({"ok": true})).map_err(|e| e.to_string()); }
