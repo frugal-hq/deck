@@ -400,7 +400,9 @@ fn launch(app: &AppHandle, id: &str, place: &str, folder: PathBuf, size: (u16, u
         crate::mcp::share_tokens(&accounts);
         let (allowed, denied, mcp, delegate_only) = accounts.chat_mcp(account["id"].as_str().unwrap_or_default(), &folder, topic, &workspaces, (&auto_on, &auto_delegates))?;
         let plugin_dirs = chat_plugin_dirs(&accounts, account, &settings["pluginStates"], picked.as_deref());
-        Ok((allowed, denied, mcp, delegate_only, topic.map(str::to_owned), workspaces.first().map(|w| w.to_string()), plugin_dirs, crate::plugins::enabled_plugins(&settings["pluginStates"], picked.as_deref())))
+        let store_settings = accounts::read_json(&accounts.store_dir().join("settings.json"), json!({}));
+        let enabled = crate::plugins::chat_enabled_plugins(&settings["pluginStates"], picked.as_deref(), &store_settings, &accounts::read_json(&dir.join("settings.json"), json!({})));
+        Ok((allowed, denied, mcp, delegate_only, topic.map(str::to_owned), workspaces.first().map(|w| w.to_string()), plugin_dirs, enabled))
     })();
     let (allowed, denied, deck_mcp, delegate_only, deck_group, deck_workspace, plugin_dirs, enabled_plugins) = match prepared {
         Ok(prepared) => prepared,

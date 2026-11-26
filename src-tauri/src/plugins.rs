@@ -20,6 +20,16 @@ pub fn enabled_plugins(states: &Value, picked: Option<&[String]>) -> Value {
     json!(filter_states(states).as_object().unwrap().iter().map(|(id, state)| (id.clone(), json!(*state == "auto" && picked.is_none_or(|picked| picked.contains(id))))).collect::<serde_json::Map<_, _>>())
 }
 
+// A plugin an account enables in its own settings.json is the Deck's call too: it loads only if the store enables it.
+pub fn chat_enabled_plugins(states: &Value, picked: Option<&[String]>, store_settings: &Value, account_settings: &Value) -> Value {
+    let mut enabled = enabled_plugins(states, picked);
+    let map = enabled.as_object_mut().unwrap();
+    for id in account_settings["enabledPlugins"].as_object().into_iter().flat_map(|plugins| plugins.keys()) {
+        if id != FRUGAL && !map.contains_key(id) { map.insert(id.clone(), json!(store_settings["enabledPlugins"][id] == true)); }
+    }
+    enabled
+}
+
 pub fn shared_plugin_dirs(installed: &Value, store_settings: &Value, states: &Value, picked: Option<&[String]>) -> Vec<PathBuf> {
     let enabled = enabled_plugins(states, picked);
     let mut dirs = Vec::new();
@@ -278,6 +288,9 @@ mod tests {
         assert_eq!(enabled_plugins(&states, Some(&[])), json!({"a@m": false, "b@m": false}));
         assert_eq!(filter_states(&Value::Null), json!({}));
         assert_eq!(enabled_plugins(&json!({"frugal@frugal": "off", "b@m": "auto"}), None), json!({"b@m": true}));
+        let account = json!({"enabledPlugins": {"b@m": true, "x@builtin": true, "s@m": true, "frugal@frugal": true}});
+        let store = json!({"enabledPlugins": {"s@m": true}});
+        assert_eq!(chat_enabled_plugins(&states, None, &store, &account), json!({"a@m": false, "b@m": true, "x@builtin": false, "s@m": true}));
     }
 
     #[test]
