@@ -70,7 +70,7 @@
   .progress::after { content: ""; position: absolute; inset: 0 auto 0 0; width: 35%; border-radius: inherit; background: var(--color-accent); animation: slide 1.4s var(--ease-in-out) infinite; }
   @keyframes slide { from { translate: -100% 0; } to { translate: 290% 0; } }
   body:is([data-view="installing"], [data-view="removing"]) .close { visibility: hidden; }
-  #message { white-space: pre-line; overflow-wrap: anywhere; user-select: text; }
+  #message, #opencode-warn { white-space: pre-line; overflow-wrap: anywhere; user-select: text; }
 </style>
 </head>
 <body>
@@ -110,6 +110,7 @@
       <label class="choice" id="choice-machine"><input type="radio" name="mode" value="machine" checked><span data-i18n="setup.install.machine">Everyone on this PC</span><span class="muted" data-i18n="setup.install.machine-hint">In Program Files. Windows asks for administrator permission.</span></label>
       <div id="folder-row" class="folder"><span data-i18n="setup.install.folder">Install in</span><span id="folder-path" class="path muted"></span><button id="folder-change" class="btn btn--small" type="button" data-i18n="setup.install.change-folder">Change…</button></div>
       <p id="folder-warn" class="warn" hidden data-i18n="setup.install.folder-warning">Administrator chats are safest in a folder only administrators can change, like Program Files.</p>
+      <label class="choice" id="opencode-field" hidden><input id="opencode" type="checkbox"><span data-i18n="setup.opencode.install">Install OpenCode for free delegation</span><span class="muted" data-i18n="setup.opencode.hint">Free models, no sign-in. Frugal hands them light tasks.</span></label>
     </form>
 
     <div class="content" data-views="clean" hidden>
@@ -156,6 +157,7 @@
 
     <div class="progress" role="progressbar" aria-label="Working" data-i18n-aria-label="setup.working" data-views="installing removing"></div>
     <p id="message" class="muted" role="status" data-views="done failed removed"></p>
+    <p id="opencode-warn" class="warn" role="alert" hidden></p>
   </div>
 
   <div class="actions">
@@ -219,7 +221,7 @@
     $('retry').hidden = true;
     throw error;
   }
-  const { version, installed, uninstall, data, folders, consolidation } = info;
+  const { version, installed, uninstall, data, folders, consolidation, opencode } = info;
 
   if (uninstall) {
     // Uninstaller: what to keep. Rows with nothing on disk are left out.
@@ -420,13 +422,30 @@
     $('form').onchange = folderUpdate;
     $('folder-change').onclick = async () => { picked = (await invoke('pick_folder')) ?? picked; folderUpdate(); };
     folderUpdate();
+    // Offered unless OpenCode already delegates; checked only when it is missing.
+    $('opencode-field').hidden = opencode.installed && opencode.accounts;
+    $('opencode').checked = !opencode.installed;
     $('continue').onclick = choose;
     about();
 
     $('clean-back').onclick = choose;
 
+    // A failure here leaves the install done and shows a warning row instead.
+    const setupOpencode = async () => {
+      $('subtitle').textContent = t('setup.opencode.progress');
+      try {
+        const { added, accounts } = await invoke('install_opencode');
+        if (!accounts) throw t('setup.opencode.no-models');
+        return added.length ? [t('setup.opencode.added', { accounts: added.join(', ') })] : [];
+      } catch (error) {
+        $('opencode-warn').textContent = t('setup.opencode.failed', { error });
+        $('opencode-warn').hidden = false;
+        return [];
+      }
+    };
     const install = async (actions = []) => {
       const open = $('open').checked;
+      const withOpencode = !$('opencode-field').hidden && $('opencode').checked;
       show('installing', installed ? t('setup.update.progress') : t('setup.install.progress'));
       if (actions.length) $('subtitle').textContent = t('setup.clean.backing-up');
       const cleanLines = await consolidate(actions);
@@ -435,9 +454,10 @@
         if (data && !data.language) await invoke('set_ui', { key: 'language', value: $('language').value });
         if (!$('external-field').hidden && !$('external').checked) await invoke('set_ui', { key: 'showExternal', value: 'false' });
         await invoke('install', { everyone: mode() === 'machine', open, folder: installed ? null : folderNow() });
-        show('done', t('setup.install.done'), [open ? t('setup.install.opening') : t('setup.install.start-menu'), ...cleanLines].join('\n\n'));
+        const opencodeLines = withOpencode ? await setupOpencode() : [];
+        show('done', t('setup.install.done'), [open ? t('setup.install.opening') : t('setup.install.start-menu'), ...cleanLines, ...opencodeLines].join('\n\n'));
         // The Deck is already starting, so the setup steps aside.
-        if (open && !cleanLines.length) setTimeout(quit, 1500);
+        if (open && !cleanLines.length && $('opencode-warn').hidden) setTimeout(quit, 1500);
       } catch (error) {
         show('failed', t('setup.error.install'), [String(error), ...cleanLines].join('\n\n'));
       }

@@ -14,6 +14,7 @@
   "settings.handoff.note.label": "Añadir un cuadro de nota a los handoffs",
   "settings.privacy.ai-excerpts.warn": "Partes de tus conversaciones salen de este ordenador.",
   "setup.about.privacy-title": "Todo se queda en este ordenador",
+  "setup.opencode.failed": "No se pudo configurar OpenCode. Puedes añadirlo más tarde en Configuración.\n{error}",
   "usage.add-account.label": "Añadir cuenta…",
   "voice.confirm.local.text": "El audio se queda en este ordenador. El primer dictado descarga whisper.cpp (8.9 MB) y el modelo que elijas. Los nombres y términos técnicos suelen salir mal, así que el texto llega al prompt para que lo edites y nunca se envía por sí solo. El dictado de Windows (Win+H) no necesita descarga.",
   "voice.download.files": "El dictado local necesita whisper.cpp y el modelo {model}: {size}. Se descargan una vez y se quedan en este ordenador.",

@@ -11,7 +11,7 @@ use serde_json::{json, Value};
 use std::collections::HashSet;
 use std::os::windows::process::CommandExt;
 use std::path::{Path, PathBuf};
-use std::process::Command;
+use std::process::{Command, Stdio};
 use std::sync::OnceLock;
 use std::time::{Duration, Instant};
 use tauri::{webview::Color, AppHandle, Emitter, WebviewUrl, WebviewWindow, WebviewWindowBuilder};
@@ -157,7 +157,98 @@ async fn info() -> Value {
         "data": home.as_ref().map(|h| data(h)),
         "folders": folders(),
         "consolidation": home.as_ref().is_some_and(|h| consolidation_file(h).is_file()),
+        "opencode": {
+            "installed": find_cli("opencode").is_some(),
+            "accounts": home.as_ref().is_some_and(|h| frugal_accounts(h).iter().any(|a| a["kind"] == "opencode")),
+        },
     })
+}
+
+// Same lookup as the Deck's chat.rs find_cli.
+fn find_cli(name: &str) -> Option<PathBuf> {
+    let path = std::env::var_os("PATH")?;
+    std::env::split_paths(&path).find_map(|dir| {
+        [format!("{name}.exe"), format!("{name}.cmd"), format!("{name}.bat")].into_iter().map(|name| dir.join(name)).find(|path| path.is_file())
+    })
+}
+
+fn frugal_accounts(home: &Path) -> Vec<Value> {
+    read_json(&home.join(".frugal/accounts.json")).and_then(|data| data["accounts"].as_array().cloned()).unwrap_or_default()
+}
+
+// Models that may train on data; frugal blocks them unless training is turned on (server.py TRAINING_MODELS).
+const TRAINING_MODELS: &[&str] = &["big-pickle", "mimo", "flint", "iceman", "inkling", "nemotron"];
+
+// Up to two free models from `opencode models opencode` as (account id, provider/model), skipping blocked ones
+// and those an account already has by id or model.
+fn pick_free_models(listing: &str, accounts: &[Value]) -> Vec<(String, String)> {
+    let mut picked: Vec<(String, String)> = Vec::new();
+    for line in listing.lines() {
+        let Some(model) = line.split_whitespace().next().map(|m| m.strip_prefix("opencode/").unwrap_or(m)) else { continue };
+        let lower = model.to_ascii_lowercase();
+        let Some(base) = lower.strip_suffix("-free").or_else(|| lower.strip_suffix(":free")) else { continue };
+        if model.starts_with('-') || model.contains('/') || TRAINING_MODELS.iter().any(|t| lower.contains(t)) { continue; }
+        let slug = base.split(|c: char| !c.is_ascii_alphanumeric()).filter(|part| !part.is_empty()).collect::<Vec<_>>().join("-");
+        let id = format!("oc-{slug}").chars().take(32).collect::<String>().trim_end_matches('-').to_owned();
+        let full = format!("opencode/{model}");
+        if slug.is_empty() || picked.iter().any(|(i, m)| *i == id || *m == full)
+            || accounts.iter().any(|a| a["id"] == id.as_str() || a["model"] == full.as_str()) { continue; }
+        picked.push((id, full));
+        if picked.len() == 2 { break; }
+    }
+    picked
+}
+
+// Runs a command with its output appended to the setup's log; the last line of output is the error when it fails.
+fn logged(command: &mut Command, timeout: Duration) -> Result<String, String> {
+    std::fs::create_dir_all(folder()).map_err(|e| e.to_string())?;
+    let log = folder().join("opencode.log");
+    let file = std::fs::OpenOptions::new().create(true).append(true).open(&log).map_err(|e| e.to_string())?;
+    let start_len = file.metadata().map(|m| m.len() as usize).unwrap_or(0);
+    let out = file.try_clone().map_err(|e| e.to_string())?;
+    let mut child = command.env("NO_COLOR", "1").stdin(Stdio::null()).stdout(out).stderr(file).creation_flags(NO_WINDOW).spawn().map_err(|e| e.to_string())?;
+    let start = Instant::now();
+    let status = loop {
+        if let Some(status) = child.try_wait().map_err(|e| e.to_string())? { break status; }
+        if start.elapsed() > timeout {
+            let _ = child.kill();
+            return Err(i18n::t("error.command-timed-out", &[]));
+        }
+        std::thread::sleep(Duration::from_millis(250));
+    };
+    let bytes = std::fs::read(&log).unwrap_or_default();
+    let output = String::from_utf8_lossy(bytes.get(start_len..).unwrap_or_default()).into_owned();
+    if status.success() { return Ok(output); }
+    Err(output.lines().map(str::trim).filter(|line| !line.is_empty()).last().map(str::to_owned)
+        .unwrap_or_else(|| i18n::t("account.error.command-exit", &[("code", &status.code().unwrap_or(1))])))
+}
+
+// Runs after the Deck and Import and clean, so frugal is in the store or the main account. Returns the account ids added.
+#[tauri::command]
+async fn install_opencode() -> Result<Value, String> {
+    tauri::async_runtime::spawn_blocking(|| {
+        let home = home()?;
+        let frugal = [home.join(".frugal-deck/store"), home.join(".claude")].iter().find_map(|dir| {
+            let install = read_json(&dir.join("plugins/installed_plugins.json"))?;
+            Some(PathBuf::from(install["plugins"]["frugal@frugal"][0]["installPath"].as_str()?)).filter(|dir| dir.is_dir())
+        });
+        let script = frugal.ok_or_else(|| i18n::t("error.install-frugal-first", &[]))?.join("accounts/server.py");
+        if find_cli("opencode").is_none() {
+            let npm = find_cli("npm").ok_or_else(|| i18n::t("error.install-node-first", &[]))?;
+            logged(Command::new(npm).args(["install", "-g", "opencode-ai"]), Duration::from_secs(600))?;
+        }
+        // npm's global folder is on PATH wherever npm is; the fallback is the default one.
+        let opencode = find_cli("opencode").unwrap_or_else(|| PathBuf::from(std::env::var("APPDATA").unwrap_or_default()).join(r"npm\opencode.cmd"));
+        let listing = logged(Command::new(opencode).args(["models", "opencode"]), Duration::from_secs(120))?;
+        let mut added = Vec::new();
+        for (id, model) in pick_free_models(&listing, &frugal_accounts(&home)) {
+            logged(Command::new("python").arg("-u").arg(&script).args(["add", "opencode", &id, &model]), Duration::from_secs(120))?;
+            added.push(id);
+        }
+        Ok(json!({ "added": added, "accounts": frugal_accounts(&home).iter().any(|a| a["kind"] == "opencode") }))
+    })
+    .await
+    .map_err(|error| error.to_string())?
 }
 
 fn window_title(uninstalling: bool) -> String {
@@ -376,7 +467,25 @@ fn main() {
                 .build()?;
             Ok(())
         })
-        .invoke_handler(tauri::generate_handler![info, consolidation::inventory, consolidation::consolidate, consolidation::restore, set_language, set_ui, pick_folder, install, uninstall_command, reveal, quit])
+        .invoke_handler(tauri::generate_handler![info, consolidation::inventory, consolidation::consolidate, consolidation::restore, set_language, set_ui, pick_folder, install, install_opencode, uninstall_command, reveal, quit])
         .run(tauri::generate_context!())
         .expect("Frugal Deck Setup failed to start");
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn picks_free_unblocked_models() {
+        let listing = "opencode/big-pickle-free\nopencode/gpt-5-nano\nopencode/mimo-v2-free\nopencode/glm-5.3-flash-free\n\nopencode/beam-free\nopencode/qwen:free\n";
+        let accounts = [json!({ "id": "oc-glm-5-3-flash", "kind": "opencode" })];
+        assert_eq!(pick_free_models(listing, &accounts), [
+            ("oc-beam".to_owned(), "opencode/beam-free".to_owned()),
+            ("oc-qwen".to_owned(), "opencode/qwen:free".to_owned()),
+        ]);
+        let accounts = [json!({ "id": "oc-glm-5.3-flash", "model": "opencode/glm-5.3-flash-free" }), json!({ "id": "oc-beam" })];
+        assert_eq!(pick_free_models(listing, &accounts), [("oc-qwen".to_owned(), "opencode/qwen:free".to_owned())]);
+        assert_eq!(pick_free_models("glm-5.3-flash-free\nError: unexpected\n", &[]), [("oc-glm-5-3-flash".to_owned(), "opencode/glm-5.3-flash-free".to_owned())]);
+    }
 }
