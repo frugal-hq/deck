@@ -8,7 +8,7 @@ use std::thread;
 use std::time::Duration;
 use tauri::{AppHandle, Manager, State};
 use crate::accounts::{mcp_entry, mcp_scope, object, read_json, read_strict, run, write_json, Accounts};
-use crate::chat::{account_env, find_claude, NO_CLAUDE};
+use crate::chat::{account_env, find_claude};
 
 const CHECKING: &str = "Checking MCP server health";
 // In the backup, the owner and place of the Deck's own servers, and the place of an account's user servers; account ids and folders never take them.
@@ -138,15 +138,15 @@ pub async fn mcp_restore(app: AppHandle, owner: String, place: String, name: Str
 fn restore(accounts: &Mutex<Accounts>, owner: &str, place: &str, name: &str) -> std::result::Result<(), String> {
     let a = accounts.lock().unwrap();
     let config = read_json(&backup_file(&a.home), json!({}))[owner][place][name].clone();
-    if !config.is_object() { return Err("It is no longer in the backup.".into()); }
+    if !config.is_object() { return Err(crate::i18n::t("error.no-longer-in-backup", &[])); }
     if owner == DECK { return a.add_deck_server(name, config).map_err(|e| e.to_string()); }
-    if !valid_name(name) { return Err(format!("Add {name} back by hand with claude mcp add-json.")); }
-    let account = a.labeled_accounts().into_iter().find(|account| account["id"] == owner).ok_or("That account is no longer in the Deck.")?;
+    if !valid_name(name) { return Err(crate::i18n::t("error.mcp-restore-manually", &[("name", &name)])); }
+    let account = a.labeled_accounts().into_iter().find(|account| account["id"] == owner).ok_or_else(|| crate::i18n::t("error.account-no-longer-in-deck", &[]))?;
     let env = account_env(&a, &account);
     let (scope, folder) = if place == USER { ("user", a.home.clone()) } else { ("local", PathBuf::from(place)) };
     drop(a);
-    if !folder.is_dir() { return Err(format!("{} no longer exists.", folder.display())); }
-    let claude = find_claude().ok_or(NO_CLAUDE)?;
+    if !folder.is_dir() { return Err(crate::i18n::t("error.folder-no-longer-exists", &[("folder", &folder.display())])); }
+    let claude = find_claude().ok_or_else(|| crate::i18n::t("error.no-claude", &[]))?;
     let mut command = Command::new(claude);
     command.env_clear().envs(&env).args(["mcp", "add-json", "-s", scope, name, &config.to_string()]).current_dir(&folder).stdin(Stdio::null());
     run(&mut command, Duration::from_secs(60)).map(drop).map_err(|e| e.to_string().trim().to_owned())
@@ -163,11 +163,11 @@ pub async fn mcp_remove(app: AppHandle, name: String, deck: bool, scope: Value) 
 }
 
 fn remove(accounts: &Mutex<Accounts>, name: &str, deck: bool, scope: &Value) -> std::result::Result<(), String> {
-    let scope = mcp_scope(scope).ok_or("Invalid folder.")?;
+    let scope = mcp_scope(scope).ok_or_else(|| crate::i18n::t("error.invalid-folder", &[]))?;
     let a = accounts.lock().unwrap();
     backup(&a.home, sources(&a));
     if deck { return a.remove_deck_server(name).map_err(|e| e.to_string()); }
-    if !valid_name(name) { return Err(format!("Remove {name} where it was added.")); }
+    if !valid_name(name) { return Err(crate::i18n::t("error.mcp-remove-where-added", &[("name", &name)])); }
     let folder = scope["folder"].as_str();
     let mut jobs = Vec::new();
     for account in a.labeled_accounts() {
@@ -179,8 +179,8 @@ fn remove(accounts: &Mutex<Accounts>, name: &str, deck: bool, scope: &Value) -> 
         }
     }
     drop(a);
-    if jobs.is_empty() { return Err(format!("No account has {name} as its own server here. Remove it where it was added.")); }
-    let claude = find_claude().ok_or(NO_CLAUDE)?;
+    if jobs.is_empty() { return Err(crate::i18n::t("error.mcp-no-account-owns-server", &[("name", &name)])); }
+    let claude = find_claude().ok_or_else(|| crate::i18n::t("error.no-claude", &[]))?;
     for (env, scope, folder) in jobs {
         let mut command = Command::new(&claude);
         command.env_clear().envs(&env).args(["mcp", "remove", "-s", scope, name]).current_dir(&folder).stdin(Stdio::null());
@@ -268,7 +268,7 @@ pub fn mcp_access_set(accounts: State<'_, Mutex<Accounts>>, changes: Value) -> V
         && change.get("auto").is_none_or(Value::is_boolean)
         && change.get("kinds").is_none_or(|kinds| kinds.as_array().is_some_and(|kinds| kinds.len() <= 4
             && kinds.iter().enumerate().all(|(i, kind)| matches!(kind.as_str(), Some("claude" | "codex" | "grok" | "opencode")) && !kinds[..i].contains(kind))));
-    let Some(changes) = changes.as_object().filter(|changes| changes.len() <= 500 && changes.iter().all(|(name, change)| valid(name, change))) else { return json!({ "error": "Invalid request." }) };
+    let Some(changes) = changes.as_object().filter(|changes| changes.len() <= 500 && changes.iter().all(|(name, change)| valid(name, change))) else { return json!({ "error": crate::i18n::t("error.invalid-request", &[]) }) };
     match accounts.lock().unwrap().set_mcp_access(changes) {
         Ok(()) => json!({ "ok": true }),
         Err(error) => json!({ "error": error.to_string() }),
@@ -277,7 +277,7 @@ pub fn mcp_access_set(accounts: State<'_, Mutex<Accounts>>, changes: Value) -> V
 
 #[tauri::command]
 pub fn mcp_add(accounts: State<'_, Mutex<Accounts>>, server: Value) -> Value {
-    let Some((name, config)) = server_config(&server) else { return json!({ "error": "Check the name and the URL or command." }) };
+    let Some((name, config)) = server_config(&server) else { return json!({ "error": crate::i18n::t("error.mcp-invalid-name-or-target", &[]) }) };
     match accounts.lock().unwrap().add_deck_server(&name, config) {
         Ok(()) => json!({ "ok": true, "name": name }),
         Err(error) => json!({ "error": error.to_string() }),
@@ -300,8 +300,8 @@ pub fn learn_frugal(app: AppHandle) {
 }
 
 pub fn list(accounts: &Mutex<Accounts>, scope: &Value) -> Value {
-    let Some(scope) = mcp_scope(scope) else { return json!({ "error": "Invalid folder." }) };
-    let Some(claude) = find_claude() else { return json!({ "error": NO_CLAUDE }) };
+    let Some(scope) = mcp_scope(scope) else { return json!({ "error": crate::i18n::t("error.invalid-folder", &[]) }) };
+    let Some(claude) = find_claude() else { return json!({ "error": crate::i18n::t("error.no-claude", &[]) }) };
     let global = scope["global"] == true;
     let (signed, needs);
     let (runs, folder, off, on, all, deck, sources, home, (accounts_off, no_delegate, kinds, delegate_only, auto)) = {
@@ -332,7 +332,7 @@ pub fn list(accounts: &Mutex<Accounts>, scope: &Value) -> Value {
             command.args(["mcp", "list"]).current_dir(folder).stdin(Stdio::null());
             (name.clone(), id.clone(), run(&mut command, Duration::from_secs(60)).map_err(|e| e.to_string()))
         })).collect();
-        jobs.into_iter().map(|job| job.join().unwrap_or((Value::Null, Value::Null, Err("Listing failed.".into())))).collect::<Vec<_>>()
+        jobs.into_iter().map(|job| job.join().unwrap_or_else(|_| (Value::Null, Value::Null, Err(crate::i18n::t("error.mcp-listing-failed", &[]))))).collect::<Vec<_>>()
     });
     let mut servers: Vec<Value> = Vec::new();
     let mut learned = serde_json::Map::new();

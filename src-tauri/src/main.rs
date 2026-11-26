@@ -10,6 +10,7 @@ mod consolidation;
 mod debug;
 mod elevated;
 mod handoff;
+mod i18n;
 mod index;
 mod mcp;
 mod organizer;
@@ -32,12 +33,17 @@ fn ui_file() -> Option<std::path::PathBuf> {
 
 #[tauri::command]
 fn ui_save(values: serde_json::Value) -> Result<(), String> {
-    if !values.is_object() { return Err("Settings must be an object.".into()); }
-    let file = ui_file().ok_or("No user folder.")?;
+    if !values.is_object() { return Err(crate::i18n::t("error.settings-not-object", &[])); }
+    let file = ui_file().ok_or_else(|| crate::i18n::t("error.no-user-folder", &[]))?;
     let temporary = file.with_extension("json.tmp");
     std::fs::create_dir_all(file.parent().unwrap()).map_err(|e| e.to_string())?;
     std::fs::write(&temporary, serde_json::to_vec_pretty(&values).map_err(|e| e.to_string())?).map_err(|e| e.to_string())?;
     std::fs::rename(temporary, file).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+fn i18n_language(language: String) {
+    i18n::set_language(&language);
 }
 
 #[tauri::command]
@@ -81,11 +87,12 @@ fn main() {
     tauri::Builder::default()
         .setup(|app| {
             statusline::write_editor(&app.path().app_data_dir()?)?;
-            let home = std::path::PathBuf::from(std::env::var_os("USERPROFILE").ok_or("No user folder.")?);
+            let home = std::path::PathBuf::from(std::env::var_os("USERPROFILE").ok_or_else(|| crate::i18n::t("error.no-user-folder", &[]))?);
             activity::init(app.handle().clone(), home.clone());
             let codex_home = std::env::var_os("CODEX_HOME").filter(|s| !s.is_empty()).map(std::path::PathBuf::from).unwrap_or_else(|| home.join(".codex"));
             let ui = ui_file().and_then(|file| std::fs::read_to_string(file).ok())
                 .and_then(|text| serde_json::from_str::<serde_json::Value>(&text).ok()).filter(|v| v.is_object()).unwrap_or_default();
+            if let Some(tag) = ui["language"].as_str() { i18n::set_language(tag); }
             debug::init(app.handle().clone(), ui["debugLog"] == "true");
             let accounts = accounts::Accounts::new(home, codex_home);
             if let Err(error) = accounts.migrate_deck_servers() {
@@ -202,7 +209,7 @@ fn main() {
             app.manage(bridge);
             index::start(app.handle().clone());
             mcp::learn_frugal(app.handle().clone());
-            archive::start(app.handle().clone(), std::path::PathBuf::from(std::env::var_os("USERPROFILE").ok_or("No user folder.")?));
+            archive::start(app.handle().clone(), std::path::PathBuf::from(std::env::var_os("USERPROFILE").ok_or_else(|| crate::i18n::t("error.no-user-folder", &[]))?));
             Ok(())
         })
         .plugin(tauri_plugin_dialog::init())
@@ -213,6 +220,7 @@ fn main() {
         .manage(organizer::Organizer::default())
         .invoke_handler(tauri::generate_handler![
             ui_save,
+            i18n_language,
             debug::debug_set,
             debug::debug_lines,
             activity::activity_list,

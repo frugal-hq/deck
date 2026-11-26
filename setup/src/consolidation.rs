@@ -16,7 +16,7 @@ pub(crate) fn system32(exe: &str) -> PathBuf {
 }
 
 pub(crate) fn home() -> Result<PathBuf, String> {
-    std::env::var_os("USERPROFILE").map(PathBuf::from).ok_or_else(|| "No user folder.".to_owned())
+    std::env::var_os("USERPROFILE").map(PathBuf::from).ok_or_else(|| crate::i18n::t("error.no-user-folder", &[]))
 }
 
 // Claude Code's config folders: ~/.claude and the ~/.claude-<name> of other accounts.
@@ -310,19 +310,19 @@ fn plain_metadata(path: &Path) -> std::io::Result<fs::Metadata> {
     const FILE_ATTRIBUTE_REPARSE_POINT: u32 = 0x400;
     let metadata = fs::symlink_metadata(path)?;
     if metadata.file_attributes() & FILE_ATTRIBUTE_REPARSE_POINT != 0 {
-        return Err(std::io::Error::new(ErrorKind::InvalidInput, "Reparse point"));
+        return Err(std::io::Error::new(ErrorKind::InvalidInput, crate::i18n::t("error.reparse-point", &[])));
     }
     Ok(metadata)
 }
 
 fn safe_relative<'a>(home: &Path, path: &'a Path) -> Result<&'a Path, String> {
-    let relative = path.strip_prefix(home).map_err(|_| path_error(path, "Outside the user folder"))?;
+    let relative = path.strip_prefix(home).map_err(|_| crate::i18n::t("error.outside-user-folder", &[("path", &path.display())]))?;
     let mut current = home.to_path_buf();
     for component in relative.components() {
         let name = component.as_os_str().to_string_lossy();
         if !matches!(component, std::path::Component::Normal(_)) || name.contains([':', '\r', '\n'])
             || name.ends_with(['.', ' ']) {
-            return Err(path_error(path, "Unsafe path"));
+            return Err(crate::i18n::t("error.unsafe-path", &[("path", &path.display())]));
         }
         current.push(component);
         match plain_metadata(&current) {
@@ -331,21 +331,21 @@ fn safe_relative<'a>(home: &Path, path: &'a Path) -> Result<&'a Path, String> {
             Err(error) => return Err(path_error(&current, error)),
         }
     }
-    if relative.as_os_str().is_empty() { return Err(path_error(path, "Expected a path below the user folder")); }
+    if relative.as_os_str().is_empty() { return Err(crate::i18n::t("error.expected-path-below-user-folder", &[("path", &path.display())])); }
     Ok(relative)
 }
 
 fn load_config(home: &Path, path: &Path) -> Result<Value, String> {
     safe_relative(home, path)?;
     match fs::metadata(path) {
-        Ok(_) => read_json(path).filter(Value::is_object).ok_or_else(|| path_error(path, "Expected a JSON object")),
+        Ok(_) => read_json(path).filter(Value::is_object).ok_or_else(|| crate::i18n::t("error.expected-json-object", &[("path", &path.display())])),
         Err(error) if error.kind() == ErrorKind::NotFound => Ok(json!({})),
         Err(error) => Err(path_error(path, error)),
     }
 }
 
 fn config_map<'a>(config: &'a Value, key: &str) -> Result<Option<&'a Map<String, Value>>, String> {
-    config.get(key).map(|value| value.as_object().ok_or_else(|| format!("{key} must be a JSON object"))).transpose()
+    config.get(key).map(|value| value.as_object().ok_or_else(|| crate::i18n::t("error.config-value-not-json-object", &[("key", &key)]))).transpose()
 }
 
 fn put_config_key(config: &mut Value, key: &str, name: &str, value: Value) -> Result<(), String> {
@@ -366,7 +366,7 @@ fn installed_config(home: &Path, dir: &Path) -> Result<Value, String> {
         if !entries.as_array().is_some_and(|entries| entries.iter().all(|entry| {
             entry.is_object() && entry["installPath"].as_str().is_some_and(|path| !path.is_empty())
         })) {
-            return Err(path_error(&file, "Expected plugin installation entries"));
+            return Err(crate::i18n::t("error.expected-plugin-installation-entries", &[("path", &file.display())]));
         }
     }
     Ok(config)
@@ -384,7 +384,7 @@ fn cache_for_plugin(market: &str, plugin: &str, version: &str) -> Result<PathBuf
     for part in [market, plugin, version] {
         let mut components = Path::new(part).components();
         if components.next() != Some(std::path::Component::Normal(part.as_ref())) || components.next().is_some() {
-            return Err(format!("Invalid plugin cache component: {part}"));
+            return Err(crate::i18n::t("error.invalid-plugin-cache-component", &[("part", &part)]));
         }
         path.push(part);
     }
@@ -437,16 +437,16 @@ fn plan_plugin(home: &Path, dirs: &[PathBuf], name: &str, import: bool) -> Resul
     if import {
         let mut edit = ConsolidationEdit { account: "Deck store".into(), ..Default::default() };
         if let Some((dir, mut entry)) = source {
-            let (plugin, market) = name.rsplit_once('@').ok_or("Expected a plugin name with a marketplace")?;
+            let (plugin, market) = name.rsplit_once('@').ok_or_else(|| crate::i18n::t("error.expected-plugin-marketplace", &[]))?;
             let suffix = cache_for_plugin(market, plugin, entry["version"].as_str().unwrap())?;
             let destination = store.join(PLUGIN_CACHE).join(&suffix);
             safe_relative(home, &destination)?;
             if destination.is_dir() {
                 inspect_tree(&destination).map_err(|error| path_error(&destination, error))?;
             } else {
-                let source = entry["installPath"].as_str().map(|path| dir.join(path)).ok_or("Plugin has no installPath")?;
+                let source = entry["installPath"].as_str().map(|path| dir.join(path)).ok_or_else(|| crate::i18n::t("error.plugin-has-no-install-path", &[]))?;
                 if !same_path(&source, &dir.join(PLUGIN_CACHE).join(&suffix)) || !source.is_dir() {
-                    return Err(path_error(&source, "Plugin cache version directory is missing or outside the expected location"));
+                    return Err(crate::i18n::t("error.invalid-plugin-cache-version-directory", &[("path", &source.display())]));
                 }
                 edit.copies.push((source, destination.clone()));
             }
@@ -465,7 +465,7 @@ fn plan_plugin(home: &Path, dirs: &[PathBuf], name: &str, import: bool) -> Resul
             if known.get(market).is_none() || !destination.is_dir() {
                 let source = load_config(home, &dir.join(KNOWN_MARKETPLACES))?;
                 let mut marketplace = known.get(market).or_else(|| source.get(market)).filter(|entry| entry.is_object())
-                    .cloned().ok_or_else(|| format!("Missing marketplace entry for {market}"))?;
+                    .cloned().ok_or_else(|| crate::i18n::t("error.missing-marketplace-entry", &[("market", &market)]))?;
                 marketplace["installLocation"] = json!(destination);
                 if known.get(market) != Some(&marketplace) {
                     known[market] = marketplace;
@@ -473,12 +473,12 @@ fn plan_plugin(home: &Path, dirs: &[PathBuf], name: &str, import: bool) -> Resul
                 }
                 let source = dir.join(location);
                 if !destination.is_dir() {
-                    if !source.is_dir() { return Err(path_error(&source, "Marketplace directory is missing")); }
+                    if !source.is_dir() { return Err(crate::i18n::t("error.marketplace-directory-missing", &[("path", &source.display())])); }
                     edit.copies.push((source, destination));
                 }
             }
         } else if !store_entries.is_some_and(|entries| !entries.is_empty()) {
-            return Err("Plugin has no installed entry to import".into());
+            return Err(crate::i18n::t("error.plugin-no-installed-entry", &[]));
         }
         let file = store.join("settings.json");
         let mut settings = load_config(home, &file)?;
@@ -518,7 +518,7 @@ fn plan_mcp(home: &Path, dirs: &[PathBuf], name: &str, import: bool) -> Result<V
             let server = source.or_else(|| {
                 let desktop = read_json(&desktop_config()?)?;
                 desktop["mcpServers"][name].as_object().map(|server| Value::Object(server.clone()))
-            }).ok_or("MCP server has no configuration to import")?;
+            }).ok_or_else(|| crate::i18n::t("error.mcp-no-config-to-import", &[]))?;
             put_config_key(&mut config, "mcpServers", name, server)?;
             edits.insert(0, ConsolidationEdit { account: "Deck store".into(), writes: vec![(file, config)], ..Default::default() });
         }
@@ -527,18 +527,18 @@ fn plan_mcp(home: &Path, dirs: &[PathBuf], name: &str, import: bool) -> Result<V
 }
 
 fn plan_account(home: &Path, dirs: &[PathBuf], name: &str) -> Result<Vec<ConsolidationEdit>, String> {
-    let dir = dirs.iter().find(|dir| dir.file_name().is_some_and(|folder| folder == name)).ok_or("Unknown account")?;
+    let dir = dirs.iter().find(|dir| dir.file_name().is_some_and(|folder| folder == name)).ok_or_else(|| crate::i18n::t("error.unknown-account", &[]))?;
     let config = load_config(home, &dir.join(".claude.json"))?;
-    if !config["oauthAccount"].is_object() { return Err("Account is signed out".into()); }
+    if !config["oauthAccount"].is_object() { return Err(crate::i18n::t("error.account-signed-out", &[])); }
     let file = home.join(".frugal/accounts.json");
     let mut accounts = load_config(home, &file)?;
     if registered(&accounts, dir) { return Ok(Vec::new()); }
     let id = name.strip_prefix(".claude-").unwrap_or("main");
     let account = account_label(dir, &config);
     if accounts.get("accounts").is_none() { accounts["accounts"] = json!([]); }
-    let entries = accounts["accounts"].as_array_mut().ok_or("accounts must be a JSON array")?;
+    let entries = accounts["accounts"].as_array_mut().ok_or_else(|| crate::i18n::t("error.accounts-not-array", &[]))?;
     if id.is_empty() || entries.iter().any(|entry| entry["id"] == id) {
-        return Err(format!("Account ID is already in use or empty: {id}"));
+        return Err(crate::i18n::t("error.unavailable-account-id", &[("id", &id)]));
     }
     entries.push(json!({ "id": id, "kind": "claude", "enabled": true, "used": 0, "day": "", "config_dir": dir }));
     Ok(vec![ConsolidationEdit { account, writes: vec![(file, accounts)], ..Default::default() }])
@@ -550,7 +550,7 @@ fn plan_consolidation(home: &Path, dirs: &[PathBuf], kind: &str, name: &str, act
         ("mcp", "remove" | "import") => plan_mcp(home, dirs, name, action == "import"),
         ("account", "import") => plan_account(home, dirs, name),
         ("copy" | "sessions", "remove") => plan_file_removal(home, dirs, kind, name),
-        _ => Err(format!("Invalid action for {kind}: {action}")),
+        _ => Err(crate::i18n::t("error.invalid-consolidation-action", &[("kind", &kind), ("action", &action)])),
     }
 }
 
@@ -560,10 +560,10 @@ fn plan_file_removal(home: &Path, dirs: &[PathBuf], kind: &str, name: &str) -> R
     safe_relative(home, path)?;
     let dir = dirs.iter().chain(std::iter::once(&store)).find(|dir| {
         if kind == "copy" { cache_suffix(dir, path).is_some() } else { dir.as_path() == path }
-    }).ok_or("Unknown account or cache path")?;
+    }).ok_or_else(|| crate::i18n::t("error.unknown-account-or-cache-path", &[]))?;
     let removals = if kind == "copy" {
-        if cache_referenced(&installed_config(home, dir)?, dir, path) { return Err("Plugin cache is in use".into()); }
-        if !path.is_dir() { return Err("Plugin cache directory is missing".into()); }
+        if cache_referenced(&installed_config(home, dir)?, dir, path) { return Err(crate::i18n::t("error.plugin-cache-in-use", &[])); }
+        if !path.is_dir() { return Err(crate::i18n::t("error.plugin-cache-directory-missing", &[])); }
         vec![path.to_path_buf()]
     } else {
         let mut found = sessions(home);
@@ -641,10 +641,10 @@ pub(crate) fn create_zip(home: &Path, zip: &Path, list_file: &Path, list: &[Stri
     let output = Command::new(system32("tar.exe")).arg("-a").arg("-c").arg("-f").arg(zip)
         .arg("-C").arg(home).arg("-T").arg(list_file).creation_flags(NO_WINDOW).output();
     let _ = fs::remove_file(list_file);
-    let output = output.map_err(|error| format!("The backup could not start, so nothing was removed: {error}"))?;
+    let output = output.map_err(|error| crate::i18n::t("error.backup-could-not-start", &[("error", &error)]))?;
     if !output.status.success() {
         let _ = fs::remove_file(zip);
-        return Err(format!("The backup failed, so nothing was removed. {}", String::from_utf8_lossy(&output.stderr).trim()));
+        return Err(crate::i18n::t("error.backup-failed", &[("error", &String::from_utf8_lossy(&output.stderr).trim())]));
     }
     Ok(())
 }
@@ -664,7 +664,7 @@ fn consolidation_manifest(home: &Path) -> Result<Value, String> {
     let file = consolidation_file(home);
     let mut manifest = load_config(home, &file)?;
     if manifest.get("backups").is_none() { manifest["backups"] = json!([]); }
-    if !manifest["backups"].is_array() { return Err(path_error(&file, "Expected a backups array")); }
+    if !manifest["backups"].is_array() { return Err(crate::i18n::t("error.expected-backups-array", &[("path", &file.display())])); }
     Ok(manifest)
 }
 
@@ -686,14 +686,14 @@ pub(crate) async fn consolidate(app: tauri::AppHandle, actions: Value) -> Result
     let mut errors = Vec::new();
     let mut plans = Vec::new();
     let mut seen = HashSet::new();
-    for item in actions.as_array().ok_or("Expected an array of consolidation actions")? {
+    for item in actions.as_array().ok_or_else(|| crate::i18n::t("error.expected-consolidation-actions-array", &[]))? {
         let (Some(kind), Some(name), Some(action)) = (item["kind"].as_str(), item["name"].as_str(), item["action"].as_str()) else {
-            errors.push("Every consolidation action needs a kind, name and action".to_owned());
+            errors.push(crate::i18n::t("error.incomplete-consolidation-action", &[]));
             continue;
         };
         if action == "keep" && matches!(kind, "plugin" | "mcp" | "account" | "copy" | "sessions") { continue; }
         if !seen.insert((kind, name)) {
-            errors.push(format!("{kind} {name}: Duplicate action"));
+            errors.push(crate::i18n::t("error.duplicate-consolidation-action", &[("kind", &kind), ("name", &name)]));
             continue;
         }
         match plan_consolidation(&home, &dirs, kind, name, action).and_then(|edits| {
@@ -784,11 +784,11 @@ pub(crate) async fn consolidate(app: tauri::AppHandle, actions: Value) -> Result
         let result = (|| {
             for edit in plan_consolidation(&home, &dirs, kind, name, action)? {
                 for (source, target) in edit.copies {
-                    if !created.contains(&target) { return Err(path_error(&target, "Unplanned copy")); }
+                    if !created.contains(&target) { return Err(crate::i18n::t("error.unplanned-copy", &[("path", &target.display())])); }
                     copy_directory(&home, &source, &target)?;
                 }
                 for (file, config) in edit.writes {
-                    if !archived.contains(&file) && !created.contains(&file) { return Err(path_error(&file, "File was not backed up")); }
+                    if !archived.contains(&file) && !created.contains(&file) { return Err(crate::i18n::t("error.file-not-backed-up", &[("path", &file.display())])); }
                     save_consolidation_json(&home, &file, &config)?;
                 }
                 for path in edit.removals {
@@ -801,7 +801,7 @@ pub(crate) async fn consolidate(app: tauri::AppHandle, actions: Value) -> Result
                         remove(&path, &mut errors);
                     } else {
                         if kind != "copy" && !cache_in_store(&home, &path).is_some_and(|store_path| usable_cache(&home, &store_path)) {
-                            return Err(path_error(&path, "Path was not backed up"));
+                            return Err(crate::i18n::t("error.path-not-backed-up", &[("path", &path.display())]));
                         }
                         // Stage the removal so it cannot leave a partial cache at its original path.
                         let scratch = consolidation_scratch(&home)?;

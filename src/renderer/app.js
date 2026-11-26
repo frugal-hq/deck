@@ -4,9 +4,10 @@ import { matchSessions } from './palette.mjs';
 import { groupChats, buildTree } from './chats.mjs';
 import { trustPromptKey } from './trust.mjs';
 import { trimSilence, encodeWav, joinChunks } from './voice.mjs';
-import { loadLocale, applyI18n, t, tp, languages } from './i18n.mjs';
+import { loadLocale, applyI18n, t, tp, languages, currentLanguage } from './i18n.mjs';
 
 await loadLocale();
+deck.setLanguage(currentLanguage()).catch((error) => console.warn('i18n:language', error));
 applyI18n();
 
 const $ = (id) => document.getElementById(id);

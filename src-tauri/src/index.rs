@@ -275,7 +275,7 @@ pub fn mark_deck_session(id: &str) -> Result<()> {
 }
 
 pub fn mark_deck_sessions(ids: &[String]) -> Result<()> {
-    let home = PathBuf::from(std::env::var_os("USERPROFILE").ok_or("No user folder.")?);
+    let home = PathBuf::from(std::env::var_os("USERPROFILE").ok_or_else(|| crate::i18n::t("error.no-user-folder", &[]))?);
     let db = open_index(&home.join(".frugal-deck").join("deck.db").to_string_lossy())?;
     save_deck_sessions(&db, ids)
 }
@@ -490,7 +490,7 @@ pub fn excerpt(db: &Connection, session_id: &str, queries: &[String]) -> Result<
 }
 
 pub fn open_read() -> Result<Connection> {
-    let home = PathBuf::from(std::env::var_os("USERPROFILE").ok_or("No user folder.")?);
+    let home = PathBuf::from(std::env::var_os("USERPROFILE").ok_or_else(|| crate::i18n::t("error.no-user-folder", &[]))?);
     Ok(Connection::open_with_flags(home.join(".frugal-deck").join("deck.db"), rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY)?)
 }
 
@@ -629,12 +629,12 @@ pub fn save_automatic(db: &Connection, rows: &Value) -> Result<()> {
     {
         let mut save = tx.prepare(r#"INSERT INTO session_auto (session_id, topic, title) VALUES (?, ?, ?)
     ON CONFLICT (session_id) DO UPDATE SET topic = excluded.topic, title = COALESCE(excluded.title, title)"#)?;
-        for row in rows.as_array().ok_or("automatic rows must be an array")? {
+        for row in rows.as_array().ok_or_else(|| crate::i18n::t("error.automatic-rows-not-array", &[]))? {
             let values = ["id", "topic", "title"].map(|key| match row.get(key) {
                 Some(Value::Null) => Ok(rusqlite::types::Value::Null),
                 Some(Value::String(s)) => Ok(rusqlite::types::Value::Text(s.clone())),
                 Some(Value::Number(n)) => Ok(rusqlite::types::Value::Real(n.as_f64().unwrap())),
-                _ => Err("unsupported SQLite parameter"),
+                _ => Err(crate::i18n::t("error.unsupported-sqlite-parameter", &[])),
             }).into_iter().collect::<std::result::Result<Vec<_>, _>>()?;
             save.execute(rusqlite::params_from_iter(values))?;
         }
@@ -807,7 +807,7 @@ pub fn save_model_workspaces(db: &Connection, rows: &Value) -> Result<()> {
     {
         let mut save = tx.prepare(r#"INSERT INTO group_workspace (name, workspace, origin) VALUES (?, ?, 'model')
     ON CONFLICT(name) DO UPDATE SET workspace = excluded.workspace WHERE origin = 'model'"#)?;
-        for row in rows.as_array().ok_or("workspace rows must be an array")? {
+        for row in rows.as_array().ok_or_else(|| crate::i18n::t("error.workspace-rows-not-array", &[]))? {
             let (Some(group), Some(workspace)) = (row["group"].as_str(), row["workspace"].as_str()) else { continue };
             let (group, workspace) = (trim(group), trim(workspace));
             if group.is_empty() || group.encode_utf16().count() > 500 || workspace.is_empty() || workspace.encode_utf16().count() > 40 { continue; }
@@ -979,7 +979,7 @@ pub fn start(app: AppHandle) {
 }
 
 fn index_loop(app: &AppHandle, jobs: mpsc::Sender<Msg>, inbox: mpsc::Receiver<Msg>) -> Result<()> {
-    let home = PathBuf::from(std::env::var_os("USERPROFILE").ok_or("No user folder.")?);
+    let home = PathBuf::from(std::env::var_os("USERPROFILE").ok_or_else(|| crate::i18n::t("error.no-user-folder", &[]))?);
     let roots: Vec<PathBuf> = crate::accounts::Accounts::new(home.clone(), home.join(".codex")).claude_accounts()
         .iter().map(|a| Path::new(a["configDir"].as_str().unwrap()).join("projects")).collect();
     let file = home.join(".frugal-deck").join("deck.db").to_string_lossy().into_owned();
@@ -1096,7 +1096,7 @@ pub async fn sessions_search(query: String) -> std::result::Result<Vec<String>, 
 #[tauri::command]
 pub fn import_sessions(index: State<Index>, ids: Vec<String>) -> std::result::Result<(), String> {
     if ids.len() > 100000 || ids.iter().any(|id| id.is_empty()) {
-        return Err("Session ids must be non-empty strings, at most 100000.".into());
+        return Err(crate::i18n::t("error.invalid-session-ids", &[]));
     }
     mark_deck_sessions(&ids).map_err(|e| e.to_string())?;
     index.run(|_, _| Ok(true));

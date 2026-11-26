@@ -3,6 +3,8 @@
 #![windows_subsystem = "windows"]
 
 mod consolidation;
+#[path = "../../src-tauri/src/i18n.rs"]
+mod i18n;
 
 use consolidation::*;
 use serde_json::{json, Value};

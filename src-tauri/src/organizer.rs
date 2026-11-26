@@ -1,5 +1,5 @@
 // Sorts sessions into topics and rewrites titles with one-shot `claude -p` calls. Sends titles only, never transcripts.
-use crate::chat::{clean_env, find_claude, NO_CLAUDE};
+use crate::chat::{clean_env, find_claude};
 use crate::index::{self, Index};
 use serde_json::{json, Value};
 use std::collections::{HashMap, HashSet};
@@ -265,14 +265,14 @@ fn ask_claude(options: &Options, schema: &Value, system: &str, input: &str, run:
     let out = out.map(|handle| String::from_utf8_lossy(&handle.join().unwrap_or_default()).into_owned()).unwrap_or_default();
     let err = err.map(|handle| String::from_utf8_lossy(&handle.join().unwrap_or_default()).into_owned()).unwrap_or_default();
     if timed_out {
-        return Err(format!("Claude did not answer within {} minutes. What was done is saved.", (timeout_ms as f64 / 60000.0).round() as i64).into());
+        return Err(crate::i18n::t("error.claude-answer-timeout", &[("minutes", &((timeout_ms as f64 / 60000.0).round() as i64))]).into());
     }
     let reply: Value = serde_json::from_str(&out).unwrap_or(Value::Null);
     if !truthy(&reply) || truthy(&reply["is_error"]) || !truthy(&reply["structured_output"]) {
         let code = status.and_then(|status| status.code()).map(|code| code.to_string()).unwrap_or_else(|| "null".into());
         let message = if truthy(&reply["result"]) { reply["result"].as_str().unwrap_or("").to_owned() }
             else if !err.is_empty() { err }
-            else { format!("claude exited with code {code}") };
+            else { crate::i18n::t("error.claude-exit-code", &[("code", &code)]) };
         return Err(slice_16(&single_line(&message), 300).into());
     }
     Ok(reply["structured_output"].clone())
@@ -556,8 +556,8 @@ fn exclusive_run(app: &AppHandle, options: &Value, work: impl FnOnce(&str, &Valu
     let mut run = Run::default();
     let claude = {
         let mut slot = organizer.0.lock().unwrap();
-        if slot.is_some() || !valid_options(options) { return json!({ "error": "Invalid request." }); }
-        let Some(claude) = find_claude() else { return json!({ "error": NO_CLAUDE }) };
+        if slot.is_some() || !valid_options(options) { return json!({ "error": crate::i18n::t("error.invalid-request", &[]) }); }
+        let Some(claude) = find_claude() else { return json!({ "error": crate::i18n::t("error.no-claude", &[]) }) };
         *slot = Some(run.stopped.clone());
         claude
     };
@@ -653,7 +653,7 @@ pub async fn joins_run(app: AppHandle, options: Value) -> Value {
 
 #[tauri::command]
 pub async fn search_ai(app: AppHandle, options: Value, query: String) -> Value {
-    if query.trim().is_empty() || query.encode_utf16().count() > 2000 { return json!({ "error": "Invalid request." }); }
+    if query.trim().is_empty() || query.encode_utf16().count() > 2000 { return json!({ "error": crate::i18n::t("error.invalid-request", &[]) }); }
     let found = Arc::new(Mutex::new(Vec::new()));
     let out = found.clone();
     let mut reply = in_background(app, options, move |app, claude, env, options, run| {
@@ -677,7 +677,7 @@ fn mcp_system() -> String {
 
 #[tauri::command]
 pub async fn mcp_from_prompt(app: AppHandle, prompt: String) -> Value {
-    if prompt.trim().is_empty() || prompt.encode_utf16().count() > 2000 { return json!({ "error": "Invalid request." }); }
+    if prompt.trim().is_empty() || prompt.encode_utf16().count() > 2000 { return json!({ "error": crate::i18n::t("error.invalid-request", &[]) }); }
     let found = Arc::new(Mutex::new(Value::Null));
     let out = found.clone();
     let mut reply = in_background(app, json!({ "model": "haiku", "effort": "low", "rename": false }), move |_, claude, env, _, run| {

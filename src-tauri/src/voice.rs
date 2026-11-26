@@ -24,7 +24,7 @@ fn model_info(name: &str) -> Result<(u64, &'static str)> {
         "small" => Ok((487601967, "1be3a9b2063867b937e64e2ec7483364a79917e157fa98c5d94b5c1fffea987b")),
         "medium" => Ok((1533763059, "6c14d5adee5f86394037b4e4e8b59f1673b6cee10e3cf0b11bbdbee79c156208")),
         "large-v3" => Ok((3095033483, "64d182b440b98d5203c4f9bd541544d84c605196c4f7b845dfa11fb23594d1e2")),
-        _ => Err("Unknown voice model.".into()),
+        _ => Err(crate::i18n::t("error.unknown-voice-model", &[])),
     }
 }
 
@@ -76,12 +76,12 @@ fn run(command: &mut Command, timeout: Option<Duration>, mut progress: impl FnMu
     let mut output = [Vec::new(), Vec::new()];
     let result = (|| {
         loop {
-            if timeout.is_some_and(|t| started.elapsed() >= t) { return Err("The transcription timed out.".into()); }
+            if timeout.is_some_and(|t| started.elapsed() >= t) { return Err(crate::i18n::t("error.transcription-timeout", &[])); }
             match receive.recv_timeout(Duration::from_millis(20)) {
                 Ok(chunk) => {
                     let (stderr, chunk) = chunk?;
                     let out = &mut output[usize::from(stderr)];
-                    if out.len() + chunk.len() > MAX_BUFFER { return Err("stdout or stderr maxBuffer length exceeded".into()); }
+                    if out.len() + chunk.len() > MAX_BUFFER { return Err(crate::i18n::t("error.command-max-buffer-exceeded", &[])); }
                     if !stderr { progress(&chunk); }
                     out.extend_from_slice(&chunk);
                 }
@@ -93,9 +93,9 @@ fn run(command: &mut Command, timeout: Option<Duration>, mut progress: impl FnMu
         loop {
             if let Some(status) = child.try_wait().map_err(|e| e.to_string())? {
                 return if status.success() { Ok(std::mem::take(&mut output[0])) }
-                    else { Err(format!("Command failed ({status}): {}{}", String::from_utf8_lossy(&output[0]), String::from_utf8_lossy(&output[1]))) };
+                    else { Err(crate::i18n::t("error.command-failed", &[("status", &status), ("stdout", &String::from_utf8_lossy(&output[0])), ("stderr", &String::from_utf8_lossy(&output[1]))])) };
             }
-            if timeout.is_some_and(|t| started.elapsed() >= t) { return Err("The transcription timed out.".into()); }
+            if timeout.is_some_and(|t| started.elapsed() >= t) { return Err(crate::i18n::t("error.transcription-timeout", &[])); }
             thread::sleep(Duration::from_millis(20));
         }
     })();
@@ -139,7 +139,7 @@ try {
                     pending.drain(..=end);
                 }
             })?;
-        if received != expected.0 || hash != expected.1 { return Err("The download did not match its checksum.".into()); }
+        if received != expected.0 || hash != expected.1 { return Err(crate::i18n::t("error.download-checksum-mismatch", &[])); }
         fs::rename(&part, file).map_err(|e| e.to_string())
     })();
     if result.is_err() { let _ = fs::remove_file(&part); }
@@ -160,7 +160,7 @@ fn prepare(dir: &Path, model: &str, mut progress: impl FnMut(u64, u64)) -> Resul
         let removed = fs::remove_file(&zip).map_err(|e| e.to_string());
         extracted?;
         removed?;
-        if !cli(dir).exists() { return Err("whisper-cli.exe was not in the download.".into()); }
+        if !cli(dir).exists() { return Err(crate::i18n::t("error.whisper-cli-missing", &[])); }
     }
     let file = model_file(dir, model);
     if !file.exists() { download(&model_url(model), &file, model_info(model)?, &mut on_bytes)?; }
@@ -177,14 +177,14 @@ fn normalize(text: &str) -> String {
 }
 
 fn transcribe(dir: &Path, options: &Value) -> Result<String> {
-    let wav: Vec<u8> = options["audio"].as_array().ok_or("The recording is not valid audio.")?.iter()
-        .map(|v| v.as_u64().filter(|&n| n <= 255).map(|n| n as u8).ok_or("The recording is not valid audio."))
+    let wav: Vec<u8> = options["audio"].as_array().ok_or_else(|| crate::i18n::t("error.invalid-audio", &[]))?.iter()
+        .map(|v| v.as_u64().filter(|&n| n <= 255).map(|n| n as u8).ok_or_else(|| crate::i18n::t("error.invalid-audio", &[])))
         .collect::<std::result::Result<_, _>>()?;
-    if !valid_audio(&wav) { return Err("The recording is not valid audio.".into()); }
+    if !valid_audio(&wav) { return Err(crate::i18n::t("error.invalid-audio", &[])); }
     let model = options["model"].as_str().unwrap_or("");
     let language = options["language"].as_str().unwrap_or("");
-    if model_info(model).is_err() || !matches!(language, "es" | "en" | "auto") { return Err("Unknown voice model or language.".into()); }
-    if !cli(dir).exists() || !model_file(dir, model).exists() { return Err("The voice model is not downloaded.".into()); }
+    if model_info(model).is_err() || !matches!(language, "es" | "en" | "auto") { return Err(crate::i18n::t("error.unknown-voice-model-or-language", &[])); }
+    if !cli(dir).exists() || !model_file(dir, model).exists() { return Err(crate::i18n::t("error.voice-model-not-downloaded", &[])); }
     // create_new reserves the recording; never overwrite an existing temporary file.
     let (file, mut out) = (0..).find_map(|n| {
         let file = std::env::temp_dir().join(format!("frugal-deck-{}-{}-{n}.wav", std::process::id(), std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).unwrap().as_nanos()));
@@ -246,14 +246,14 @@ pub async fn voice_prepare(app: AppHandle, model: Value) -> Value {
         ready.notify_all();
         prepared
     }).await.map_err(|e| e.to_string()).and_then(|r| r);
-    match result { Ok(()) => json!({"ok": true}), Err(error) => json!({"error": format!("The voice download failed: {error}")}) }
+    match result { Ok(()) => json!({"ok": true}), Err(error) => json!({"error": crate::i18n::t("error.voice-download-failed", &[("error", &error)])}) }
 }
 
 #[tauri::command]
 pub async fn voice_transcribe(app: AppHandle, options: Option<Value>) -> Value {
     let result = tauri::async_runtime::spawn_blocking(move || directory(&app).and_then(|dir| transcribe(&dir, &options.unwrap_or(Value::Null))))
         .await.map_err(|e| e.to_string()).and_then(|r| r);
-    match result { Ok(text) => json!({"text": text}), Err(error) => json!({"error": format!("Transcription failed: {error}")}) }
+    match result { Ok(text) => json!({"text": text}), Err(error) => json!({"error": crate::i18n::t("error.transcription-failed", &[("error", &error)])}) }
 }
 
 #[cfg(test)]

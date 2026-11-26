@@ -79,7 +79,7 @@ fn frugal_source(config_dir: &Path) -> Value {
 // A folder with uncommitted changes would install work in progress to every chat. No git, or not a repository: allowed.
 fn dirty(path: &str) -> Option<String> {
     let output = Command::new("git").args(["-C", path, "status", "--porcelain"]).creation_flags(NO_WINDOW).stdin(Stdio::null()).output().ok()?;
-    (output.status.success() && !output.stdout.is_empty()).then(|| format!("The folder {path} has uncommitted changes. Commit or discard them, then try again."))
+    (output.status.success() && !output.stdout.is_empty()).then(|| crate::i18n::t("error.folder-has-uncommitted-changes", &[("path", &path)]))
 }
 
 // The newest frugal its source offers (the folder's plugin.json, or the repository's on GitHub), whether it is newer than the
@@ -103,7 +103,7 @@ fn frugal_latest(source: &Value, installed: &str) -> Value {
 
 // `claude plugin` commands in the Deck store.
 fn claude_plugin(app: &AppHandle) -> Result<(PathBuf, impl Fn(&[&str]) -> Result<Vec<u8>, String>), String> {
-    let claude = crate::chat::find_claude().ok_or(crate::chat::NO_CLAUDE)?;
+    let claude = crate::chat::find_claude().ok_or_else(|| crate::i18n::t("error.no-claude", &[]))?;
     let accounts = app.state::<Mutex<Accounts>>();
     let accounts = accounts.lock().unwrap();
     let store = accounts.store_dir();
@@ -171,7 +171,7 @@ pub async fn update_frugal_source(app: AppHandle, window: WebviewWindow, github:
             Some(folder) => {
                 let manifest: Value = std::fs::read(folder.join(".claude-plugin/marketplace.json")).ok().and_then(|bytes| serde_json::from_slice(&bytes).ok()).unwrap_or_default();
                 if manifest["name"] != "frugal" {
-                    return Err("That folder does not hold frugal's marketplace.".to_owned());
+                    return Err(crate::i18n::t("error.frugal-marketplace-missing", &[]));
                 }
                 let path = folder.to_string_lossy().into_owned();
                 if let Some(error) = dirty(&path) {
@@ -220,7 +220,7 @@ fn installer(source: &str) -> Result<PathBuf, String> {
     if file.is_absolute() && file.is_file() && file.extension().is_some_and(|ext| ext.eq_ignore_ascii_case("exe")) {
         Ok(file)
     } else {
-        Err("That is not an installer.".to_owned())
+        Err(crate::i18n::t("error.not-an-installer", &[]))
     }
 }
 

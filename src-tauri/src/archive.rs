@@ -36,7 +36,7 @@ pub fn original_path(home: &Path, copy: &Path) -> Option<PathBuf> {
 
 // Written beside the target and renamed, so a crash never leaves half a file under the real name.
 fn write_new(target: &Path, fill: impl FnOnce(&mut File) -> Result<()>) -> Result<File> {
-    fs::create_dir_all(target.parent().ok_or("No parent folder.")?)?;
+    fs::create_dir_all(target.parent().ok_or_else(|| crate::i18n::t("error.no-parent-folder", &[]))?)?;
     let mut temporary = target.as_os_str().to_owned();
     temporary.push(".tmp");
     let written = File::create(&temporary).map_err(Into::into).and_then(|mut out| fill(&mut out).map(|()| out));
@@ -64,7 +64,7 @@ pub fn copy(home: &Path, file: &Path, idle: Duration) -> Result<bool> {
 
 // Never over an existing transcript. The restored file keeps the current time, so Claude Code's cleanup does not take it again on start.
 pub fn restore(home: &Path, copy: &Path) -> Result<PathBuf> {
-    let target = original_path(home, copy).ok_or("Not an archive copy.")?;
+    let target = original_path(home, copy).ok_or_else(|| crate::i18n::t("error.not-an-archive-copy", &[]))?;
     if !target.exists() {
         write_new(&target, |out| { io::copy(&mut GzDecoder::new(File::open(copy)?), out)?; Ok(()) })?;
     }
@@ -74,7 +74,7 @@ pub fn restore(home: &Path, copy: &Path) -> Result<PathBuf> {
 pub fn copy_all(app: &AppHandle, home: &Path, files: &[String], idle: Duration) {
     let mut failed = None;
     for file in files.iter().filter(|f| !is_copy(f)) {
-        if let Err(error) = copy(home, Path::new(file), idle) { failed.get_or_insert(format!("Archive copy of {file} failed: {error}")); }
+        if let Err(error) = copy(home, Path::new(file), idle) { failed.get_or_insert(crate::i18n::t("error.archive-file-copy-failed", &[("file", &file), ("error", &error)])); }
     }
     if let Some(error) = failed { crate::index::publish(app, json!({ "error": error })); }
 }
@@ -87,7 +87,7 @@ pub fn start(app: AppHandle, home: PathBuf) {
         while index.get("indexing") != false { thread::sleep(Duration::from_secs(5)); }
         match Connection::open_with_flags(&db, OpenFlags::SQLITE_OPEN_READ_ONLY).map_err(Into::into).and_then(|db| crate::index::archivable(&db)) {
             Ok(files) => copy_all(&app, &home, &files, IDLE),
-            Err(error) => crate::index::publish(&app, json!({ "error": format!("Archive copy failed: {error}") })),
+            Err(error) => crate::index::publish(&app, json!({ "error": crate::i18n::t("error.archive-copy-failed", &[("error", &error)]) })),
         }
         thread::sleep(EVERY);
     });

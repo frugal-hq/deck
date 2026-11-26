@@ -25,9 +25,6 @@ const CONNECT: Duration = Duration::from_secs(120);
 const HANDSHAKE: Duration = Duration::from_secs(10);
 const MAX_LINE: usize = 8 * 1024 * 1024;
 const NO_WINDOW: u32 = 0x0800_0000;
-const TIMEOUT: &str = "The administrator chat did not start in time.";
-const NOT_GRANTED: &str = "Windows administrator permission was not granted.";
-const NOT_ELEVATED: &str = "Windows did not give the chat administrator rights.";
 
 fn hex(bytes: &[u8]) -> String {
     bytes.iter().map(|byte| format!("{byte:02x}")).collect()
@@ -258,11 +255,11 @@ impl MasterPty for RemoteMaster {
     }
 
     fn try_clone_reader(&self) -> anyhow::Result<Box<dyn Read + Send>> {
-        Ok(Box::new(self.reader.lock().unwrap().take().ok_or_else(|| anyhow::anyhow!("The reader is already taken."))?))
+        Ok(Box::new(self.reader.lock().unwrap().take().ok_or_else(|| anyhow::anyhow!(crate::i18n::t("error.reader-already-taken", &[])))?))
     }
 
     fn take_writer(&self) -> anyhow::Result<Box<dyn Write + Send>> {
-        Ok(Box::new(self.writer.lock().unwrap().take().ok_or_else(|| anyhow::anyhow!("The writer is already taken."))?))
+        Ok(Box::new(self.writer.lock().unwrap().take().ok_or_else(|| anyhow::anyhow!(crate::i18n::t("error.writer-already-taken", &[])))?))
     }
 }
 
@@ -353,7 +350,7 @@ fn handshake(stream: TcpStream, secret: &str) -> Option<Handshake> {
     let answer = read_message(&mut reader)?;
     (answer["t"] == "proof" && matches(&answer["mac"], &proof(secret, "helper", &mine))).then_some(())?;
     if answer["elevated"] != true {
-        return Some(Err(NOT_ELEVATED.to_owned()));
+        return Some(Err(crate::i18n::t("error.administrator-rights-missing", &[])));
     }
     // A cloned socket keeps the timeout it was cloned with on Windows, so both ends drop it; a stale one ended idle chats.
     stream.set_read_timeout(None).ok()?;
@@ -422,7 +419,7 @@ impl Host {
             let (found, addr, secret) = (found.clone(), addr.to_string(), secret.clone());
             thread::spawn(move || {
                 if !launch(&addr, &secret) {
-                    let _ = found.send(Err(NOT_GRANTED.to_owned()));
+                    let _ = found.send(Err(crate::i18n::t("error.administrator-permission-not-granted", &[])));
                 }
             });
         }
@@ -448,7 +445,7 @@ impl Host {
         // The accept loop checks done only on a connection, so one is made to close the listener.
         done.store(true, Ordering::Relaxed);
         let _ = TcpStream::connect(addr);
-        let (writer, reader) = result.unwrap_or_else(|_| Err(TIMEOUT.to_owned()))?;
+        let (writer, reader) = result.unwrap_or_else(|_| Err(crate::i18n::t("error.administrator-chat-timeout", &[])))?;
         let connection = Arc::new(Connection { writer: Mutex::new(writer), channels: Mutex::new(Some(HashMap::new())) });
         let dispatched = connection.clone();
         thread::spawn(move || dispatch(&dispatched, reader));

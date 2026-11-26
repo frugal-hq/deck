@@ -152,6 +152,7 @@
     onActivity: (callback) => on('activity', callback),
     continueIn: (options) => invoke('chat:continue', { options, output: output(options.id) }),
     switchAccount: (options) => invoke('chat:switch-account', { options, output: output(options.id) }),
+    setLanguage: (language) => invoke('i18n:language', { language }),
     setVoiceMode: (mode) => send('voice:mode', { mode }),
     setPermissions: (mic, clipboard) => send('permissions:set', { mic, clipboard }),
     voiceStatus: (model) => invoke('voice:status', { model }),
