@@ -8,6 +8,7 @@ const placeholders = text => new Set(text.match(/\{[^{}]+\}/g) ?? []);
 const plural = new Set(Object.keys(en).filter(key => key.endsWith('.other')).map(key => key.slice(0, -6)));
 const base = key => plural.has(key.replace(/\.[a-z]+$/, '')) ? key.replace(/\.[a-z]+$/, '') : key;
 const failures = [];
+for (const tag of process.argv.slice(2)) if (!readdirSync(dir).includes(`${tag}.json`)) failures.push(`${tag}.json is missing`);
 
 for (const file of readdirSync(dir).filter(file => file.endsWith('.json') && file !== 'en.json' && (!process.argv[2] || process.argv.slice(2).includes(file.slice(0, -5))))) {
   const tag = file.slice(0, -5);
@@ -29,6 +30,8 @@ for (const file of readdirSync(dir).filter(file => file.endsWith('.json') && fil
     for (const name of expected) if (!actual.has(name)) fail(`${key} misses ${name}`);
   }
   if (overlays.includes(tag)) continue;
+  const untranslated = Object.keys(locale).filter(key => locale[key] === en[key]).length;
+  if (untranslated > Object.keys(en).length * 0.15) fail(`${untranslated} values are still English`);
   for (const key of Object.keys(en)) {
     const group = base(key);
     if (group === key && !(key in locale)) fail(`missing ${key}`);
