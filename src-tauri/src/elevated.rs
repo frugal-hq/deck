@@ -247,30 +247,32 @@ impl Link {
         false
     }
 
-    pub(crate) fn process_request(&self, pid: Option<u32>) -> Result<Value, String> {
+    pub(crate) fn process_request(&self, target: Option<(u32, Option<u64>)>) -> Result<Value, String> {
         let r = random_hex(16);
         let (reply, response) = mpsc::channel();
         {
             let mut channels = self.connection.channels.lock().unwrap();
             let channel = channels.as_mut().and_then(|channels| channels.get_mut(&self.c))
-                .ok_or("Administrator chat is no longer live")?;
+                .ok_or_else(|| crate::i18n::t("error.administrator-chat-ended", &[]))?;
             channel.requests.insert(r.clone(), reply);
         }
-        let message = match pid {
-            Some(pid) => json!({ "t": "process_kill", "r": r, "pid": pid }),
+        let message = match target {
+            Some((pid, started_ms)) => json!({ "t": "process_kill", "r": r, "pid": pid, "started_ms": started_ms }),
             None => json!({ "t": "processes", "r": r }),
         };
+        let mut message = message;
+        message["language"] = json!(crate::i18n::language());
         if self.send(message) {
             match response.recv_timeout(HANDSHAKE) {
                 Ok(result) => return result,
-                Err(mpsc::RecvTimeoutError::Disconnected) => return Err("Administrator chat is no longer live".into()),
+                Err(mpsc::RecvTimeoutError::Disconnected) => return Err(crate::i18n::t("error.administrator-chat-ended", &[])),
                 Err(mpsc::RecvTimeoutError::Timeout) => {}
             }
         }
         if let Some(channel) = self.connection.channels.lock().unwrap().as_mut().and_then(|channels| channels.get_mut(&self.c)) {
             channel.requests.remove(&r);
         }
-        Err("Administrator chat process request failed or timed out".into())
+        Err(crate::i18n::t("error.administrator-process-request-failed", &[]))
     }
 }
 
@@ -648,13 +650,16 @@ fn serve(addr: SocketAddrV4, secret: &str, elevated: bool) {
                 }
             }
             ("processes" | "process_kill", ..) => {
+                if let Some(language) = message["language"].as_str() {
+                    crate::i18n::set_language(language);
+                }
                 let Some(r) = message["r"].as_str().filter(|r| is_hex(r, 32)) else { break };
                 let result = (|| {
-                    let job = term.and_then(|term| term.job.as_mut()).ok_or("Chat has no process job")?;
+                    let job = term.and_then(|term| term.job.as_mut()).ok_or_else(|| crate::i18n::t("error.chat-no-process-job", &[]))?;
                     if t == "process_kill" {
                         let pid = message["pid"].as_u64().and_then(|pid| u32::try_from(pid).ok())
-                            .filter(|&pid| pid != 0).ok_or("Invalid PID")?;
-                        job.kill(pid)
+                            .filter(|&pid| pid != 0).ok_or_else(|| crate::i18n::t("error.invalid-pid", &[]))?;
+                        job.kill(pid, message["started_ms"].as_u64())
                     } else {
                         job.processes()
                     }
@@ -725,24 +730,29 @@ mod tests {
             let (_master, _reader, mut writer, mut child, link) = host.spawn(&command, PtySize::default()).unwrap();
             writer.write_all(b"\x1b[1;1R").unwrap();
             let deadline = std::time::Instant::now() + Duration::from_secs(5);
-            let pid = loop {
+            let (pid, started_ms) = loop {
                 let list = link.process_request(None).unwrap();
                 let rows = list["processes"].as_array().unwrap();
                 if let Some(shell) = rows.iter().find(|row| rows.iter().any(|parent| parent["pid"] == row["ppid"])) {
                     assert!(shell["name"].as_str().unwrap().eq_ignore_ascii_case("cmd.exe"));
                     assert!(shell["cmd"].as_str().unwrap().contains("/k"));
                     assert!(shell["ram_bytes"].as_u64().unwrap() > 0);
-                    assert!(shell["started_ms"].as_u64().unwrap() > 0);
-                    break shell["pid"].as_u64().unwrap() as u32;
+                    let started_ms = shell["started_ms"].as_u64().unwrap();
+                    assert!(started_ms > 0);
+                    let root = rows.iter().find(|row| row["is_chat"] == true).unwrap();
+                    assert_eq!(root["pid"], shell["ppid"]);
+                    assert!(link.process_request(Some((root["pid"].as_u64().unwrap() as u32, None))).is_err());
+                    break (shell["pid"].as_u64().unwrap() as u32, started_ms);
                 }
                 assert!(std::time::Instant::now() < deadline, "{list}");
                 thread::sleep(Duration::from_millis(25));
             };
-            assert!(link.process_request(Some(std::process::id())).unwrap_err().contains("not in this chat"));
+            assert_eq!(link.process_request(Some((std::process::id(), None))).unwrap_err(), crate::i18n::t("error.pid-not-in-chat", &[]));
+            assert!(link.process_request(Some((pid, Some(started_ms + 1)))).is_err());
             let handle = unsafe { OpenProcess(PROCESS_SYNCHRONIZE, false, pid) }.unwrap();
             let shell = unsafe { OwnedHandle::from_raw_handle(handle.0) };
             if single_process {
-                assert_eq!(link.process_request(Some(pid)).unwrap(), json!({"ok": true}));
+                assert_eq!(link.process_request(Some((pid, Some(started_ms)))).unwrap(), json!({"ok": true}));
             } else {
                 child.kill().unwrap();
             }

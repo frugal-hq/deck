@@ -100,6 +100,11 @@
 <aside id="info-panel" class="info-panel" aria-labelledby="info-heading" hidden>
   <h2 id="info-heading" data-i18n="info.title">Chat details</h2>
   <dl id="info-details"></dl>
+  <details id="info-procs">
+    <summary data-i18n="info.procs.label">Processes <span id="info-procs-count" class="info-panel__muted"></span></summary>
+    <p id="info-procs-status" class="sort__status" role="status" hidden></p>
+    <div id="info-procs-list"></div>
+  </details>
   <section id="info-subagents" aria-labelledby="info-subagents-heading" hidden>
     <div id="info-running">
       <h2 id="info-subagents-heading" data-i18n="info.running.title">In progress</h2>
@@ -337,6 +342,7 @@
       <button class="settings__tab" type="button" data-section="voice" data-i18n="settings.voice.title"><svg class="icon" aria-hidden="true"><use href="#i-mic"/></svg>Voice</button>
       <button class="settings__tab" type="button" data-section="privacy" data-i18n="settings.privacy.title"><svg class="icon" aria-hidden="true"><use href="#i-lock"/></svg>Privacy</button>
       <button class="settings__tab" type="button" data-section="activity" data-i18n="settings.activity.title"><svg class="icon" aria-hidden="true"><use href="#i-tasks"/></svg>Activity</button>
+      <button class="settings__tab" type="button" data-section="performance" data-i18n="settings.performance.title"><svg class="icon" aria-hidden="true"><use href="#i-working"/></svg>Performance</button>
       <button class="settings__tab" type="button" data-section="updates" data-i18n="settings.updates.title"><svg class="icon" aria-hidden="true"><use href="#i-update"/></svg>Updates</button>
       <button class="settings__tab" type="button" data-section="debug" data-i18n="settings.debug.title"><svg class="icon" aria-hidden="true"><use href="#i-bug"/></svg>Debug</button>
     </nav>
@@ -538,6 +544,34 @@
             <button id="activity-retry" class="btn" type="button" hidden data-i18n="common.retry">Retry</button>
           </div>
           <pre id="activity-log" class="debug__console" role="log" tabindex="0" aria-label="Activity" hidden data-i18n-aria-label="settings.activity.title"></pre>
+        </div>
+      </section>
+      <section class="settings__section" data-section="performance" hidden>
+        <h3 class="settings__title" data-i18n="settings.performance.title">Performance</h3>
+        <div class="settings__row">
+          <p class="settings__hint" data-i18n="settings.performance.hint">Limits for what your chats start: shells, node, python, builds. When a chat goes over, its next command waits.</p>
+          <div id="perf-state"></div>
+          <div id="perf-body" class="perf" hidden>
+            <div class="perf__head">
+              <div class="segmented" role="radiogroup" aria-label="Mode" data-i18n-aria-label="settings.performance.mode.label">
+                <label data-i18n="settings.performance.light"><input type="radio" name="perf-mode" value="light">Light</label>
+                <label data-i18n="settings.performance.balanced"><input type="radio" name="perf-mode" value="balanced">Balanced</label>
+                <label data-i18n="settings.performance.performance"><input type="radio" name="perf-mode" value="performance">Performance</label>
+                <label data-i18n="settings.performance.custom"><input type="radio" name="perf-mode" value="custom">Custom</label>
+              </div>
+              <p id="perf-status" class="sort__status" role="status" hidden></p>
+            </div>
+            <p id="perf-about" class="settings__hint"></p>
+            <div id="perf-budgets"></div>
+            <p id="perf-machine" class="settings__hint"></p>
+          </div>
+        </div>
+        <div id="perf-suggest-row" class="settings__row" hidden>
+          <div class="perf__head">
+            <button id="perf-suggest" class="btn" type="button" data-i18n="settings.performance.suggest.label">Suggest for this PC…</button>
+            <p id="perf-suggest-status" class="sort__status" role="status" hidden></p>
+          </div>
+          <div id="perf-suggestion" hidden></div>
         </div>
       </section>
       <section id="settings-updates" class="settings__section" data-section="updates" hidden>

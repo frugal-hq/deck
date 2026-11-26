@@ -343,7 +343,7 @@ const applyAccent = () => {
 };
 applyAccent();
 const decimal = new Intl.NumberFormat('en-US', { maximumFractionDigits: 1 });
-const sizeText = (bytes) => (bytes >= 1e9 ? t('voice.size-gb', { size: decimal.format(bytes / 1e9) }) : t('voice.size-mb', { size: decimal.format(bytes / 1e6) }));
+const sizeText = (bytes, unit = 1000) => (bytes >= unit ** 3 ? t('voice.size-gb', { size: decimal.format(bytes / unit ** 3) }) : t('voice.size-mb', { size: decimal.format(bytes / unit ** 2) }));
 const voiceError = (text) => ask({ title: t('settings.voice.title'), text, action: t('common.close'), run: () => {} });
 let recording = null;
 let downloadingFor = null;
@@ -1023,6 +1023,91 @@ function drawSubagents(tasks) {
   drawTaskGroup('done', ended.filter((task) => !isFailed(task) && task.status !== 'cancelled'));
 }
 
+function procRow(chat, proc) {
+  const row = node('div', 'row');
+  row.dataset.tip = proc.cmd || proc.name;
+  row.dataset.process = `${proc.pid}:${proc.started_ms}`;
+  const main = node('div', 'row__main');
+  const name = node('span', 'row__name', proc.name);
+  name.append(' ', node('span', 'info-panel__muted', t('info.procs.pid', { pid: proc.pid })));
+  main.append(name);
+  const usage = [t('info.procs.cpu', { percent: Math.round(proc.cpu_pct) }), sizeText(proc.ram_bytes, 1024)];
+  if (proc.gpu_pct != null) usage.push(t('info.procs.gpu', { percent: Math.round(proc.gpu_pct) }));
+  const controls = node('div', 'row__controls');
+  controls.append(node('span', 'row__meta', usage.join(' · ')));
+  if (!proc.is_chat && !/^claude\.exe$/i.test(proc.name) && proc.started_ms) {
+    const end = node('button', 'btn btn--icon');
+    end.type = 'button';
+    end.append(icon('x'));
+    end.setAttribute('aria-label', t('info.procs.end.action'));
+    end.dataset.tip = t('info.procs.end.action');
+    end.onclick = () => endProcess(chat, proc);
+    controls.append(end);
+  }
+  row.append(main, controls);
+  return row;
+}
+function drawProcs(chat, { processes, totals }) {
+  const list = $('info-procs-list');
+  const summary = [processes.length, t('info.procs.cpu', { percent: Math.round(totals.cpu_pct) }), sizeText(totals.ram_bytes, 1024)];
+  if (totals.gpu_pct != null) summary.push(t('info.procs.gpu', { percent: Math.round(totals.gpu_pct) }));
+  $('info-procs-count').textContent = summary.join(' · ');
+  const focused = document.activeElement?.closest('[data-process]')?.dataset.process;
+  const rows = processes.sort((a, b) => b.ram_bytes - a.ram_bytes).map((proc) => procRow(chat, proc));
+  list.replaceChildren(...(rows.length ? rows : [emptyState(t('info.procs.empty'))]));
+  if (focused) (rows.find((row) => row.dataset.process === focused)?.querySelector('button') ?? $('info-procs').firstElementChild).focus();
+}
+
+let procsPolling;
+let procsFailed = false;
+const procsVisible = (generation) => generation === infoGeneration && !$('info-panel').hidden && $('info-procs').open;
+async function refreshProcs(chat, generation) {
+  if (!procsVisible(generation) || procsPolling === generation) return;
+  if (chat.state === 'exited' || chat.state === 'error') {
+    drawProcs(chat, { processes: [], totals: { cpu_pct: 0, ram_bytes: 0 } });
+    return;
+  }
+  if (procsFailed) return;
+  const list = $('info-procs-list');
+  if (!list.childElementCount) list.replaceChildren(emptyState(t('common.loading')));
+  if (chat.state === 'starting') return;
+  procsPolling = generation;
+  try {
+    const data = await deck.processes(chat.id);
+    if (procsVisible(generation) && !$('confirm-dialog').open) drawProcs(chat, data);
+  } catch (error) {
+    if (!procsVisible(generation) || $('confirm-dialog').open) return;
+    procsFailed = true;
+    $('info-procs-count').textContent = '';
+    list.replaceChildren(emptyState(t('info.procs.error', { error }), () => {
+      procsFailed = false;
+      list.replaceChildren();
+      refreshProcs(chat, generation);
+    }));
+  } finally {
+    if (procsPolling === generation) procsPolling = undefined;
+  }
+}
+async function endProcess(chat, proc) {
+  const text = t('info.procs.end.text', { name: proc.name, pid: proc.pid });
+  if (!await askConfirm(t('info.procs.end.title', { name: proc.name }), text, t('info.procs.end.action'), true)) return;
+  const generation = infoGeneration;
+  let failure = '';
+  try {
+    await deck.processKill(chat.id, proc.pid, proc.started_ms);
+  } catch (error) {
+    failure = t('info.procs.end.failed', { name: proc.name, error });
+  }
+  if (infoChatId === chat.id && generation === infoGeneration) {
+    showStatus('info-procs-status', failure, Boolean(failure));
+    refreshProcs(chat, generation);
+  }
+}
+$('info-procs').ontoggle = () => {
+  const chat = chats.get(infoChatId);
+  if (chat) refreshProcs(chat, infoGeneration);
+};
+
 function syncInfoPanel() {
   const chat = chats.get(activeId);
   const open = infoPanelOpen && Boolean(chat);
@@ -1040,6 +1125,10 @@ function syncInfoPanel() {
   clearInterval(infoElapsedClock);
   clearInterval(infoAgentsClock);
   drawSubagents([]);
+  procsFailed = false;
+  $('info-procs-list').replaceChildren();
+  $('info-procs-count').textContent = '';
+  showStatus('info-procs-status', '');
   if (!open) return;
   infoElapsedClock = setInterval(() => {
     const detail = $('info-elapsed');
@@ -1047,6 +1136,7 @@ function syncInfoPanel() {
   }, 1000);
   let polling = false;
   const refresh = async () => {
+    refreshProcs(chat, generation);
     if (polling) return;
     polling = true;
     try {
@@ -3524,9 +3614,206 @@ function showSettingsSection(name) {
   if (name === 'accounts' && settingsDialog.open) loadAccounts(true);
   if (name === 'debug') debugConsole.scrollTop = debugConsole.scrollHeight;
   if (name === 'updates' && !updatesBusy) loadUpdates();
+  if (name === 'performance' && !perfTimer && !perfWrite) loadPerf();
   localStorage.setItem('settingsSection', name);
   return name;
 }
+
+const PERF_SAVE_MS = 400;
+const PERF_FIELDS = [
+  { field: 'cpu', min: 5, max: 100 },
+  { field: 'ram', min: 5, max: 100 },
+  { field: 'gpu', min: 0, max: 100, gpu: true },
+  { field: 'parallel', min: 0, max: 16 },
+];
+let perf;
+let perfMachine;
+let perfCustom;
+let perfLoading = false;
+let perfTimer;
+let perfWrite;
+let perfRevision = 0;
+const perfMode = () => settingsDialog.querySelector('[name="perf-mode"]:checked').value;
+const perfFields = () => PERF_FIELDS.filter((item) => !item.gpu || perfMachine.gpus.length);
+const perfValue = (field, value) => (field !== 'parallel' ? t('common.percent', { percent: value }) : value ? String(value) : t('settings.performance.no-limit'));
+const budgetText = (budget) => perfFields().map(({ field }) => `${t(`settings.performance.${field}`)} ${perfValue(field, budget[field])}`).join(' · ');
+function machineText(machine) {
+  const gpus = machine.gpus.map((gpu) => t('settings.performance.gpu-name', { name: gpu.name, vram: sizeText(gpu.vram_bytes, 1024) })).join(', ');
+  return t('settings.performance.machine', { cores: machine.cores, ram: sizeText(machine.ram_bytes, 1024), gpu: gpus || t('settings.performance.no-gpu') });
+}
+function drawPerf() {
+  const mode = perfMode();
+  const custom = mode === 'custom';
+  const budget = custom ? perfCustom : perf.presets[mode];
+  $('perf-about').hidden = custom;
+  $('perf-about').textContent = custom ? '' : t(`settings.performance.${mode}.about`);
+  $('perf-budgets').replaceChildren(...perfFields().map(({ field, min, max }) => {
+    const label = t(`settings.performance.${field}`);
+    const row = node('div', 'cap');
+    const caption = node(custom ? 'label' : 'span', 'cap__label', label);
+    const value = node(custom ? 'output' : 'span', 'cap__value', perfValue(field, budget[field]));
+    row.append(caption);
+    if (custom) {
+      const slider = Object.assign(node('input'), { id: `perf-${field}`, type: 'range', min, max, step: 1, value: budget[field] });
+      caption.htmlFor = slider.id;
+      value.setAttribute('for', slider.id);
+      slider.oninput = () => {
+        perfCustom[field] = Number(slider.value);
+        value.textContent = perfValue(field, perfCustom[field]);
+        savePerf();
+      };
+      row.append(slider);
+    }
+    row.append(value);
+    return row;
+  }));
+}
+function showPerf() {
+  perfCustom = perf.custom && { ...perf.custom };
+  settingsDialog.querySelector(`[name="perf-mode"][value="${perf.mode}"]`).checked = true;
+  $('perf-machine').textContent = machineText(perfMachine);
+  drawPerf();
+}
+async function loadPerf() {
+  if (perfLoading) return;
+  perfLoading = true;
+  $('perf-body').hidden = true;
+  $('perf-suggest-row').hidden = true;
+  $('perf-state').replaceChildren(emptyState(t('common.loading')));
+  try {
+    [perf, perfMachine] = await Promise.all([deck.perfGet(), deck.perfMachine()]);
+    showPerf();
+    $('perf-state').replaceChildren();
+    $('perf-body').hidden = false;
+    $('perf-suggest-row').hidden = false;
+  } catch (error) {
+    $('perf-state').replaceChildren(emptyState(t('settings.performance.error', { error }), loadPerf));
+  } finally {
+    perfLoading = false;
+  }
+}
+async function writePerf(mode, custom) {
+  const write = (perfWrite?.catch(() => {}) ?? Promise.resolve()).then(() => deck.perfSet(mode, custom));
+  perfWrite = write;
+  try {
+    perf = await write;
+  } finally {
+    if (perfWrite === write) perfWrite = undefined;
+  }
+}
+function savePerf() {
+  clearTimeout(perfTimer);
+  const revision = ++perfRevision;
+  const mode = perfMode();
+  const custom = perfCustom && { ...perfCustom };
+  showStatus('perf-status', '');
+  perfTimer = setTimeout(async () => {
+    perfTimer = undefined;
+    try {
+      await writePerf(mode, custom);
+      if (revision === perfRevision) showStatus('perf-status', t('common.saved'));
+    } catch (error) {
+      if (revision !== perfRevision) return;
+      showStatus('perf-status', String(error), true);
+      showPerf();
+    }
+  }, PERF_SAVE_MS);
+}
+for (const radio of settingsDialog.querySelectorAll('[name="perf-mode"]')) {
+  radio.onchange = () => {
+    if (radio.value === 'custom' && !perfCustom) {
+      const { cpu, ram, gpu, parallel } = perf.presets[perf.mode];
+      perfCustom = { cpu, ram, gpu, parallel };
+    }
+    drawPerf();
+    savePerf();
+  };
+}
+function busyPerf(button, busy) {
+  button.disabled = busy;
+  button.setAttribute('aria-busy', busy);
+}
+const perfSuggestButton = $('perf-suggest');
+const perfSuggestion = $('perf-suggestion');
+async function askPerf(profile) {
+  perfSuggestion.replaceChildren(emptyState(t('settings.performance.suggest.asking')));
+  perfSuggestion.hidden = false;
+  busyPerf(perfSuggestButton, true);
+  const reply = await deck.perfSuggest(profile, currentLanguage()).catch((error) => ({ error: String(error) }));
+  busyPerf(perfSuggestButton, false);
+  const restoreFocus = !settingsDialog.contains(document.activeElement);
+  if (!reply.ok) {
+    perfSuggestion.replaceChildren(emptyState(t('settings.performance.suggest.failed', { error: reply.error ?? '' }), () => askPerf(profile)));
+    if (restoreFocus) perfSuggestion.querySelector('button').focus();
+    return;
+  }
+  const { mode, custom, reason } = reply.suggestion;
+  const budget = mode === 'custom' ? custom : perf.presets[mode];
+  const cancel = node('button', 'btn', t('common.cancel'));
+  const apply = node('button', 'btn btn--primary', t('common.apply'));
+  cancel.type = apply.type = 'button';
+  cancel.onclick = () => {
+    perfSuggestion.hidden = true;
+    perfSuggestion.replaceChildren();
+    showStatus('perf-suggest-status', '');
+    perfSuggestButton.focus();
+  };
+  apply.onclick = async () => {
+    clearTimeout(perfTimer);
+    perfTimer = undefined;
+    ++perfRevision;
+    busyPerf(apply, true);
+    busyPerf(perfSuggestButton, true);
+    cancel.disabled = true;
+    $('perf-body').inert = true;
+    showStatus('perf-suggest-status', '');
+    try {
+      await writePerf(mode, mode === 'custom' ? budget : perfCustom);
+      showPerf();
+      showStatus('perf-status', t('common.saved'));
+      cancel.onclick();
+    } catch (error) {
+      apply.textContent = t('common.retry');
+      showStatus('perf-suggest-status', t('settings.performance.apply-failed', { error }), true);
+    } finally {
+      $('perf-body').inert = false;
+      cancel.disabled = false;
+      busyPerf(apply, false);
+      busyPerf(perfSuggestButton, false);
+      if (!settingsDialog.contains(document.activeElement)) (perfSuggestion.hidden ? perfSuggestButton : apply).focus();
+    }
+  };
+  const actions = node('div', 'organize__actions');
+  actions.append(cancel, apply);
+  const text = t('settings.performance.suggestion', { mode: t(`settings.performance.${mode}`), budgets: budgetText(budget) });
+  perfSuggestion.replaceChildren(node('p', 'sort__warning', text), node('p', 'settings__hint', reason), actions);
+  if (restoreFocus) apply.focus();
+}
+async function suggestPerf() {
+  busyPerf(perfSuggestButton, true);
+  perfSuggestion.hidden = false;
+  perfSuggestion.replaceChildren(emptyState(t('common.loading')));
+  showStatus('perf-suggest-status', '');
+  let profile;
+  try {
+    profile = await deck.perfProfile();
+  } catch (error) {
+    perfSuggestion.replaceChildren(emptyState(t('settings.performance.suggest.failed', { error }), suggestPerf));
+    return;
+  } finally {
+    busyPerf(perfSuggestButton, false);
+  }
+  perfSuggestion.hidden = true;
+  perfSuggestion.replaceChildren();
+  if (!settingsDialog.open || !perfSuggestButton.getClientRects().length) return;
+  perfSuggestButton.focus();
+  const none = t('settings.performance.suggest.none');
+  const text = t('settings.performance.suggest.text', {
+    machine: machineText(profile), programs: profile.programs.join(', ') || none, games: profile.games.join(', ') || none,
+  });
+  if (await askConfirm(t('settings.performance.suggest.title'), text, t('settings.performance.suggest.action'))) askPerf(profile);
+}
+perfSuggestButton.onclick = suggestPerf;
 
 function updateExternalCount() {
   const n = currentIndex?.sessions.filter((s) => !s.deck).length ?? 0;

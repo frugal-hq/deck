@@ -8,7 +8,7 @@ macro_rules! locales {
 }
 const LOCALES: &[(&str, &str)] = locales!["en", "es", "es-ES", "es-PE", "es-MX", "pt-PT", "pt-BR", "ru", "tr", "fr", "de", "it", "ja", "zh-CN", "ko", "pl", "uk", "nl"];
 
-static MESSAGES: RwLock<Option<Map<String, Value>>> = RwLock::new(None);
+static MESSAGES: RwLock<Option<(String, Map<String, Value>)>> = RwLock::new(None);
 
 pub fn messages(tag: &str) -> Map<String, Value> {
     let mut chain = vec!["en", tag.split('-').next().unwrap_or(tag), tag];
@@ -23,7 +23,14 @@ pub fn messages(tag: &str) -> Map<String, Value> {
 }
 
 pub fn set_language(tag: &str) {
-    *MESSAGES.write().unwrap() = Some(messages(tag));
+    let mut loaded = MESSAGES.write().unwrap();
+    if loaded.as_ref().is_none_or(|(current, _)| current != tag) {
+        *loaded = Some((tag.to_owned(), messages(tag)));
+    }
+}
+
+pub(crate) fn language() -> String {
+    MESSAGES.read().unwrap().as_ref().map_or_else(|| "en".into(), |(tag, _)| tag.clone())
 }
 
 pub fn t(key: &str, vars: &[(&str, &dyn std::fmt::Display)]) -> String {
@@ -31,7 +38,7 @@ pub fn t(key: &str, vars: &[(&str, &dyn std::fmt::Display)]) -> String {
         set_language("en");
     }
     let messages = MESSAGES.read().unwrap();
-    let mut rest = messages.as_ref().and_then(|m| m.get(key)).and_then(Value::as_str).unwrap_or(key);
+    let mut rest = messages.as_ref().and_then(|(_, messages)| messages.get(key)).and_then(Value::as_str).unwrap_or(key);
     // One pass, so a value that contains {name} is not filled in again.
     let mut text = String::new();
     while let Some(start) = rest.find('{') {

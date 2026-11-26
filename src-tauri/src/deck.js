@@ -17,7 +17,7 @@
       return '?';
     }
   };
-  const quietCalls = new Set(['chat:input', 'chat:resize', 'ui:save', 'files:thumbnail', 'window:attention', 'debug:set', 'debug:lines', 'debug:clear', 'debug:reveal']);
+  const quietCalls = new Set(['chat:input', 'chat:resize', 'perf:suggest', 'ui:save', 'files:thumbnail', 'window:attention', 'debug:set', 'debug:lines', 'debug:clear', 'debug:reveal']);
   const quietEvents = new Set(['chat:meters', 'debug:line', 'voice:progress', 'topics:progress']);
   // frugal: a call logs when it settles, so one that never returns leaves no line; log the start too if hangs need finding.
   const invoke = (channel, args) => {
@@ -125,6 +125,13 @@
     onTopicsProgress: (callback) => on('topics:progress', callback),
     start: (options) => invoke('chat:start', { options, output: output(options.id) }),
     subagents: (id, cwd) => invoke('chat:subagents', { id, cwd }),
+    processes: (id) => invoke('chat:processes', { id }),
+    processKill: (id, pid, startedMs) => invoke('chat:process-kill', { id, pid, startedMs }),
+    perfGet: () => invoke('perf:get'),
+    perfSet: (mode, custom) => invoke('perf:set', { mode, custom }),
+    perfMachine: () => invoke('perf:machine'),
+    perfProfile: () => invoke('perf:profile'),
+    perfSuggest: (profile, language) => invoke('perf:suggest', { profile, language }),
     allTasks: () => invoke('tasks:all'),
     recordedSessions: () => invoke('chat:recorded-sessions'),
     input: (id, data) => send('chat:input', { id, data }),

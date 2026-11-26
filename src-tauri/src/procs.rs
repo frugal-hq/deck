@@ -82,24 +82,24 @@ fn budget_json(budget: Budget, mode: Mode) -> Value {
 }
 
 fn validate(mode: &str, custom: Option<Budget>, saved: Option<Budget>) -> Result<Config, String> {
-    let mode = serde_json::from_value(json!(mode)).map_err(|_| "Invalid performance mode".to_owned())?;
+    let mode = serde_json::from_value(json!(mode)).map_err(|_| crate::i18n::t("error.invalid-performance-mode", &[]))?;
     let valid = |custom: Budget| {
-        [custom.cpu, custom.ram, custom.gpu].into_iter().all(|value| (1..=100).contains(&value))
-            && (0..=32).contains(&custom.parallel)
+        [custom.cpu, custom.ram].into_iter().all(|value| (1..=100).contains(&value))
+            && (0..=100).contains(&custom.gpu) && (0..=32).contains(&custom.parallel)
     };
     if custom.is_some_and(|b| !valid(b)) {
-        return Err("CPU, RAM and GPU must be integers from 1 to 100, and parallel must be an integer from 0 to 32".into());
+        return Err(crate::i18n::t("error.invalid-performance-budget", &[]));
     }
     let custom = custom.or(saved);
     if mode == Mode::Custom && !custom.is_some_and(valid) {
-        return Err("Custom mode requires valid CPU, RAM, GPU and parallel budgets".into());
+        return Err(crate::i18n::t("error.custom-performance-needs-budgets", &[]));
     }
     Ok(Config { mode, custom })
 }
 
 fn config_path() -> Result<PathBuf, String> {
     std::env::home_dir().map(|home| home.join(".frugal").join("performance.json"))
-        .ok_or_else(|| "User folder unavailable".into())
+        .ok_or_else(|| crate::i18n::t("error.no-user-folder", &[]))
 }
 
 fn config() -> Config {
@@ -175,7 +175,7 @@ pub fn perf_set(mode: String, custom: Option<Budget>, host: tauri::State<crate::
     let file = config_path()?;
     let config = validate(&mode, custom, Config::load(&file).custom)?;
     let bytes = serde_json::to_vec_pretty(&config).map_err(|error| error.to_string())?;
-    let folder = file.parent().ok_or("User folder unavailable")?;
+    let folder = file.parent().ok_or_else(|| crate::i18n::t("error.no-user-folder", &[]))?;
     std::fs::create_dir_all(folder).map_err(|error| error.to_string())?;
     let mut nonce = [0; 8];
     getrandom::fill(&mut nonce).map_err(|error| error.to_string())?;
@@ -195,6 +195,77 @@ pub fn perf_set(mode: String, custom: Option<Budget>, host: tauri::State<crate::
 #[tauri::command]
 pub fn perf_machine() -> Value {
     json!({ "cores": platform::cores(), "ram_bytes": platform::ram_bytes(), "gpus": platform::gpus() })
+}
+
+// What "Suggest for this PC" sends: the machine, the names of the biggest running programs and installed games. No paths.
+#[tauri::command]
+pub async fn perf_profile() -> Result<Value, String> {
+    tauri::async_runtime::spawn_blocking(|| {
+        let mut profile = perf_machine();
+        profile["programs"] = json!(platform::top_programs(15));
+        profile["games"] = json!(installed_games());
+        profile
+    }).await.map_err(|error| error.to_string())
+}
+
+// Values of `"key" "value"` lines in Valve's KeyValues text (libraryfolders.vdf, appmanifest_*.acf).
+fn vdf_values(text: &str, key: &str) -> Vec<String> {
+    text.lines().filter_map(|line| {
+        let (field, value) = line.trim_start().strip_prefix('"')?.split_once('"')?;
+        if !field.eq_ignore_ascii_case(key) { return None; }
+        let mut chars = value.trim_start().strip_prefix('"')?.chars().peekable();
+        let mut decoded = String::new();
+        while let Some(ch) = chars.next() {
+            match ch {
+                '"' => return Some(decoded),
+                '\\' if matches!(chars.peek(), Some('"' | '\\')) => decoded.push(chars.next().unwrap()),
+                _ => decoded.push(ch),
+            }
+        }
+        None
+    }).collect()
+}
+
+fn is_game(name: &str) -> bool {
+    const TOOLS: [&str; 8] = ["redistributable", "runtime", "proton", "sdk", "dedicated server", "steamvr", "soundtrack", "launcher"];
+    let lower = name.to_lowercase();
+    !name.trim().is_empty() && !TOOLS.iter().any(|tool| lower.contains(tool))
+}
+
+fn installed_games() -> Vec<String> {
+    let read = |path: &Path| std::fs::read_to_string(path).unwrap_or_default();
+    let files = |folder: &Path, test: &dyn Fn(&str) -> bool| -> Vec<PathBuf> {
+        std::fs::read_dir(folder).into_iter().flatten().flatten().map(|entry| entry.path())
+            .filter(|path| path.file_name().and_then(|name| name.to_str()).is_some_and(test)).collect()
+    };
+    let mut games = Vec::new();
+    let steam = platform::steam_folder()
+        .or_else(|| std::env::var_os("ProgramFiles(x86)").map(|folder| PathBuf::from(folder).join("Steam")));
+    if let Some(steam) = steam {
+        let mut libraries = vdf_values(&read(&steam.join("steamapps").join("libraryfolders.vdf")), "path");
+        libraries.push(steam.to_string_lossy().into_owned());
+        libraries.sort_by_key(|library| library.to_lowercase());
+        libraries.dedup_by_key(|library| library.to_lowercase());
+        for library in libraries {
+            for manifest in files(&Path::new(&library).join("steamapps"), &|name| name.starts_with("appmanifest_") && name.ends_with(".acf")) {
+                games.extend(vdf_values(&read(&manifest), "name").into_iter().take(1));
+            }
+        }
+    }
+    if let Some(data) = std::env::var_os("ProgramData") {
+        let manifests = PathBuf::from(data).join("Epic").join("EpicGamesLauncher").join("Data").join("Manifests");
+        for item in files(&manifests, &|name| name.ends_with(".item")) {
+            let item = crate::accounts::read_json(&item, Value::Null);
+            if item["bIsIncompleteInstall"] != true
+                && item["AppCategories"].as_array().is_none_or(|list| list.iter().any(|category| category == "games")) {
+                games.extend(item["DisplayName"].as_str().map(str::to_owned));
+            }
+        }
+    }
+    games.retain(|name| is_game(name));
+    games.sort_by_key(|name| name.to_lowercase());
+    games.dedup_by(|a, b| a.eq_ignore_ascii_case(b));
+    games
 }
 
 pub(crate) use platform::{apply_limits, Job};
@@ -269,6 +340,18 @@ mod platform {
 
     pub fn gpus() -> Vec<Value> {
         adapters().into_iter().map(|(_, desc)| desc).collect()
+    }
+
+    pub fn steam_folder() -> Option<PathBuf> {
+        use windows::Win32::UI::Shell::{SHRegGetValueFromHKCUHKLM, SRRF_RT_REG_SZ};
+        let mut path = [0u16; 260];
+        let mut bytes = size_of_val(&path) as u32;
+        unsafe {
+            SHRegGetValueFromHKCUHKLM(w!(r"Software\Valve\Steam"), w!("SteamPath"),
+                SRRF_RT_REG_SZ as i32, None, Some(path.as_mut_ptr().cast()), Some(&mut bytes))
+        }.ok().ok()?;
+        let path = PathBuf::from(wide_text(&path));
+        path.is_absolute().then_some(path)
     }
 
     fn raw(handle: &OwnedHandle) -> HANDLE { HANDLE(handle.as_raw_handle()) }
@@ -369,6 +452,7 @@ mod platform {
 
     pub struct Job {
         handle: OwnedHandle,
+        root_pid: u32,
         cpu: CpuSample,
         gpu: Option<Option<GpuQuery>>,
     }
@@ -377,7 +461,7 @@ mod platform {
         pub fn new() -> Option<Self> {
             let _ = parent();
             match create_job() {
-                Ok(handle) => Some(Self { handle, cpu: CpuSample::default(), gpu: None }),
+                Ok(handle) => Some(Self { handle, root_pid: 0, cpu: CpuSample::default(), gpu: None }),
                 Err(error) => {
                     log_once(&ASSIGN_ERROR, "Could not create the chat process job", &error);
                     None
@@ -385,7 +469,7 @@ mod platform {
             }
         }
 
-        pub fn attach(self, child: &dyn portable_pty::Child) -> Option<Self> {
+        pub fn attach(mut self, child: &dyn portable_pty::Child) -> Option<Self> {
             let Some(process) = child.as_raw_handle().map(HANDLE) else {
                 log_once(&ASSIGN_ERROR, "Could not assign the chat process job", &"PTY child handle unavailable");
                 return None;
@@ -396,7 +480,10 @@ mod platform {
                 }
             }
             match unsafe { AssignProcessToJobObject(raw(&self.handle), process) } {
-                Ok(()) => Some(self),
+                Ok(()) => {
+                    self.root_pid = unsafe { GetProcessId(process) };
+                    Some(self)
+                }
                 Err(error) => {
                     log_once(&ASSIGN_ERROR, "Could not assign the chat process job", &error);
                     None
@@ -452,17 +539,23 @@ mod platform {
             Ok(member.as_bool())
         }
 
-        pub fn kill(&self, pid: u32) -> Result<Value, String> {
-            const OUTSIDE: &str = "PID is not in this chat's process job";
+        pub fn kill(&self, pid: u32, started_ms: Option<u64>) -> Result<Value, String> {
+            if pid == self.root_pid {
+                return Err(crate::i18n::t("error.invalid-pid", &[]));
+            }
+            let outside = || crate::i18n::t("error.pid-not-in-chat", &[]);
             if pid == 0 || !self.pids().map_err(|error| error.to_string())?.contains(&pid) {
-                return Err(OUTSIDE.into());
+                return Err(outside());
             }
             let process = unsafe { OpenProcess(PROCESS_TERMINATE | PROCESS_QUERY_LIMITED_INFORMATION, false, pid) }
                 .map_err(|error| error.to_string())?;
             let process = unsafe { OwnedHandle::from_raw_handle(process.0) };
             // Recheck the opened object so PID reuse between enumeration and OpenProcess cannot kill an unrelated process.
             if !self.contains(raw(&process)).map_err(|error| error.to_string())? {
-                return Err(OUTSIDE.into());
+                return Err(outside());
+            }
+            if started_ms.is_some_and(|ms| ms == 0 || process_times(raw(&process)).map(|(start, _)| unix_ms(start)) != Some(ms)) {
+                return Err(outside());
             }
             unsafe { TerminateProcess(raw(&process), 1) }.map_err(|error| error.to_string())?;
             Ok(json!({"ok": true}))
@@ -494,7 +587,7 @@ mod platform {
                 let (ppid, name) = metadata.get(&pid).map_or((0, ""), |(ppid, name)| (*ppid, name.as_str()));
                 let (mut started_ms, mut cpu) = (0, 0.0);
                 if let Some((started, ticks)) = process_times(process) {
-                    started_ms = started.saturating_sub(116_444_736_000_000_000) / 10_000;
+                    started_ms = unix_ms(started);
                     if let Some(&(previous_start, previous_ticks)) = self.cpu.times.get(&pid) {
                         if previous_start == started {
                             cpu = cpu_pct(previous_ticks, ticks, elapsed, cores);
@@ -507,7 +600,7 @@ mod platform {
                     memory.WorkingSetSize as u64
                 } else { 0 };
                 let mut row = json!({"pid": pid, "ppid": ppid, "name": name, "cmd": command_line(process),
-                    "cpu_pct": cpu, "ram_bytes": ram, "started_ms": started_ms});
+                    "cpu_pct": cpu, "ram_bytes": ram, "started_ms": started_ms, "is_chat": pid == self.root_pid});
                 if let Some(gpu) = &gpu {
                     match gpu.get(&pid).copied().unwrap_or(Some(0.0)) {
                         Some(pct) => {
@@ -541,6 +634,25 @@ mod platform {
             result = unsafe { Process32NextW(raw(&snapshot), &mut entry) };
         }
         rows
+    }
+
+    pub fn top_programs(count: usize) -> Vec<String> {
+        let mut totals: HashMap<String, u64> = HashMap::new();
+        for (pid, (_, name)) in process_metadata() {
+            let Ok(handle) = (unsafe { OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid) }) else { continue };
+            let process = unsafe { OwnedHandle::from_raw_handle(handle.0) };
+            let mut memory = PROCESS_MEMORY_COUNTERS { cb: size_of::<PROCESS_MEMORY_COUNTERS>() as u32, ..Default::default() };
+            if unsafe { K32GetProcessMemoryInfo(raw(&process), &mut memory, size_of::<PROCESS_MEMORY_COUNTERS>() as u32) }.as_bool() {
+                *totals.entry(name).or_default() += memory.WorkingSetSize as u64;
+            }
+        }
+        let mut totals: Vec<_> = totals.into_iter().collect();
+        totals.sort_by(|a, b| b.1.cmp(&a.1));
+        totals.into_iter().take(count).map(|(name, _)| name).collect()
+    }
+
+    fn unix_ms(ticks: u64) -> u64 {
+        ticks.saturating_sub(116_444_736_000_000_000) / 10_000
     }
 
     fn process_times(process: HANDLE) -> Option<(u64, u64)> {
@@ -661,6 +773,8 @@ mod platform {
     pub fn cores() -> u32 { std::thread::available_parallelism().map_or(1, |cores| cores.get() as u32) }
     pub fn ram_bytes() -> u64 { 0 }
     pub fn gpus() -> Vec<Value> { Vec::new() }
+    pub fn steam_folder() -> Option<PathBuf> { None }
+    pub fn top_programs(_: usize) -> Vec<String> { Vec::new() }
     pub(crate) fn apply_limits(_: Limits) {}
 
     pub struct Job;
@@ -669,8 +783,8 @@ mod platform {
         pub fn new() -> Option<Self> { None }
         pub fn attach(self, _: &dyn portable_pty::Child) -> Option<Self> { None }
         pub fn terminate(self) -> bool { false }
-        pub fn processes(&mut self) -> Result<Value, String> { Err("Process jobs are unavailable".into()) }
-        pub fn kill(&self, _: u32) -> Result<Value, String> { Err("Process jobs are unavailable".into()) }
+        pub fn processes(&mut self) -> Result<Value, String> { Err(crate::i18n::t("error.process-jobs-unavailable", &[])) }
+        pub fn kill(&self, _: u32, _: Option<u64>) -> Result<Value, String> { Err(crate::i18n::t("error.process-jobs-unavailable", &[])) }
     }
 }
 
@@ -709,12 +823,25 @@ mod tests {
         assert_eq!(validate("custom", None, Some(budget)).unwrap().budget(), budget);
         assert!(validate("custom", None, None).is_err());
         assert!(validate("unknown", None, None).is_err());
+        assert!(validate("custom", Some(Budget { gpu: 0, ..budget }), None).is_ok());
         for invalid in [Budget { cpu: 0, ..budget }, Budget { ram: 101, ..budget },
             Budget { gpu: -1, ..budget }, Budget { parallel: 33, ..budget }] {
             assert!(validate("light", Some(invalid), None).is_err());
         }
         for value in [json!(true), json!(1.5), json!("1"), json!(null)] {
             assert!(serde_json::from_value::<Budget>(json!({"cpu": value, "ram": 1, "gpu": 1, "parallel": 0})).is_err());
+        }
+    }
+
+    #[test]
+    fn reads_steam_files_and_skips_tools() {
+        let vdf = "\"libraryfolders\"\n{\n\t\"0\"\n\t{\n\t\t\"path\"\t\t\"D:\\\\SteamLibrary\"\n\t}\n}";
+        assert_eq!(vdf_values(vdf, "path"), ["D:\\SteamLibrary"]);
+        assert_eq!(vdf_values("\t\"name\"\t\t\"Portal 2\"\n\t\"Name\"\t\"\"", "name"), ["Portal 2", ""]);
+        assert_eq!(vdf_values(r#""name" "Game \"Title\"""#, "name"), [r#"Game "Title""#]);
+        assert!(is_game("Portal 2"));
+        for tool in ["Steamworks Common Redistributables", "Proton 9.0", "Steam Linux Runtime 3.0", "", "Valheim Dedicated Server"] {
+            assert!(!is_game(tool), "{tool}");
         }
     }
 

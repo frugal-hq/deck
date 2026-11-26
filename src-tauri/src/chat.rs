@@ -767,24 +767,24 @@ pub fn chat_kill(chats: tauri::State<Chats>, id: String) {
     }
 }
 
-async fn process_request(app: AppHandle, id: String, pid: Option<u32>) -> Result<Value, String> {
-    if !is_uuid(&id) || pid == Some(0) {
-        return Err("Invalid chat ID or PID".into());
+async fn process_request(app: AppHandle, id: String, target: Option<(u32, Option<u64>)>) -> Result<Value, String> {
+    if !is_uuid(&id) || target.is_some_and(|(pid, _)| pid == 0) {
+        return Err(crate::i18n::t("error.invalid-chat-or-pid", &[]));
     }
     tauri::async_runtime::spawn_blocking(move || {
         let chats = app.state::<Chats>();
         let remote = {
             let mut live = chats.live.lock().map_err(|error| error.to_string())?;
-            let chat = live.get_mut(&id).ok_or("Chat is not live")?;
+            let chat = live.get_mut(&id).ok_or_else(|| crate::i18n::t("error.chat-not-live", &[]))?;
             if let Some(job) = &mut chat.job {
-                return match pid {
-                    Some(pid) => job.kill(pid),
+                return match target {
+                    Some((pid, started_ms)) => job.kill(pid, started_ms),
                     None => job.processes(),
                 };
             }
-            chat.remote.clone().ok_or("Chat has no process job")?
+            chat.remote.clone().ok_or_else(|| crate::i18n::t("error.chat-no-process-job", &[]))?
         };
-        remote.process_request(pid)
+        remote.process_request(target)
     }).await.map_err(|error| error.to_string())?
 }
 
@@ -794,8 +794,8 @@ pub async fn chat_processes(app: AppHandle, id: String) -> Result<Value, String>
 }
 
 #[tauri::command]
-pub async fn chat_process_kill(app: AppHandle, id: String, pid: u32) -> Result<Value, String> {
-    process_request(app, id, Some(pid)).await
+pub async fn chat_process_kill(app: AppHandle, id: String, pid: u32, started_ms: Option<u64>) -> Result<Value, String> {
+    process_request(app, id, Some((pid, started_ms))).await
 }
 
 #[cfg(test)]
