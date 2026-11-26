@@ -893,7 +893,7 @@ body { transition: opacity var(--dur-short) var(--ease-out); }
 .settings__body { overflow-y: auto; padding: var(--space-md) var(--space-lg) var(--space-lg); }
 .settings__section { display: grid; gap: var(--space-sm); }
 .settings__section[hidden] { display: none; }
-.settings__title { margin: 0 var(--space-xl) 0 0; padding-bottom: var(--space-sm); border-bottom: var(--rule-hair) solid var(--color-rule); font-size: var(--text-sm); font-weight: 500; }
+.settings__title { margin: 0 var(--space-xl) 0 0; padding-bottom: var(--space-sm); border-bottom: var(--rule-hair) solid var(--color-rule); font-size: var(--text-sm); font-weight: 500; max-width: none; }
 .settings__title + .settings__row { padding-top: 0; border-top: 0; }
 .settings__row { display: grid; gap: var(--space-2xs); padding-top: var(--space-sm); border-top: var(--rule-hair) solid var(--color-rule); }
 .settings__row[hidden] { display: none; }
