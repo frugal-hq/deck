@@ -2450,7 +2450,7 @@ function chatElement(chat) {
   summary.className = 'chat__more measured';
   summary.append(icon('chevron'), document.createTextNode(String(n)));
   const syncSummary = () => {
-    const label = history.open ? 'Hide the earlier sessions of this chat' : `Show ${n} earlier session${n === 1 ? '' : 's'} of this chat`;
+    const label = history.open ? t('chat.history.hide') : tp('chat.history.show', n);
     summary.setAttribute('aria-label', label);
     summary.dataset.tip = label;
   };
@@ -2469,7 +2469,7 @@ function chatElement(chat) {
 function foldLine(details) {
   const line = node('div', 'tree-rail');
   line.ariaHidden = 'true';
-  line.dataset.tip = 'Collapse';
+  line.dataset.tip = t('sidebar.collapse');
   line.onclick = () => (details.open = false);
   return line;
 }
@@ -2481,7 +2481,7 @@ function limitedChats(key, chats) {
   const limit = groupLimit();
   if (chats.length <= limit) return chats.map((chat) => chatElement(chat));
   const all = openGroups.has(`more:${key}`);
-  const more = node('button', 'session group__more', all ? 'Show less' : `Show ${chats.length - limit} more`);
+  const more = node('button', 'session group__more', all ? t('sidebar.show-less') : tp('sidebar.show-more', chats.length - limit));
   more.type = 'button';
   more.onclick = () => {
     if (all) openGroups.delete(`more:${key}`);
@@ -2497,7 +2497,7 @@ function newChatButton(chats, group, label) {
   button.type = 'button';
   button.className = 'btn btn--icon group__new';
   button.append(icon('plus'));
-  const text = `New chat in ${label}`;
+  const text = t('sidebar.new-chat', { label });
   button.dataset.tip = text;
   button.setAttribute('aria-label', text);
   button.onclick = (event) => {
@@ -2512,7 +2512,7 @@ function moreButton(label, items) {
   button.type = 'button';
   button.className = 'btn btn--icon group__new';
   button.append(icon('more'));
-  const text = `Options for ${label}`;
+  const text = t('sidebar.options', { label });
   button.dataset.tip = text;
   button.setAttribute('aria-label', text);
   button.onclick = (event) => {
@@ -2540,24 +2540,24 @@ function workspaceMenu(name) {
   const folder = currentIndex.sessions.find((s) => withinSpace(s.space ?? currentIndex.workspaces?.[chatsById.get(s.chatId)?.topic] ?? currentIndex.workspaces?.[s.cwd], name, currentIndex))?.cwd;
   if (folder) fetchMcp({ workspace: name, folder }, 30_000);
   return [
-    ...(folder ? [{ label: 'MCP servers', icon: 'plug', run: () => openMcpDialog({ workspace: name, folder }) }] : []),
-    { label: 'Rename…', icon: 'edit', run: () => ask({
-      title: `Rename ${name}`,
-      text: 'Use the name of another workspace to merge them.',
+    ...(folder ? [{ label: t('mcp.title'), icon: 'plug', run: () => openMcpDialog({ workspace: name, folder }) }] : []),
+    { label: t('account.rename.menu'), icon: 'edit', run: () => ask({
+      title: t('organize.rename.title', { name }),
+      text: t('organize.workspace.rename-text'),
       value: name,
       names: spaceNames.filter((other) => other !== name),
-      action: 'Rename',
+      action: t('common.rename'),
       run: (to) => {
         if (to === name) return;
         renameOpenKey(`workspace:${name}`, `workspace:${to}`);
         deck.renameWorkspace(name, to);
       },
     }) },
-    { label: 'Move to workspace…', icon: 'topic', run: () => openWorkspace(spaceKey(name), name) },
-    { label: 'Remove', icon: 'trash', danger: true, run: () => ask({
-      title: `Remove ${name}?`,
-      text: 'Its groups and chats stay, outside any workspace. Workspaces inside it move up one level.',
-      action: 'Remove',
+    { label: t('organize.workspace.move'), icon: 'topic', run: () => openWorkspace(spaceKey(name), name) },
+    { label: t('common.remove'), icon: 'trash', danger: true, run: () => ask({
+      title: t('organize.remove.title', { name }),
+      text: t('organize.workspace.remove-text'),
+      action: t('common.remove'),
       danger: true,
       run: () => deck.deleteWorkspace(name),
     }) },
@@ -2567,33 +2567,34 @@ function workspaceMenu(name) {
 const sessionsOfGroup = (key) => currentIndex.sessions.filter((s) => chatsById.get(s.chatId)?.topic === key).map((s) => s.id);
 
 function groupMenu(key, label, byTopic) {
-  const move = { label: 'Move to workspace…', icon: 'topic', run: () => openWorkspace(key, label) };
+  const move = { label: t('organize.workspace.move'), icon: 'topic', run: () => openWorkspace(key, label) };
   // A group's servers are listed from the folder of one of its chats.
   const folder = byTopic ? currentIndex.sessions.find((s) => chatsById.get(s.chatId)?.topic === key)?.cwd : key;
   const listScope = byTopic ? { group: key, folder } : { folder };
   // `claude mcp list` takes seconds per account: listing while the menu is open lets the dialog show it sooner.
   if (folder) fetchMcp(listScope, 30_000);
-  const mcp = { label: 'MCP servers', icon: 'plug', run: () => openMcpDialog(listScope) };
+  const mcp = { label: t('mcp.title'), icon: 'plug', run: () => openMcpDialog(listScope) };
   if (!byTopic) return [move, mcp];
   const workspace = currentIndex.workspaces?.[key];
+  const otherGroups = () => groupNames.filter((name) => name !== key).map((value) => ({ name: groupLabel(value), value }));
   return [
-    { label: 'Rename…', icon: 'edit', run: () => ask({
-      title: `Rename ${label}`,
-      text: 'Use the name of another group to merge them.',
+    { label: t('account.rename.menu'), icon: 'edit', run: () => ask({
+      title: t('organize.rename.title', { name: label }),
+      text: t('organize.group.rename-text'),
       value: key,
-      names: groupNames.filter((other) => other !== key),
-      action: 'Rename',
+      names: otherGroups(),
+      action: t('common.rename'),
       run: (to) => {
         if (to === key) return;
         renameOpenKey(key, to);
         deck.renameGroup(sessionsOfGroup(key), key, to);
       },
     }) },
-    { label: 'Merge into another group…', icon: 'merge', run: () => ask({
-      title: `Merge ${label} into`,
-      text: 'Its chats move into the group you choose, and this group goes away.',
-      names: groupNames.filter((other) => other !== key),
-      action: 'Merge',
+    { label: t('organize.group.merge'), icon: 'merge', run: () => ask({
+      title: t('organize.group.merge-title', { label }),
+      text: t('organize.group.merge-text'),
+      names: otherGroups(),
+      action: t('organize.merge'),
       run: (to) => {
         if (to === key) return;
         renameOpenKey(key, to);
@@ -2602,15 +2603,17 @@ function groupMenu(key, label, byTopic) {
     }) },
     move,
     ...(folder ? [mcp] : []),
-    { label: 'Remove', icon: 'trash', danger: true, run: () => ask({
-      title: `Remove ${label}?`,
-      text: workspace ? `Its chats stay in ${workspace}, without a group.` : 'Its chats stay, outside any group.',
-      action: 'Remove',
+    { label: t('common.remove'), icon: 'trash', danger: true, run: () => ask({
+      title: t('organize.remove.title', { name: label }),
+      text: workspace ? t('organize.group.remove-in-workspace', { workspace }) : t('organize.group.remove-text'),
+      action: t('common.remove'),
       danger: true,
       run: () => deck.deleteGroup(sessionsOfGroup(key), key),
     }) },
   ];
 }
+
+const groupLabel = (key) => key === NO_TOPIC ? t('sidebar.no-topic') : key;
 
 function groupElement(key, chats, byTopic) {
   const group = document.createElement('details');
@@ -2619,8 +2622,8 @@ function groupElement(key, chats, byTopic) {
   group.ontoggle = () => (group.open ? openGroups.add(key) : openGroups.delete(key));
   const summary = document.createElement('summary');
   summary.className = 'group__name';
-  summary.dataset.tip = key;
-  const label = byTopic ? key : folderName(key);
+  const label = byTopic ? groupLabel(key) : folderName(key);
+  summary.dataset.tip = byTopic ? label : key;
   const name = document.createElement('span');
   name.className = 'group__label';
   name.textContent = label;
@@ -2671,10 +2674,10 @@ function workspaceElement(workspace, byTopic) {
 }
 
 function indexStatus({ indexing, sessions, error, progress }) {
-  if (error) return `Could not read the index: ${error}`;
-  if (indexing && progress?.total) return `Indexing ${progress.done.toLocaleString()} of ${progress.total.toLocaleString()} sessions (${Math.floor(100 * progress.done / progress.total)}%)`;
+  if (error) return t('sidebar.index.error', { error });
+  if (indexing && progress?.total) return tp('sidebar.index.progress', progress.total, { done: progress.done.toLocaleString(), count: progress.total.toLocaleString(), percent: Math.floor(100 * progress.done / progress.total) });
   if (sessions.length) return '';
-  return indexing ? 'Indexing sessions…' : 'No chats yet.';
+  return indexing ? t('sidebar.index.loading') : t('sidebar.index.empty');
 }
 
 function pinnedElement(sessions) {
@@ -2682,7 +2685,7 @@ function pinnedElement(sessions) {
   section.className = 'pinned';
   const heading = document.createElement('h2');
   heading.className = 'pinned__title';
-  heading.textContent = 'Pinned';
+  heading.textContent = t('sidebar.pinned');
   section.append(heading, ...sessions.map((chat) => chatElement(chat)));
   return section;
 }
@@ -2700,7 +2703,7 @@ function drawSpaces(sessions, index) {
   const names = [...new Set([...sessions.map((s) => s.space), ...Object.values(index.workspaces ?? {}), ...Object.values(index.workspaceParents ?? {})].filter(Boolean))].sort((a, b) => a.localeCompare(b, 'en-US'));
   const select = $('space-filter');
   const chosen = names.includes(select.value) ? select.value : '';
-  select.replaceChildren(new Option('All workspaces', ''), ...names.map((name) => new Option(name, name)));
+  select.replaceChildren(new Option(t('sidebar.all-workspaces'), ''), ...names.map((name) => new Option(name, name)));
   select.value = chosen;
   select.hidden = !names.length;
   spaceNames = names;
@@ -2825,7 +2828,7 @@ function drawPalette() {
   const shown = new Set(titled.map((session) => session.id));
   const matches = paletteAi ?? [...titled, ...paletteSessions.filter((session) => paletteText.has(session.id) && !shown.has(session.id))];
   paletteList.replaceChildren(...matches.map(paletteOption));
-  $('palette-empty').textContent = paletteLoading || paletteError || 'No results. Try a different search.';
+  $('palette-empty').textContent = paletteLoading || paletteError || t('palette.empty');
   $('palette-state').hidden = matches.length > 0 && !paletteLoading && !paletteError;
   $('palette-retry').hidden = !paletteError;
   selectPaletteRow(matches.length ? 0 : -1);
@@ -2844,7 +2847,7 @@ function searchMessages() {
   resetPaletteSearch();
   const query = paletteQuery.value.trim();
   const search = paletteSearch;
-  paletteLoading = query.length >= 2 ? 'Searching messages…' : '';
+  paletteLoading = query.length >= 2 ? t('palette.searching-messages') : '';
   drawPalette();
   if (!paletteLoading) return;
   paletteTimer = setTimeout(async () => {
@@ -2854,7 +2857,7 @@ function searchMessages() {
     paletteLoading = '';
     if (ids) paletteText = new Set(ids);
     else {
-      paletteError = 'Could not search messages. Select Retry to try again.';
+      paletteError = t('palette.error.messages');
       $('palette-retry').onclick = searchMessages;
     }
     drawPalette();
@@ -2869,19 +2872,19 @@ async function askAi() {
   const search = paletteSearch;
   button.disabled = true;
   button.setAttribute('aria-busy', 'true');
-  button.textContent = 'Asking…';
-  paletteLoading = 'Searching with AI…';
+  button.textContent = t('palette.ask.pending');
+  paletteLoading = t('palette.searching-ai');
   drawPalette();
   const reply = await deck.searchAi({ model: $('palette-model').value, effort: $('palette-effort').value, rename: false, excerpts: sendsExcerpts() }, query)
     .catch((error) => ({ error: String(error) }));
   button.disabled = false;
   button.removeAttribute('aria-busy');
-  button.textContent = 'Ask AI';
+  button.textContent = t('palette.ask.label');
   if (search !== paletteSearch || !palette.open) return;
   paletteLoading = '';
   if (reply.error) {
     console.warn('AI search failed', reply.error);
-    paletteError = 'Could not search with AI. Select Retry to try again.';
+    paletteError = t('palette.error.ai');
     $('palette-retry').onclick = askAi;
   } else if (!reply.stopped) {
     const byId = new Map(paletteSessions.map((session) => [session.id, session]));
@@ -2899,7 +2902,7 @@ async function loadPalette(load) {
   paletteQuery.readOnly = true;
   $('palette-ai').hidden = true;
   $('palette-sends').hidden = true;
-  paletteLoading = 'Loading chats…';
+  paletteLoading = t('palette.loading');
   drawPalette();
   let sessions;
   try {
@@ -2910,7 +2913,7 @@ async function loadPalette(load) {
   if (search !== paletteSearch || !palette.open) return;
   paletteLoading = '';
   if (!sessions) {
-    paletteError = 'Could not load chats. Select Retry to try again.';
+    paletteError = t('palette.error.load');
     $('palette-retry').onclick = () => loadPalette(load);
   } else {
     paletteSessions = sessions;
@@ -2921,7 +2924,7 @@ async function loadPalette(load) {
   drawPalette();
 }
 
-async function showPalette(load, choose, placeholder = 'Search titles, folders and messages') {
+async function showPalette(load, choose, placeholder = t('palette.query.placeholder')) {
   if (palette.open) {
     palette.close();
     return;
@@ -2929,7 +2932,7 @@ async function showPalette(load, choose, placeholder = 'Search titles, folders a
   paletteChoose = choose;
   paletteQuery.placeholder = placeholder;
   paletteQuery.value = '';
-  $('palette-sends').textContent = `Ask AI sends Anthropic your description and the title, folder, date and first prompt of up to 40 matching chats${sendsExcerpts() ? ', with up to 200 characters of a matching message from each' : ''}. Change it in Settings.`;
+  $('palette-sends').textContent = sendsExcerpts() ? t('palette.privacy.excerpts') : t('palette.privacy.standard');
   palette.showModal();
   await loadPalette(load);
 }
@@ -2981,7 +2984,7 @@ function openOrganize(session) {
   $('organize-pinned').checked = chat.pinned;
   $('organize-space').value = chat.space ?? '';
   const group = chat.userGroup ?? chat.topic ?? '';
-  $('organize-group').value = group;
+  setComboValue($('organize-group'), group, groupLabel(group));
   $('organize-group').dataset.prefill = group;
   $('organize-tags').value = chat.tags.join(', ');
   $('organize-unlink').hidden = !session.parentId;
@@ -3001,8 +3004,9 @@ $('organize-form').onsubmit = () => {
     space: $('organize-space').value,
     tags: $('organize-tags').value.split(','),
   };
-  const group = $('organize-group').value;
-  const groupChanged = group !== $('organize-group').dataset.prefill;
+  const input = $('organize-group');
+  const group = input.dataset.selectedValue ?? input.value;
+  const groupChanged = group !== input.dataset.prefill;
   for (const s of currentIndex.sessions) {
     if (s.chatId === organizing.chatId) {
       deck.organize(s.id, value);
@@ -3018,7 +3022,7 @@ $('organize-archive').onclick = () => {
   organize.close();
   const ids = currentIndex.sessions.filter((s) => s.chatId === organizing.chatId).map((s) => s.id);
   deck.setArchived(ids, true);
-  showUndo('Archived.', () => deck.setArchived(ids, false));
+  showUndo(t('organize.archived'), () => deck.setArchived(ids, false));
 };
 
 // Newest first. A session that is not the first of its chat names that chat; opening one brings its chat back.
@@ -3040,7 +3044,7 @@ async function drawArchived() {
     const from = document.createElement('span');
     from.className = 'session__folder';
     const chat = byId.get(session.chatId);
-    from.textContent = session.chatId !== session.id && chat ? `from ${chat.title}` : folderName(session.cwd);
+    from.textContent = session.chatId !== session.id && chat ? t('organize.archived-from', { title: chat.title }) : folderName(session.cwd);
     open.append(title, from);
     open.onclick = () => {
       $('archived-dialog').close();
@@ -3049,8 +3053,8 @@ async function drawArchived() {
     const restore = document.createElement('button');
     restore.type = 'button';
     restore.className = 'btn';
-    restore.textContent = 'Unarchive';
-    restore.dataset.tip = 'Back to the sidebar';
+    restore.textContent = t('organize.unarchive');
+    restore.dataset.tip = t('organize.unarchive-tip');
     restore.onclick = () => {
       deck.setArchived([session.id], false);
       item.remove();
@@ -3110,7 +3114,7 @@ function ask({ title, text, value = null, names = [], action, danger = false, ru
   $('ask-text').textContent = text;
   $('ask-field').hidden = value === null;
   input.disabled = value === null;
-  input.value = value ?? '';
+  setComboValue(input, value ?? '');
   askNames = names;
   askRun = run;
   $('ask-submit').textContent = action;
@@ -3119,7 +3123,10 @@ function ask({ title, text, value = null, names = [], action, danger = false, ru
   if (value !== null) input.select();
 }
 
-$('ask-form').onsubmit = () => askRun($('ask-value').value.trim());
+$('ask-form').onsubmit = () => {
+  const input = $('ask-value');
+  askRun((input.dataset.selectedValue ?? input.value).trim());
+};
 $('ask-cancel').onclick = () => askDialog.close();
 // A question asked from the accounts panel returns to it.
 askDialog.addEventListener('close', () => {
@@ -3139,6 +3146,13 @@ $('usage-all').addEventListener('click', () => {
   $('usage').hidePopover();
   openAccounts();
 });
+
+// A translated group label can share its spelling with a user-defined group.
+function setComboValue(input, value, label = value) {
+  input.value = label;
+  if (label === value) delete input.dataset.selectedValue;
+  else input.dataset.selectedValue = value;
+}
 
 // The native datalist popup cannot be styled, so these fields share the app's list.
 function attachCombo(input, names) {
@@ -3172,7 +3186,7 @@ function attachCombo(input, names) {
   const open = (query) => {
     // An entry is a name, or { name, branch: 'mid' | 'last', pick } for a row of a tree; a search shows the rows flat.
     const matches = names().map((entry) => (typeof entry === 'string' ? { name: entry } : entry)).filter(({ name }) => name.toLowerCase().includes(query));
-    list.replaceChildren(...matches.map(({ name, branch, pick }, i) => {
+    list.replaceChildren(...matches.map(({ name, value = name, branch, pick }, i) => {
       const item = document.createElement('button');
       item.type = 'button';
       item.id = `${list.id}-${i}`;
@@ -3184,7 +3198,7 @@ function attachCombo(input, names) {
       item.onmousedown = (event) => event.preventDefault();
       item.onclick = () => {
         if (pick) pick();
-        else input.value = name;
+        else setComboValue(input, value, name);
         close();
       };
       return item;
@@ -3195,7 +3209,10 @@ function attachCombo(input, names) {
     mark(-1);
   };
   input.addEventListener('click', () => (isOpen() ? close() : open('')));
-  input.addEventListener('input', () => open(input.value.trim().toLowerCase()));
+  input.addEventListener('input', () => {
+    delete input.dataset.selectedValue;
+    open(input.value.trim().toLowerCase());
+  });
   input.addEventListener('blur', close);
   input.addEventListener('keydown', (event) => {
     if (event.key === 'ArrowDown' && !isOpen()) {
@@ -3223,14 +3240,14 @@ function placeTree() {
   const spaceOf = new Map(Object.entries(currentIndex?.workspaces ?? {}).map(([group, space]) => [group.toLowerCase(), space]));
   const place = (space, group) => () => {
     $('organize-space').value = space;
-    $('organize-group').value = group;
+    setComboValue($('organize-group'), group, groupLabel(group));
   };
   return [
     ...spaceNames.flatMap((space) => {
       const groups = groupNames.filter((group) => spaceOf.get(group.toLowerCase()) === space);
-      return [{ name: space, pick: place(space, '') }, ...groups.map((group, i) => ({ name: group, branch: i === groups.length - 1 ? 'last' : 'mid', pick: place('', group) }))];
+      return [{ name: space, pick: place(space, '') }, ...groups.map((group, i) => ({ name: groupLabel(group), branch: i === groups.length - 1 ? 'last' : 'mid', pick: place('', group) }))];
     }),
-    ...groupNames.filter((group) => !spaceNames.includes(spaceOf.get(group.toLowerCase()))).map((group) => ({ name: group, pick: place('', group) })),
+    ...groupNames.filter((group) => !spaceNames.includes(spaceOf.get(group.toLowerCase()))).map((group) => ({ name: groupLabel(group), pick: place('', group) })),
   ];
 }
 attachCombo($('organize-group'), placeTree);
@@ -3243,13 +3260,13 @@ $('organize-link').onclick = () => {
   const otherChats = async () => groupChats(await deck.getAllSessions()).filter((c) => c.chatId !== session.chatId);
   showPalette(otherChats, (target) => {
     deck.link(session.chatId, target.id);
-    showUndo(`Linked to ${target.title}.`);
-  }, 'Link to which chat?');
+    showUndo(t('organize.linked', { title: target.title }));
+  }, t('palette.link-prompt'));
 };
 $('organize-unlink').onclick = () => {
   organize.close();
   deck.link(organizing.id, null);
-  showUndo('Chat unlinked.');
+  showUndo(t('organize.unlinked'));
 };
 $('space-filter').onchange = () => renderSessions(currentIndex);
 
@@ -3297,7 +3314,7 @@ function drawSortGroups() {
   }
   const spaces = [...bySpace].sort(([a], [b]) => (a === '') - (b === '') || a.localeCompare(b, 'en-US'));
   $('sort-group-list').replaceChildren(...spaces.map(([space, names]) => {
-    const all = chip('All', names.every((name) => sortGroups.has(name)), () => {
+    const all = chip(t('sort.groups.all'), names.every((name) => sortGroups.has(name)), () => {
       for (const [name, { input }] of chips) {
         input.checked = all.input.checked;
         if (all.input.checked) sortGroups.add(name);
@@ -3305,14 +3322,14 @@ function drawSortGroups() {
       }
       drawSortEstimate();
     });
-    const chips = names.map((name) => [name, chip(name || NO_TOPIC, sortGroups.has(name), (event) => {
+    const chips = names.map((name) => [name, chip(groupLabel(name || NO_TOPIC), sortGroups.has(name), (event) => {
       if (event.target.checked) sortGroups.add(name);
       else sortGroups.delete(name);
       all.input.checked = names.every((other) => sortGroups.has(other));
       drawSortEstimate();
     })]);
     const head = node('div', 'sort__space-head');
-    head.append(node('span', '', space || (spaces.length > 1 ? 'Other groups' : 'Groups')), all.row);
+    head.append(node('span', '', space || (spaces.length > 1 ? t('sort.groups.unassigned') : t('sort.groups.title'))), all.row);
     const list = node('div', space ? 'sort__chips sort__chips--tree' : 'sort__chips');
     list.append(...chips.map(([, { row }]) => {
       if (!space) return row;
@@ -3330,7 +3347,7 @@ function drawSortGroups() {
 function labelCosts(select, costs) {
   for (const option of select.options) {
     option.dataset.name ??= option.textContent;
-    option.textContent = costs ? `${option.dataset.name} · ${compact.format(costs[option.value])} tokens` : option.dataset.name;
+    option.textContent = costs ? tp('sort.option-cost', costs[option.value], { name: option.dataset.name, count: compact.format(costs[option.value]) }) : option.dataset.name;
   }
 }
 
@@ -3340,7 +3357,7 @@ function labelCosts(select, costs) {
 const SORT_PACE_MEASURED = { 'sonnet/medium': 200 };
 const sortPaces = () => ({ ...SORT_PACE_MEASURED, ...JSON.parse(localStorage.getItem('sortPace') ?? '{}') });
 const paceKey = (options) => `${options.model}/${options.effort}`;
-const duration = (ms) => (ms < 60000 ? 'under a minute' : `about ${Math.round(ms / 60000)} min`);
+const duration = (ms) => (ms < 60000 ? t('sort.time.short') : tp('sort.time.minutes', Math.round(ms / 60000)));
 let sortRun = null;
 let sortTicker = null;
 
@@ -3354,7 +3371,9 @@ function drawSortProgress() {
   const share = Math.max(total ? done / total : 0, expected ? Math.min(1 - left / expected, 0.99) : 0);
   if (share) bar.value = share;
   else bar.removeAttribute('value');
-  sortStatus(label ?? ([total && `Sorted ${done} of ${total}`, expected && (left > 0 ? `${duration(left)} left` : 'Almost done')].filter(Boolean).join(' · ') || 'Sending the first batch'));
+  const sorted = total && tp('sort.progress.sorted', total, { done });
+  const remaining = expected && (left > 0 ? t('sort.progress.remaining', { duration: duration(left) }) : t('sort.progress.almost-done'));
+  sortStatus(label ?? ([sorted, remaining].filter(Boolean).join(' · ') || t('sort.progress.first-batch')));
 }
 
 function trackSort(run) {
@@ -3400,18 +3419,24 @@ async function drawSortEstimate() {
   labelCosts($('sort-effort'), plus(topics.byEffort));
   const tokens = topics.tokens + extra;
   const pace = sortPaces()[paceKey(options)];
-  const time = pace && topics.sessions ? ` Takes ${duration(pace * topics.sessions)}.` : '';
-  const parts = [topics.sessions && `sorts ${topics.sessions.toLocaleString('en-US')} session${topics.sessions === 1 ? '' : 's'}`, nest && `moves ${workspaces.groups} groups into workspaces`].filter(Boolean);
-  $('sort-run').disabled = !parts.length;
-  $('sort-warning').textContent = options.groups?.length === 0 && !nest
-    ? 'Choose at least one group.'
-    : parts.length
-      ? `About ${tokens.toLocaleString('en-US')} tokens of your Claude account: ${parts.join(' and ')}. Only titles, folder names and your notes are sent.${time}`
-      : 'Every chat already has what you asked for. Nothing to send.';
+  const time = pace && topics.sessions ? duration(pace * topics.sessions) : '';
+  const sessions = topics.sessions && tp('sort.estimate.sessions', topics.sessions, { count: topics.sessions.toLocaleString('en-US') });
+  const moving = nest && tp('sort.estimate.groups', workspaces.groups);
+  const parts = sessions && moving ? t('sort.estimate.both', { sessions, moving }) : sessions || moving;
+  $('sort-run').disabled = !parts;
+  const warning = $('sort-warning');
+  if (options.groups?.length === 0 && !nest) {
+    warning.textContent = t('sort.estimate.choose-group');
+  } else if (parts) {
+    const estimate = tp('sort.estimate.warning', tokens, { count: tokens.toLocaleString('en-US'), parts });
+    warning.textContent = time ? t('sort.estimate.with-time', { estimate, duration: time }) : estimate;
+  } else {
+    warning.textContent = t('sort.estimate.nothing');
+  }
   const join = await deck.estimateJoins();
   $('join-row').hidden = join.sessions === 0;
   if (join.sessions !== 0) {
-    $('join-text').textContent = `${join.sessions} continued session${join.sessions === 1 ? ' has' : 's have'} more than one possible origin. Claude can pick one: about ${join.tokens.toLocaleString('en-US')} tokens, titles and folder names only.`;
+    $('join-text').textContent = tp('sort.join.estimate', join.sessions, { tokens: join.tokens.toLocaleString('en-US') });
   }
   $('join-undo').hidden = !(currentIndex?.modelJoins > 0);
   $('workspace-undo').hidden = !(currentIndex?.modelWorkspaces > 0);
@@ -3450,7 +3475,7 @@ function showSettingsSection(name) {
 
 function updateExternalCount() {
   const n = currentIndex?.sessions.filter((s) => !s.deck).length ?? 0;
-  $('settings-external-count').textContent = n ? `${n} not imported` : 'All imported';
+  $('settings-external-count').textContent = n ? tp('settings.general.external.remaining', n) : t('settings.general.external.all');
   $('settings-import-external').disabled = n === 0;
 }
 
@@ -3480,7 +3505,7 @@ async function openSettings(section = localStorage.getItem('settingsSection')) {
   $('settings-tooltips').value = tooltipPlacement();
   $('settings-reopen').checked = reopensChats();
   $('settings-volume').value = notifyVolume();
-  $('settings-volume-value').value = `${notifyVolume()}%`;
+  $('settings-volume-value').value = t('common.percent', { percent: notifyVolume() });
   $('settings-group-limit').value = groupLimit();
   $('settings-debug').checked = localStorage.getItem('debugLog') === 'true';
   debugConsole.replaceChildren();
@@ -3507,14 +3532,14 @@ async function loadActivity() {
   $('activity-log').replaceChildren();
   $('activity-log').hidden = true;
   $('activity-state').hidden = false;
-  $('activity-status').textContent = 'Loading activity…';
+  $('activity-status').textContent = t('settings.activity.loading');
   $('activity-status').dataset.failed = false;
   $('activity-retry').hidden = true;
   const entries = await deck.activityList().catch(() => null);
   if (pendingActivity !== live) return;
   pendingActivity = null;
   if (!entries) {
-    showStatus('activity-status', 'Could not load activity. Select Retry to try again.', true);
+    showStatus('activity-status', t('settings.activity.error'), true);
     $('activity-retry').hidden = false;
     showActivity(live);
     return;
@@ -3522,7 +3547,7 @@ async function loadActivity() {
   // The saved history can already include live entries delivered during the read.
   const key = ({ at, kind, text }) => JSON.stringify([at, kind, text]);
   const seen = new Set(entries.map(key));
-  $('activity-status').textContent = 'No activity yet.';
+  $('activity-status').textContent = t('settings.activity.empty');
   showActivity([...entries, ...live.filter((entry) => !seen.has(key(entry)))]);
 }
 
@@ -3551,9 +3576,9 @@ $('settings-debug').onchange = (event) => {
 $('debug-copy').onclick = async () => {
   try {
     await navigator.clipboard.writeText(debugConsole.textContent);
-    showStatus('debug-status', 'Copied');
+    showStatus('debug-status', t('settings.debug.copied'));
   } catch {
-    showStatus('debug-status', 'Could not copy the log. Click Copy again.', true);
+    showStatus('debug-status', t('settings.debug.copy-error'), true);
   }
 };
 $('debug-reveal').onclick = () => deck.debugReveal();
@@ -3647,7 +3672,7 @@ function mcpRow(row) {
   // Frugal's own servers are always on: the Deck delegates through them.
   if (row.name.startsWith('plugin:frugal:')) {
     input.checked = input.disabled = true;
-    label.dataset.tip = 'Always on: Frugal Deck delegates through it';
+    label.dataset.tip = t('mcp.frugal.always-tip');
   }
   if (row.deck) input.dataset.deck = '1';
   label.append(input, node('span', 'mcp__name', row.name));
@@ -3659,7 +3684,7 @@ function mcpRow(row) {
   if (row.signIn) {
     const button = node('button', 'btn btn--bar', row.signIn);
     button.type = 'button';
-    button.dataset.tip = row.signInOn.length ? `Opens /mcp in a window, on ${row.signInOn.join(', ')}` : 'Opens /mcp in a window; one sign-in serves every account';
+    button.dataset.tip = row.signInOn.length ? t('mcp.sign-in.accounts-tip', { accounts: row.signInOn.join(', ') }) : t('mcp.sign-in.shared-tip');
     button.onclick = (event) => {
       event.preventDefault();
       openMcpLogin(row);
@@ -3672,7 +3697,7 @@ function mcpRow(row) {
     const button = node('button', 'btn btn--bar');
     button.type = 'button';
     button.setAttribute('aria-haspopup', 'dialog');
-    button.dataset.tip = row.delegable ? 'How chats get it and which account kinds may use it' : 'How chats get it';
+    button.dataset.tip = row.delegable ? t('mcp.access.kinds-tip') : t('mcp.access.chat-tip');
     button.onclick = (event) => {
       event.preventDefault();
       openAccess(state);
@@ -3685,8 +3710,10 @@ function mcpRow(row) {
     const button = node('button', 'btn btn--bar btn--icon');
     button.type = 'button';
     button.innerHTML = '<svg class="icon" aria-hidden="true"><use href="#i-trash"/></svg>';
-    button.setAttribute('aria-label', `Remove ${row.name}`);
-    button.dataset.tip = `Remove from ${row.deck ? 'the Deck' : row.accounts.join(', ')}, in every folder. Uncheck it to turn it off only here`;
+    button.setAttribute('aria-label', t('prompt.remove-file', { name: row.name }));
+    button.dataset.tip = row.deck
+      ? t('mcp.remove.deck-tip')
+      : t('mcp.remove.accounts-tip', { accounts: row.accounts.join(', ') });
     button.onclick = (event) => {
       event.preventDefault();
       removeMcp(row, button);
@@ -3697,7 +3724,7 @@ function mcpRow(row) {
 }
 
 const MCP_KINDS = { claude: 'Claude', codex: 'Codex', grok: 'Grok', opencode: 'OpenCode' };
-const MCP_MODES = { checked: 'Access', auto: 'Auto', delegates: 'Delegates only' };
+const MCP_MODES = { checked: t('mcp.access.label'), auto: t('mcp.access.auto.label'), delegates: t('mcp.access.delegates.label') };
 // Per server: the accounts whose chats load it, its chat mode and the delegate kinds that may use it. The Access dialog edits it; Save writes it.
 const mcpAccess = new Map();
 
@@ -3716,7 +3743,7 @@ function drawAccessButton(state) {
 function openAccess(state) {
   const { row } = state;
   const dialog = $('mcp-access-dialog');
-  $('mcp-access-title').textContent = `Access: ${row.name}`;
+  $('mcp-access-title').textContent = t('mcp.access.title', { name: row.name });
   const box = (text, checked, value) => {
     const label = node('label', 'organize__check');
     const input = document.createElement('input');
@@ -3734,16 +3761,16 @@ function openAccess(state) {
   const move = $('mcp-access-move');
   move.replaceChildren();
   if (row.import || row.everywhere) {
-    const button = node('button', 'btn', row.import ? 'Add to the Deck' : 'Use in every account');
+    const button = node('button', 'btn', row.import ? t('mcp.add.submit.label') : t('mcp.access.use-everywhere'));
     button.type = 'button';
     button.onclick = () => {
       dialog.close();
       if (row.import) showMcpForm(row.import);
       else useEverywhere(row, state.button);
     };
-    move.append(node('span', 'access__legend', 'Every account'), node('p', 'settings__hint', row.import
-      ? `Only in ${row.accounts.join(', ')}. As a Deck server it runs on any account.`
-      : `Moves it to the Deck as ${row.everywhere.target}, for every account and delegate. One sign-in serves all.`), button);
+    move.append(node('span', 'access__legend', t('mcp.access.every-account')), node('p', 'settings__hint', row.import
+      ? t('mcp.access.import-hint', { accounts: row.accounts.join(', ') })
+      : t('mcp.access.move-hint', { target: row.everywhere.target })), button);
   }
   dialog.returnValue = '';
   dialog.onclose = () => {
@@ -3771,14 +3798,14 @@ async function useEverywhere(row, button) {
     button.disabled = false;
     return;
   }
-  message.textContent = `Moved ${row.name} to the Deck as ${name}, for every account and delegate. Sign in once with its Sign in. Removing ${name} brings ${row.name} back.`;
+  message.textContent = t('mcp.access.moved', { previous: row.name, name });
   refreshMcp();
 }
 
 // Unlike its checkbox, which applies to this folder, group or workspace, removing reaches every folder and delegated work.
 async function removeMcp(row, button) {
-  const where = row.deck ? 'the Deck, for every account and folder' : `${row.accounts.join(', ')} in every folder (unless it was added only for this one), and from delegated work`;
-  if (!await askConfirm(`Remove ${row.name}?`, `It is removed from ${where}, not only here. To turn it off only here, uncheck it instead. Removed keeps it to restore, though it may need a new sign-in.`, 'Remove')) return;
+  const where = row.deck ? t('mcp.remove.deck-scope') : t('mcp.remove.account-scope', { accounts: row.accounts.join(', ') });
+  if (!await askConfirm(t('organize.remove.title', { name: row.name }), t('mcp.remove.text', { where }), t('common.remove'))) return;
   button.disabled = true;
   const result = await deck.mcpRemove(row.name, Boolean(row.deck), mcpScope).catch((error) => ({ error: String(error) }));
   const message = $('mcp-error');
@@ -3788,7 +3815,7 @@ async function removeMcp(row, button) {
     button.disabled = false;
     return;
   }
-  message.textContent = `Removed ${row.name}. Removed, below, can restore it.`;
+  message.textContent = t('mcp.remove.done', { name: row.name });
   button.closest('.mcp__row').remove();
   mcpAccess.delete(row.name);
   refreshMcp();
@@ -3810,7 +3837,7 @@ function openMcpLogin(row) {
   const select = $('mcp-login-account');
   select.replaceChildren(...accounts.map((account) => new Option(account.name, account.id)));
   select.value = (accounts.find((account) => row.signInOn.includes(account.name)) ?? fallback)?.id ?? '';
-  $('mcp-login-title').textContent = `Sign in to ${row.name}`;
+  $('mcp-login-title').textContent = t('account.sign-in.folder', { name: row.name });
   $('mcp-login').showModal();
   mcpLogin = { row };
   startMcpLogin();
@@ -3830,7 +3857,7 @@ async function startMcpLogin() {
   term.onData((data) => deck.input(id, data));
   term.focus();
   const accountId = $('mcp-login-account').value;
-  if (!accountId) return term.write('Sign in to a Claude account first.');
+  if (!accountId) return term.write(t('mcp-login.no-account'));
   // The home folder asks for trust on every run, so a global sign-in runs in the default chat folder.
   const folder = mcpScope?.global ? await deck.defaultFolder().catch(() => null) : mcpScope?.folder ?? null;
   const result = await deck.mcpLogin({ id, cols: term.cols, rows: term.rows, accountId, folder, deckServer: row.deck ? row.name : null })
@@ -3861,10 +3888,10 @@ $('mcp-login-close').onclick = closeMcpLogin;
 // A server the backup holds that is gone from its account, folder or the Deck; Restore puts its saved config back.
 function removedRow(entry) {
   const row = node('div', 'organize__check mcp__row');
-  const where = entry.folder ? `${entry.account}, ${entry.folder}` : entry.account;
+  const where = entry.folder ? t('mcp.removed.location', { account: entry.account, folder: entry.folder }) : entry.account;
   const status = node('span', 'mcp__status', where);
-  status.title = `${entry.target}\nRemoved from ${where}`;
-  const button = node('button', 'btn btn--bar', 'Restore');
+  status.title = t('mcp.removed.location-tip', { target: entry.target, where });
+  const button = node('button', 'btn btn--bar', t('common.restore'));
   button.type = 'button';
   button.onclick = async () => {
     button.disabled = true;
@@ -3876,7 +3903,7 @@ function removedRow(entry) {
       button.disabled = false;
       return;
     }
-    message.textContent = `Restored ${entry.name} in ${where}.`;
+    message.textContent = t('mcp.removed.restored', { name: entry.name, where });
     mcpCache.clear();
     row.remove();
   };
@@ -3896,8 +3923,8 @@ function mcpSection(title, rows, empty) {
 // Signed in: an account holds a live token for it, and every account shares it. Needs sign-in: a chat was asked to sign in and no token came since.
 function deckRow(name, config, checked, signedIn, needsAuth) {
   const remote = config.type !== 'stdio';
-  return { name, deck: true, checked, status: remote ? (needsAuth ? 'Needs sign-in' : signedIn ? 'Signed in' : 'Checked in chats') : 'Local command', title: remote ? config.url : undefined,
-    signIn: remote && !signedIn ? 'Sign in' : null, signInOn: [], removable: true, access: !name.startsWith('plugin:frugal:'), delegable: true };
+  return { name, deck: true, checked, status: remote ? (needsAuth ? t('mcp.status.needs-sign-in') : signedIn ? t('mcp.status.signed-in') : t('mcp.status.checked')) : t('mcp.status.local'), title: remote ? config.url : undefined,
+    signIn: remote && !signedIn ? t('account.steps.sign-in') : null, signInOn: [], removable: true, access: !name.startsWith('plugin:frugal:'), delegable: true };
 }
 
 function drawMcp(result) {
@@ -3923,7 +3950,9 @@ function drawMcp(result) {
     // Connected only when every account that has it connects; otherwise the first failing account's status, and where it fails.
     const failing = Object.entries(statuses).filter(([, each]) => !/^connected$/i.test(mcpStatus(each).short));
     const { full, short } = mcpStatus(failing[0]?.[1] ?? status);
-    const where = failing.length && failing.length < accounts.length ? ` in ${failing.map(([account]) => account).join(', ')}` : '';
+    const failingAccounts = failing.map(([account]) => account);
+    const withAccounts = (status) => failingAccounts.length && failingAccounts.length < accounts.length
+      ? t('mcp.status.in-accounts', { status, accounts: failingAccounts.join(', ') }) : status;
     // A plain account server missing from some account can become a Deck server; claude.ai connectors and plugin servers cannot.
     const own = !/^(claude\.ai |plugin:)/.test(name) && /^[A-Za-z0-9][\w-]{0,63}$/.test(name);
     const portable = own && accounts.length < result.accounts;
@@ -3931,18 +3960,18 @@ function drawMcp(result) {
     const everywhere = /^claude\.ai /.test(name) && /^https?:\/\/\S+$/.test(target) && copy && !result.deck?.[copy] && accounts.length < result.accounts
       ? { name: copy, transport, target } : null;
     const connected = /^connected$/i.test(short);
-    return { name, accounts, status: short + where, title: `${full}${where}\n${target}\nIn ${accounts.join(', ')}`, checked: checked(name),
-      connected, removable: own, access: !name.startsWith('plugin:frugal:'), delegable: own, accountIds, everywhere, import: portable ? { name, transport, target } : null, signIn: connected ? null : /auth/i.test(full) ? 'Sign in' : 'Reconnect',
-      signInOn: failing.length ? failing.map(([account]) => account) : accounts };
+    return { name, accounts, status: withAccounts(short), title: t('mcp.status.details', { status: withAccounts(full), target, accounts: accounts.join(', ') }), checked: checked(name),
+      connected, removable: own, access: !name.startsWith('plugin:frugal:'), delegable: own, accountIds, everywhere, import: portable ? { name, transport, target } : null, signIn: connected ? null : /auth/i.test(full) ? t('account.steps.sign-in') : t('mcp.reconnect'),
+      signInOn: failingAccounts.length ? failingAccounts : accounts };
   });
   const listed = new Set([...rows.map((row) => row.name), ...deckServers.map(([name]) => name), ...moved]);
   const gone = new Set((result.removed ?? []).map((entry) => entry.name));
-  for (const name of new Set([...global, ...on, ...off])) if (!listed.has(name) && !gone.has(name)) rows.push({ name, status: 'Not listed', checked: checked(name), connected: true, access: !name.startsWith('plugin:frugal:') });
+  for (const name of new Set([...global, ...on, ...off])) if (!listed.has(name) && !gone.has(name)) rows.push({ name, status: t('mcp.status.not-listed'), checked: checked(name), connected: true, access: !name.startsWith('plugin:frugal:') });
   const frugal = (row) => row.name.startsWith('plugin:frugal:');
   const sections = [
-    ...(rows.some(frugal) ? [mcpSection('Frugal, always on', rows.filter(frugal), '')] : []),
-    mcpSection('Account servers', rows.filter((row) => row.connected && !frugal(row)), 'None connected.'),
-    Object.assign(mcpSection('Deck servers, any account', deckServers.map(([name, config]) => deckRow(name, config, checked(name), (result.signedIn ?? []).includes(name), (result.needsAuth ?? []).includes(name))), 'None yet. Add one below.'), { id: 'mcp-deck' }),
+    ...(rows.some(frugal) ? [mcpSection(t('mcp.frugal.title'), rows.filter(frugal), '')] : []),
+    mcpSection(t('mcp.account-servers.title'), rows.filter((row) => row.connected && !frugal(row)), t('mcp.account-servers.empty')),
+    Object.assign(mcpSection(t('mcp.deck-servers.title'), deckServers.map(([name, config]) => deckRow(name, config, checked(name), (result.signedIn ?? []).includes(name), (result.needsAuth ?? []).includes(name))), t('mcp.deck-servers.empty')), { id: 'mcp-deck' }),
   ];
   list.replaceChildren(...sections);
   // Not connected and Removed get their own sections, shown in the nav only when they hold something.
@@ -3973,7 +4002,7 @@ function drawMcpSuggestions(servers) {
     button.dataset.tip = server.target;
     button.dataset.name = server.name;
     return button;
-  }), chip('Custom server', () => showMcpForm({ name: '', transport: 'http', target: '' })));
+  }), chip(t('mcp.add.custom'), () => showMcpForm({ name: '', transport: 'http', target: '' })));
   $('mcp-add-section').hidden = false;
 }
 
@@ -3981,22 +4010,24 @@ async function openMcpDialog(scope) {
   mcpScope = scope;
   mcpTouched = false;
   mcpShown = null;
-  const kind = scope.workspace ? 'workspace' : scope.group ? 'group' : 'folder';
-  $('mcp-folder').textContent = $('mcp-folder').title = scope.global ? 'All chats, every account' : scope.workspace ?? scope.group ?? scope.folder;
+
+  $('mcp-folder').textContent = $('mcp-folder').title = scope.global ? t('mcp.scope.all') : scope.workspace ?? groupLabel(scope.group) ?? scope.folder;
   showSection($('mcp-dialog'), 'servers');
   mcpAccess.clear();
   for (const id of ['mcp-failing', 'mcp-removed']) $(id).replaceChildren();
   $('mcp-tab-failing').hidden = $('mcp-tab-removed').hidden = true;
-  const signIn = 'Deck servers that sign in ask once per account: Sign in opens a window for it.';
+  const signIn = t('mcp.scope.sign-in');
   $('mcp-note').textContent = scope.global
-    ? `On in every chat unless a folder, group or workspace turns it off. Every other server stays off. Applies to chats started or restarted after saving. ${signIn}`
-    : `Applies to chats started or restarted in this ${kind}${kind === 'workspace' ? ' and the ones inside it' : ''}${kind === 'folder' ? '' : ', on top of their folder'}. Servers on in all chats (MCP servers in the menu) start checked. ${signIn}`;
+    ? t('mcp.scope.global-note', { signIn })
+    : scope.workspace ? t('mcp.scope.workspace-note', { signIn })
+    : scope.group ? t('mcp.scope.group-note', { signIn })
+    : t('mcp.scope.folder-note', { signIn });
   $('mcp-add-section').hidden = true;
   $('mcp-new').hidden = true;
   $('mcp-task').value = '';
   $('mcp-ask').value = '';
   syncMcpAsk();
-  $('mcp-list').replaceChildren(node('p', 'mcp__empty', 'Loading…'));
+  $('mcp-list').replaceChildren(node('p', 'mcp__empty', t('common.loading')));
   $('mcp-error').hidden = true;
   $('mcp-dialog').showModal();
   const known = mcpCache.get(mcpKey(scope));
@@ -4011,8 +4042,8 @@ async function openMcpDialog(scope) {
 
 function syncMcpTarget() {
   const stdio = $('mcp-new-transport').value === 'stdio';
-  $('mcp-new-target-label').textContent = stdio ? 'Command' : 'URL';
-  $('mcp-new-target').placeholder = stdio ? 'npx -y some-mcp-server' : 'https://example.com/mcp';
+  $('mcp-new-target-label').textContent = stdio ? t('task.command') : t('mcp.add.url');
+  $('mcp-new-target').placeholder = stdio ? t('mcp.add.command-placeholder') : t('mcp.add.url-placeholder');
 }
 
 function showMcpForm(server) {
@@ -4031,7 +4062,8 @@ const mcpAskTokens = (text) => 1590 + Math.ceil(text.length / 4);
 function syncMcpAsk() {
   const text = $('mcp-ask').value.trim();
   $('mcp-ask-run').disabled = !text;
-  $('mcp-ask-cost').textContent = text ? `About ${mcpAskTokens(text).toLocaleString()} tokens on Haiku, primary account` : '';
+  const tokens = mcpAskTokens(text);
+  $('mcp-ask-cost').textContent = text ? tp('mcp.add.estimate', tokens, { count: tokens.toLocaleString() }) : '';
 }
 $('mcp-ask').oninput = syncMcpAsk;
 $('mcp-ask').onkeydown = (event) => {
@@ -4044,17 +4076,17 @@ $('mcp-ask-run').onclick = async () => {
   const text = $('mcp-ask').value.trim();
   if (!scope || !text || $('mcp-ask-run').disabled) return;
   $('mcp-ask-run').disabled = true;
-  $('mcp-ask-cost').textContent = 'Asking Haiku…';
+  $('mcp-ask-cost').textContent = t('mcp.add.asking');
   const reply = await deck.mcpFromPrompt(text).catch((error) => ({ error: String(error) }));
   if (mcpScope !== scope) return;
   syncMcpAsk();
   const server = reply?.server;
   if (reply?.error || !server?.name) {
-    $('mcp-ask-cost').textContent = reply?.error ?? 'No server found in that description.';
+    $('mcp-ask-cost').textContent = reply?.error ?? t('mcp.add.no-server');
     return;
   }
   showMcpForm({ name: server.name, transport: server.transport, target: server.target ?? '' });
-  $('mcp-ask-cost').textContent = server.note || 'Check the URL or command before adding.';
+  $('mcp-ask-cost').textContent = server.note || t('mcp.add.check-target');
 };
 $('mcp-new-transport').onchange = syncMcpTarget;
 $('mcp-new-cancel').onclick = () => { $('mcp-new').hidden = true; };
@@ -4069,7 +4101,7 @@ $('mcp-new-add').onclick = async () => {
   if (result?.error) { message.textContent = result.error; return; }
   mcpCache.clear();
   mcpTouched = true;
-  message.textContent = `Added ${server.name}. Save to use it here.`;
+  message.textContent = t('mcp.add.added', { name: server.name });
   $('mcp-new').hidden = true;
   const section = $('mcp-deck');
   section?.querySelector('.mcp__empty')?.remove();
@@ -4106,7 +4138,7 @@ $('mcp-save').onclick = async () => {
   const applied = Object.keys(access).length ? await deck.mcpAccessSet(access).catch((error) => ({ error: String(error) })) : null;
   if (applied?.error) { showStatus('mcp-error', applied.error, true); return; }
   mcpCache.clear();
-  showStatus('mcp-error', 'Saved');
+  showStatus('mcp-error', t('common.saved'));
 };
 let pluginsShown = null;
 let pluginSuggestion = null;
@@ -4128,7 +4160,7 @@ function drawPlugins(result, states = result.states) {
     group.setAttribute('role', 'radiogroup');
     group.setAttribute('aria-label', plugin.id);
     const state = states?.[plugin.id] ?? 'on';
-    for (const [value, text] of [['on', 'On'], ['auto', 'Auto'], ['off', 'Off']]) {
+    for (const [value, text] of [['on', t('plugins.state.on')], ['auto', t('mcp.access.auto.label')], ['off', t('settings.voice.input.off')]]) {
       const label = node('label');
       const input = document.createElement('input');
       input.type = 'radio';
@@ -4141,7 +4173,7 @@ function drawPlugins(result, states = result.states) {
     row.append(info, group);
     return row;
   }));
-  if (!result.plugins.length) $('plugins-list').append(node('p', 'mcp__empty', 'No plugins installed.'));
+  if (!result.plugins.length) $('plugins-list').append(node('p', 'mcp__empty', t('plugins.installed.empty')));
   $('plugins-save').disabled = false;
 }
 
@@ -4164,7 +4196,7 @@ async function openPluginsDialog() {
   $('plugins-error').hidden = true;
   $('plugins-request').value = '';
   $('plugins-task').value = '';
-  $('plugins-list').replaceChildren(node('p', 'mcp__empty', 'Loading…'));
+  $('plugins-list').replaceChildren(node('p', 'mcp__empty', t('common.loading')));
   showSection($('plugins-dialog'), 'installed');
   $('plugins-dialog').showModal();
   try {
@@ -4188,19 +4220,24 @@ function cleanActions(item) {
   return desktop ? ['keep', 'import'] : ['import', 'keep', 'remove'];
 }
 
+const CLEAN_ACTION_LABELS = { import: t('settings.general.external.import'), keep: t('clean.action.keep'), remove: t('common.remove') };
+
 function fillClean(id, items, cells) {
   const table = $(id);
   const body = table.tBodies[0];
   table.hidden = !items.length;
-  $(`${id}-count`).textContent = `(${items.length})`;
+  $(tp('clean.item-count', items.length);
   body.replaceChildren();
   for (const item of items) {
     const row = body.insertRow();
     for (const value of cells(item)) row.insertCell().textContent = value;
     const select = node('select', 'settings__select');
-    select.setAttribute('aria-label', `Action for ${item.kind} ${item.name}`);
+    select.setAttribute('aria-label', t(`clean.action-for.${item.kind}`, { name: item.name }));
     // For a plugin the store already has, remove drops only the accounts' copies: the store's stays the one in use.
-    for (const action of cleanActions(item)) select.add(new Option(action === 'remove' && item.status === 'in store' ? 'Use store' : action[0].toUpperCase() + action.slice(1), action));
+    for (const action of cleanActions(item)) {
+      const label = action === 'remove' && item.status === 'in store' ? t('clean.action.use-store') : CLEAN_ACTION_LABELS[action];
+      select.add(new Option(label, action));
+    }
     select.value = item.action;
     row.insertCell().append(select);
     cleanChoices.push({ item, select });
@@ -4230,7 +4267,7 @@ async function openCleanDialog() {
   cleanChoices = [];
   cleanStatus('');
   $('clean-empty').hidden = true;
-  cleanBusy('Looking for plugins, MCP servers and old copies in every account…');
+  cleanBusy(t('clean.scanning'));
   $('clean-apply').disabled = true;
   for (const id of ['clean-plugins', 'clean-mcp', 'clean-accounts', 'clean-copies-more']) $(id).hidden = true;
   if (!$('clean-dialog').open) $('clean-dialog').showModal();
@@ -4273,7 +4310,7 @@ $('clean-apply').onclick = async () => {
   const visit = cleanVisit;
   $('clean-apply').disabled = true;
   cleanStatus('');
-  cleanBusy('Backing up…', 0, picked.length + 1);
+  cleanBusy(t('clean.backing-up'), 0, picked.length + 1);
   try {
     const { zip, errors } = await deck.cleanApply(picked);
     const imported = picked.filter((item) => item.kind === 'plugin' && item.action === 'import').map((item) => item.name);
@@ -4282,12 +4319,12 @@ $('clean-apply').onclick = async () => {
     if (visit !== cleanVisit || !$('clean-dialog').open) return;
     if (!errors.length) {
       const count = picked.length;
-      const text = `Applied ${count} ${count === 1 ? 'change' : 'changes'}`;
+      const text = tp('clean.applied', count);
       await openCleanDialog();
       if ($('clean-dialog').open && $('clean-status').hidden) showStatus('clean-status', text);
       return;
     }
-    cleanStatus([zip ? `Backup: ${zip}` : '', ...errors].filter(Boolean).join('\n'));
+    cleanStatus([zip ? t('clean.backup', { zip }) : '', ...errors].filter(Boolean).join('\n'));
   } catch (error) {
     deck.activityAdd('clean', `Import and clean failed: ${error}`.slice(0, 4000));
     if (visit === cleanVisit && $('clean-dialog').open) cleanStatus(String(error));
@@ -4299,14 +4336,14 @@ $('clean-apply').onclick = async () => {
   }
 };
 deck.onCleanProgress(({ done, total, step }) => {
-  if (!$('clean-busy').hidden) cleanBusy(`${step} (${done} of ${total})`, done, total);
+  if (!$('clean-busy').hidden) cleanBusy(tp('clean.progress', total, { step, done }), done, total);
 });
 $('plugins-save').onclick = async () => {
   if (!pluginsShown) return;
   $('plugins-save').disabled = true;
   try {
     await deck.pluginsSet(pluginStates());
-    showStatus('plugins-error', 'Saved');
+    showStatus('plugins-error', t('common.saved'));
   } catch (error) {
     showStatus('plugins-error', String(error), true);
   } finally { $('plugins-save').disabled = false; }
@@ -4323,7 +4360,7 @@ $('plugins-find').onclick = async () => {
     if (visit !== pluginsVisit || !$('plugins-dialog').open) return;
     if (result.none) { $('plugins-error').textContent = result.none; $('plugins-error').hidden = false; return; }
     pluginSuggestion = result.id;
-    $('plugins-suggestion').textContent = `Install ${result.id}? ${result.why}`;
+    $('plugins-suggestion').textContent = t('plugins.install.suggestion', { id: result.id, why: result.why });
     $('plugins-confirm').hidden = false;
   } catch (error) {
     if (visit === pluginsVisit) { $('plugins-error').textContent = String(error); $('plugins-error').hidden = false; }
@@ -4356,7 +4393,7 @@ for (const prefix of ['mcp', 'plugins']) {
     button.disabled = true;
     try {
       await deck.autoPicksClear();
-      showStatus(prefix + '-error', 'Forgot picks');
+      showStatus(prefix + '-error', t('common.forgot-picks'));
     } catch (error) {
       showStatus(prefix + '-error', String(error), true);
     } finally { button.disabled = false; }
@@ -4394,7 +4431,7 @@ for (const prefix of ['mcp', 'plugins']) {
         }
       }
       showSection($(prefix + '-dialog'), prefix === 'mcp' ? 'servers' : 'installed');
-      message.textContent = 'Suggestions applied. Save to keep them.';
+      message.textContent = t('common.suggestions-applied');
       message.hidden = false;
     } catch (error) {
       message.textContent = String(error);
@@ -4445,18 +4482,18 @@ $('settings-accent').onchange = (event) => {
   localStorage.setItem('accentHue', event.target.value);
   applyAccent();
 };
-$('settings-keep-transcripts').onchange = (event) => deck.setKeepTranscripts(event.target.checked).catch((error) => showStatus('transcripts-status', `Could not change every account. ${error}`, true));
+$('settings-keep-transcripts').onchange = (event) => deck.setKeepTranscripts(event.target.checked).catch((error) => showStatus('transcripts-status', t('settings.accounts.keep-transcripts.error', { error }), true));
 $('settings-mouse').onchange = async (event) => {
   if (event.target.checked) {
     event.target.checked = false; // Stays off until the warning is accepted.
-    if (!await askConfirm('Turn on mouse clicks in chats?', "Chats start in Claude Code's fullscreen renderer, which takes clicks in menus and questions. Deck forces it on, which overrides Claude Code's safeguard that switches back to the classic renderer after failed starts. If chats fail to start, flicker or draw wrong, turn this off. Applies to chats started after the change.", 'Turn on')) return;
+    if (!await askConfirm(t('settings.chats.mouse.confirm.title'), t('settings.chats.mouse.confirm.text'), t('settings.chats.mouse.confirm.action'))) return;
     event.target.checked = true;
   }
   deck.setMouse(event.target.checked);
 };
 const VOICE_NOTICES = {
-  local: ['Use local dictation?', 'Audio stays on this computer. The first dictation downloads whisper.cpp (8.9 MB) and the model you choose. Names and technical terms often come out wrong, so the text lands in the prompt for you to edit and is never sent by itself. Windows dictation (Win+H) needs no download.', 'Use local dictation'],
-  anthropic: ['Use Anthropic voice?', 'The microphone button records through Claude Code, which sends your audio to Anthropic servers to transcribe it. Open chats restart once to turn it on. Claude Code sets the dictation language (/config). It uses no tokens, needs a claude.ai account, and does not work with ANTHROPIC_API_KEY or ANTHROPIC_AUTH_TOKEN set. Windows dictation (Win+H) needs no download.', 'Use Anthropic voice'],
+  local: [t('voice.confirm.local.title'), t('voice.confirm.local.text'), t('voice.confirm.local.action')],
+  anthropic: [t('voice.confirm.anthropic.title'), t('voice.confirm.anthropic.text'), t('voice.confirm.anthropic.action')],
 };
 $('settings-voice').onchange = async (event) => {
   const choice = event.target.value;
@@ -4467,7 +4504,7 @@ $('settings-voice-model').onchange = (event) => {
   localStorage.setItem('voiceModel', event.target.value);
   checkVoice();
 };
-$('settings-volume').oninput = (event) => ($('settings-volume-value').value = `${event.target.value}%`);
+$('settings-volume').oninput = (event) => ($('settings-volume-value').value = t('common.percent', { percent: event.target.value }));
 $('settings-volume').onchange = (event) => {
   localStorage.setItem('notifyVolume', event.target.value);
   chime(Number(event.target.value));
@@ -4481,9 +4518,9 @@ $('settings-import-external').onclick = async () => {
   try {
     await deck.importSessions(ids);
     const count = ids.length;
-    showStatus('import-status', `Imported ${count} ${count === 1 ? 'chat' : 'chats'}`);
+    showStatus('import-status', tp('settings.general.external.imported', count));
   } catch (error) {
-    showStatus('import-status', `Could not import external sessions. ${error}`, true);
+    showStatus('import-status', t('settings.general.external.error', { error }), true);
   } finally { updateExternalCount(); }
 };
 $('settings-ai-excerpts').onchange = (event) => localStorage.setItem('aiSearchExcerpts', event.target.checked);
@@ -4507,32 +4544,32 @@ $('search').onclick = togglePalette;
 $('chat-history').onclick = () => {
   const session = currentIndex?.sessions?.find((s) => s.id === activeId);
   if (!session) return;
-  showPalette(async () => currentIndex.sessions.filter((s) => s.chatId === session.chatId), resumeSession, 'Search this chat');
+  showPalette(async () => currentIndex.sessions.filter((s) => s.chatId === session.chatId), resumeSession, t('palette.history-prompt'));
 };
 $('link-chat').onclick = () => {
   const activeSession = currentIndex?.sessions?.find((s) => s.id === activeId);
   if (!activeSession) return;
   const otherChats = async () => groupChats(await deck.getAllSessions()).filter((c) => c.chatId !== activeSession.chatId);
   if (!activeSession.parentId) {
-    showPalette(otherChats, linkTo, 'Link to which chat?');
+    showPalette(otherChats, linkTo, t('palette.link-prompt'));
     return;
   }
   const { left, bottom } = $('link-chat').getBoundingClientRect();
   openMenu(left, bottom + 4, [
-    { label: 'Move to another chat…', run: () => showPalette(otherChats, (target) => {
+    { label: t('organize.move-chat'), run: () => showPalette(otherChats, (target) => {
       deck.link(activeSession.id, target.id);
-      showUndo(`Moved to ${target.title}.`);
-    }, 'Move to which chat?') },
-    { label: 'Unlink from chat', run: () => {
+      showUndo(t('organize.moved', { title: target.title }));
+    }, t('palette.move-prompt')) },
+    { label: t('organize.unlink.label'), run: () => {
       deck.link(activeSession.id, null);
-      showUndo('Chat unlinked.');
+      showUndo(t('organize.unlinked'));
     } },
   ]);
 };
 async function linkTo(target) {
   const activeSession = currentIndex?.sessions?.find((s) => s.id === activeId);
   deck.link(activeSession.chatId, target.id);
-  showUndo(`Linked to ${target.title}.`);
+  showUndo(t('organize.linked', { title: target.title }));
 }
 $('sort').onclick = () => {
   if (!$('sort-groups').hidden) drawSortGroups();
@@ -4566,7 +4603,7 @@ $('undo-close').onclick = () => {
 };
 $('sort-restore').onclick = () => {
   deck.restoreTitles();
-  sortStatus('Original titles restored.');
+  sortStatus(t('sort.restore.done'));
 };
 function lockSortDialog(locked) {
   sorting = locked;
@@ -4585,7 +4622,7 @@ $('sort-run').onclick = async () => {
   let result = await deck.runTopics(options).catch((error) => ({ error: error.message }));
   if (result.ok && sessions) localStorage.setItem('sortPace', JSON.stringify({ ...paces, [paceKey(options)]: (Date.now() - sortRun.started) / sessions }));
   if (result.ok && $('sort-nest').checked) {
-    trackSort({ label: 'Moving groups into workspaces' });
+    trackSort({ label: t('sort.progress.moving') });
     result = await deck.runWorkspaces(options).catch((error) => ({ error: error.message }));
   }
   trackSort(null);
@@ -4606,7 +4643,7 @@ deck.onTopicsProgress((done, total) => {
 
 $('join-run').onclick = async () => {
   lockSortDialog(true);
-  sortStatus('Asking Claude…');
+  sortStatus(t('sort.join.asking'));
   const result = await deck.runJoins(sortOptions()).catch((error) => ({ error: error.message }));
   lockSortDialog(false);
   if (result.error) sortStatus(result.error, true);
@@ -4615,11 +4652,11 @@ $('join-run').onclick = async () => {
 };
 $('join-undo').onclick = () => {
   deck.clearJoins();
-  sortStatus("Claude's joins removed.");
+  sortStatus(t('sort.join-undo.done'));
 };
 $('workspace-undo').onclick = () => {
   deck.clearWorkspaces();
-  sortStatus("Claude's workspaces removed.");
+  sortStatus(t('sort.workspace-undo.done'));
 };
 
 const startInSessions = async () => startChat(await deck.defaultFolder());
@@ -4631,24 +4668,24 @@ $('pick').onclick = startInPicked;
 $('app-menu').onclick = () => {
   const { right, bottom } = $('app-menu').getBoundingClientRect();
   openMenu(right, bottom + 4, [
-    { label: 'New chat in a folder…', run: startInPicked, icon: 'folder' },
-    { label: 'Accounts', run: openAccounts, icon: 'user' },
-    { label: 'Tasks', run: openTasks, icon: 'tasks' },
-    { label: 'Settings', run: () => openSettings(), icon: 'settings' },
-    { label: 'MCP servers', run: () => openMcpDialog({ global: true }), icon: 'plug' },
-    { label: 'Plugins', run: openPluginsDialog, icon: 'puzzle' },
-    { label: 'Updates', run: openUpdates, icon: 'update' },
+    { label: t('menu.new-in-folder'), run: startInPicked, icon: 'folder' },
+    { label: t('settings.accounts.title'), run: openAccounts, icon: 'user' },
+    { label: t('menu.tasks'), run: openTasks, icon: 'tasks' },
+    { label: t('settings.title'), run: () => openSettings(), icon: 'settings' },
+    { label: t('mcp.title'), run: () => openMcpDialog({ global: true }), icon: 'plug' },
+    { label: t('plugins.title'), run: openPluginsDialog, icon: 'puzzle' },
+    { label: t('dialog.update.title'), run: openUpdates, icon: 'update' },
   ], $('app-menu'));
 };
 // Installing closes the Deck, its chats with it, and the installer opens it again.
 async function installUpdate(source, button) {
   for (const other of $('update-dialog').querySelectorAll('button')) other.disabled = true;
   button?.setAttribute('aria-busy', 'true');
-  $('update-status').textContent = 'Installing. Frugal Deck closes and opens again.';
+  $('update-status').textContent = t('update.installing');
   try {
     await deck.installUpdate(source);
   } catch (error) {
-    $('update-status').textContent = `The update did not start: ${error}`;
+    $('update-status').textContent = t('update.install-error', { error });
     for (const other of $('update-dialog').querySelectorAll('button')) other.disabled = false;
     button?.removeAttribute('aria-busy');
   }
@@ -4679,13 +4716,13 @@ async function openTasks() {
   $('tasks-list').replaceChildren();
   $('tasks-retry').hidden = true;
   summary.classList.remove('empty');
-  summary.textContent = 'Reading tasks…';
+  summary.textContent = t('tasks.loading');
   if (!$('tasks-dialog').open) $('tasks-dialog').showModal();
   const tasks = await deck.allTasks().catch(() => null);
   if (load !== tasksLoad || !$('tasks-dialog').open) return;
   if (!tasks) {
     summary.classList.add('empty');
-    summary.textContent = 'Could not load tasks. Select Retry to try again.';
+    summary.textContent = t('tasks.error');
     $('tasks-retry').hidden = false;
     return;
   }
@@ -4694,21 +4731,30 @@ async function openTasks() {
   const today = new Date().toDateString();
   const counts = new Map();
   for (const task of delegated) {
-    const name = taskAccount(task) || 'Unknown';
+    const name = taskAccount(task) || t('tasks.unknown');
     const count = counts.get(name) ?? { all: 0, today: 0 };
     count.all += 1;
     if (task.updatedAt && new Date(task.updatedAt).toDateString() === today) count.today += 1;
     counts.set(name, count);
   }
   const todayTotal = [...counts.values()].reduce((sum, count) => sum + count.today, 0);
-  const byAccount = [...counts].sort((a, b) => b[1].all - a[1].all).map(([name, count]) => `${name} ${count.all}${count.today ? ` (${count.today} today)` : ''}`);
+  const byAccount = [...counts].sort((a, b) => b[1].all - a[1].all).map(([name, count]) => {
+    const account = tp('tasks.account-count', count.all, { name });
+    return count.today ? tp('tasks.account-today', count.today, { account }) : account;
+  });
   summary.classList.toggle('empty', !delegated.length);
-  summary.textContent = delegated.length ? `${delegated.length} tasks, ${todayTotal} today. ${byAccount.join(' · ')}${local.length ? `, ${local.length} local` : ''}` : 'No delegate tasks yet. Delegate work from a chat to see it here.';
+  if (delegated.length) {
+    const today = tp('tasks.today', todayTotal);
+    const total = tp('tasks.summary', delegated.length, { today, accounts: byAccount.join(' · ') });
+    summary.textContent = local.length ? tp('tasks.summary-local', local.length, { total }) : total;
+  } else {
+    summary.textContent = t('tasks.empty');
+  }
   const rows = delegated.map(taskRow);
   if (local.length) {
     const fold = node('details', 'info-panel__local');
     const summary = document.createElement('summary');
-    summary.append('Local tasks ', node('span', 'info-panel__muted', String(local.length)));
+    summary.append(tp('tasks.local-heading', local.length), ' ', node('span', 'info-panel__muted', String(local.length)));
     fold.append(summary, ...local.map(taskRow));
     rows.push(fold);
   }
@@ -4719,51 +4765,51 @@ $('tasks-retry').onclick = openTasks;
 // (only on the computer that built it). frugal: GitHub or a folder, as Claude Code records it. With nothing newer, the button is off.
 async function openUpdates() {
   $('update-list').replaceChildren();
-  $('update-status').textContent = 'Checking for updates…';
+  $('update-status').textContent = t('update.checking');
   if (!$('update-dialog').open) $('update-dialog').showModal();
   const { version, local, remote, error, buildFolder, frugal, frugalSource, frugalLatest } = await deck.checkUpdates();
-  const install = 'Close Frugal Deck and its chats, install this version and open it again';
-  const rows = [node('h3', 'update__heading', `Frugal Deck ${version}`)];
+  const install = t('update.install-tip');
+  const rows = [node('h3', 'update__heading', t('update.deck-version', { version }))];
   const fromBuilds = Boolean(buildFolder) && localStorage.getItem('deckUpdateSource') !== 'github';
-  if (fromBuilds) rows.push(local ? updateRow(`Local build from ${new Date(local.built).toLocaleString()}`, 'Install', install, (button) => installUpdate(local.path, button)) : updateRow('No newer local build', 'Install', 'Nothing newer to install'));
-  else if (remote?.url) rows.push(updateRow(`Version ${remote.version} on GitHub`, 'Install', install, (button) => installUpdate(remote.url, button)));
-  else if (remote) rows.push(updateRow(`Version ${remote.version} on GitHub has no installer`, 'Open', 'Open the release page', () => deck.openLink(remote.page)));
-  else rows.push(updateRow(error ? 'GitHub could not be checked' : 'Up to date', 'Install', error ? '' : 'Nothing newer to install', null, error));
+  if (fromBuilds) rows.push(local ? updateRow(t('update.local.build', { date: new Date(local.built).toLocaleString() }), t('common.install'), install, (button) => installUpdate(local.path, button)) : updateRow(t('update.local.no-build'), t('common.install'), t('update.nothing-new')));
+  else if (remote?.url) rows.push(updateRow(t('update.github.version', { version: remote.version }), t('common.install'), install, (button) => installUpdate(remote.url, button)));
+  else if (remote) rows.push(updateRow(t('update.github.no-installer', { version: remote.version }), t('common.open'), t('update.github.open-tip'), () => deck.openLink(remote.page)));
+  else rows.push(updateRow(error ? t('update.github.check-error') : t('update.current'), t('common.install'), error ? '' : t('update.nothing-new'), null, error));
   if (buildFolder) {
     const use = (source) => () => {
       localStorage.setItem('deckUpdateSource', source);
       openUpdates();
     };
     rows.push(fromBuilds
-      ? updateRow('Source: local builds', 'Use GitHub', 'Install Frugal Deck from the releases of frugal-hq/deck', use('github'), buildFolder)
-      : updateRow('Source: GitHub releases', 'Use local builds', 'Install Frugal Deck from the installers built in this folder', use('local'), 'frugal-hq/deck'));
+      ? updateRow(t('update.source.local-builds'), t('update.source.use-github'), t('update.source.deck-github-tip'), use('github'), buildFolder)
+      : updateRow(t('update.source.github'), t('update.source.use-builds'), t('update.source.builds-tip'), use('local'), 'frugal-hq/deck'));
   }
-  rows.push(updateRow('Install from a file', 'Choose installer…', 'Install Frugal Deck from an installer file', pickInstaller));
+  rows.push(updateRow(t('update.file.label'), t('update.file.choose'), t('update.file.tip'), pickInstaller));
   if (frugal) {
-    rows.push(node('h3', 'update__heading', `frugal plugin ${frugal}`));
+    rows.push(node('h3', 'update__heading', t('update.plugin.version', { version: frugal })));
     const { version: latest, newer, dirty } = frugalLatest ?? {};
-    const state = dirty ? 'The folder has uncommitted changes' : newer ? `Version ${latest} available` : latest ? 'Up to date' : 'The latest version could not be read';
-    const tip = dirty ? 'Commit or discard them, then update' : newer || !latest ? 'Update frugal in the Deck store' : 'Nothing newer to install';
-    rows.push(updateRow(state, 'Update', tip, !dirty && (newer || !latest) ? updateFrugal : null));
+    const state = dirty ? t('update.plugin.dirty') : newer ? t('update.plugin.available', { version: latest }) : latest ? t('update.current') : t('update.plugin.unknown-version');
+    const tip = dirty ? t('update.plugin.dirty-tip') : newer || !latest ? t('update.plugin.update-tip') : t('update.nothing-new');
+    rows.push(updateRow(state, t('update.plugin.update'), tip, !dirty && (newer || !latest) ? updateFrugal : null));
     const fromFolder = frugalSource?.source === 'directory';
-    const [kind, from] = fromFolder ? ['folder', frugalSource.path] : frugalSource?.repo ? ['GitHub', frugalSource.repo] : ['other', frugalSource?.url ?? 'unknown'];
-    const sourceTip = fromFolder ? 'Install frugal from GitHub frugal-hq/frugal' : 'Install frugal from a folder that holds its marketplace, such as a clone of the repo';
-    rows.push(updateRow(`Source: ${kind}`, fromFolder ? 'Use GitHub' : 'Use a folder…', sourceTip, (button) => setFrugalSource(fromFolder, button), from));
+    const [kind, from] = fromFolder ? [t('update.source.folder'), frugalSource.path] : frugalSource?.repo ? ['GitHub', frugalSource.repo] : [t('update.source.other-kind'), frugalSource?.url ?? t('update.source.unknown')];
+    const sourceTip = fromFolder ? t('update.source.plugin-github-tip') : t('update.source.folder-tip');
+    rows.push(updateRow(t('update.source.label', { kind }), fromFolder ? t('update.source.use-github') : t('update.source.use-folder'), sourceTip, (button) => setFrugalSource(fromFolder, button), from));
   } else {
-    rows.push(updateRow('frugal plugin', 'Install', 'Install frugal from GitHub in the Deck store', (button) => setFrugalSource(true, button)));
+    rows.push(updateRow(t('update.plugin.label'), t('common.install'), t('update.plugin.install-tip'), (button) => setFrugalSource(true, button)));
   }
   $('update-list').replaceChildren(...rows);
   $('update-status').textContent = '';
 }
 async function setFrugalSource(github, button) {
   button.disabled = true;
-  $('update-status').textContent = 'Changing where frugal installs from…';
+  $('update-status').textContent = t('update.source.changing');
   try {
     const source = await deck.setFrugalSource(github);
-    if (source) return frugalChanged(`frugal now installs from ${source}.`);
+    if (source) return frugalChanged(t('update.source.changed', { source }));
     $('update-status').textContent = '';
   } catch (error) {
-    $('update-status').textContent = `frugal's source did not change: ${error}`;
+    $('update-status').textContent = t('update.source.error', { error });
   }
   button.disabled = false;
 }
@@ -4771,8 +4817,8 @@ async function setFrugalSource(github, button) {
 async function frugalChanged(text) {
   await openUpdates();
   const open = restartable();
-  $('update-status').textContent = `${text} New chats load it${open.length ? '; open chats load it when they restart' : ''}.`;
-  if (open.length) $('update-list').append(updateRow(`${open.length} open ${open.length === 1 ? 'chat runs' : 'chats run'} the previous frugal`, 'Restart chats', 'Reopen every chat with its history so it loads the new frugal', restartChats));
+  $('update-status').textContent = open.length ? t('update.plugin.load-on-restart', { text }) : t('update.plugin.load-on-start', { text });
+  if (open.length) $('update-list').append(updateRow(tp('update.restart.previous', open.length), t('update.restart.action'), t('update.restart.tip'), restartChats));
 }
 async function restartChats(button) {
   const open = restartable();
@@ -4780,11 +4826,11 @@ async function restartChats(button) {
   let restarting = open;
   if (busy.length) {
     const choice = await askBusy(busy, busy.length < open.length, {
-      title: 'Restart every chat?',
-      message: 'Restarting stops the turn in progress and reopens the chat with its history.',
-      cancel: 'Every chat keeps running',
-      idle: ['Restart idle chats only', 'Busy chats keep working with the frugal they started with'],
-      all: ['Restart all', 'Stops the busy chats and reopens every chat'],
+      title: t('update.restart.title'),
+      message: t('update.restart.message'),
+      cancel: t('update.restart.cancel-tip'),
+      idle: [t('update.restart.idle'), t('update.restart.idle-tip')],
+      all: [t('update.restart.all'), t('update.restart.all-tip')],
     });
     if (choice !== 'all' && choice !== 'idle') return;
     if (choice === 'idle') {
@@ -4795,18 +4841,21 @@ async function restartChats(button) {
   }
   button.disabled = true;
   for (const chat of restarting) await switchChat(chat, { id: chat.account }, true);
-  $('update-status').textContent = `Restarted ${restarting.length} ${restarting.length === 1 ? 'chat' : 'chats'}${restarting.length < open.length ? '; busy chats keep the previous frugal until they restart' : ''}.`;
+  $('update-status').textContent = restarting.length < open.length
+    ? tp('update.restart.done-idle', restarting.length)
+    : tp('update.restart.done', restarting.length);
   button.closest('.update__row')?.remove();
 }
 async function updateFrugal(button) {
   button.disabled = true;
-  $('update-status').textContent = 'Updating frugal…';
+  $('update-status').textContent = t('update.plugin.updating');
   try {
     const result = await deck.updateFrugal();
-    if (/ updated from /.test(result)) return frugalChanged(`${result}.`);
-    $('update-status').textContent = `${result}.`;
+    const message = t('update.plugin.result', { result });
+    if (/ updated from /.test(result)) return frugalChanged(message);
+    $('update-status').textContent = message;
   } catch (error) {
-    $('update-status').textContent = `frugal did not update: ${error}`;
+    $('update-status').textContent = t('update.plugin.error', { error });
   }
   button.disabled = false;
 }
@@ -4819,11 +4868,13 @@ for (const button of document.querySelectorAll('[data-window-action]')) {
   button.onclick = () => deck.windowAction(button.dataset.windowAction);
 }
 const maximizeButton = document.getElementById('window-maximize');
-deck.onMaximized((maximized) => {
-  maximizeButton.setAttribute('aria-label', maximized ? 'Restore' : 'Maximize');
-  maximizeButton.dataset.tip = maximized ? 'Restore the window size' : 'Maximize the window';
+function drawMaximizeButton(maximized) {
+  maximizeButton.setAttribute('aria-label', maximized ? t('common.restore') : t('bar.maximize.label'));
+  maximizeButton.dataset.tip = maximized ? t('bar.restore.tip') : t('bar.maximize.tip');
   maximizeButton.querySelector('use').setAttribute('href', maximized ? '#i-window-restore' : '#i-window-maximize');
-});
+}
+drawMaximizeButton(false);
+deck.onMaximized(drawMaximizeButton);
 deck.onSessions(renderSessions);
 deck.getSessions().then(renderSessions);
 
