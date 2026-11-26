@@ -12,6 +12,7 @@ applyI18n();
 
 const $ = (id) => document.getElementById(id);
 const stage = $('stage');
+const settingsDialog = $('settings-dialog');
 const chats = new Map();
 let activeId = null;
 
@@ -506,28 +507,33 @@ function showVoiceOptions() {
 
 function signIn(account) {
   $('usage').hidePopover();
+  if (settingsDialog.open) settingsDialog.close();
   openChat({ id: crypto.randomUUID(), cwd: t('account.sign-in.folder', { name: account.name }), name: t('account.sign-in.title', { name: account.name }), login: account.name, accountId: account.id });
+}
+
+async function confirmAccountAction(title, message, action, run) {
+  const usage = $('usage');
+  const reopen = usage.matches(':popover-open');
+  const confirmed = await askConfirm(title, message, action, true);
+  if (reopen) usage.showPopover();
+  if (confirmed) report(await run());
 }
 
 function accountMenu(account) {
   const items = [{ label: t('account.rename.menu'), run: () => askRename(account) }];
   if (!account.signedIn) items.push({ label: t('account.steps.sign-in'), run: () => signIn(account) });
-  else items.push({ label: t('account.sign-out.action'), run: () => ask({
-    title: t('account.sign-out.title', { name: account.name }),
-    text: account.id === 'main'
-      ? t('account.sign-out.main')
-      : t('account.sign-out.text'),
-    action: t('account.sign-out.action'),
-    danger: true,
-    run: async () => report(await deck.logout(account.id)),
-  }) });
-  if (account.id !== 'main') items.push({ label: t('common.delete'), danger: true, run: () => ask({
-    title: t('account.delete.title', { name: account.name }),
-    text: t('account.delete.text', { folder: account.configDir }),
-    action: t('common.delete'),
-    danger: true,
-    run: async () => report(await deck.removeAccount(account.id)),
-  }) });
+  else items.push({ label: t('account.sign-out.action'), run: () => confirmAccountAction(
+    t('account.sign-out.title', { name: account.name }),
+    t(account.id === 'main' ? 'account.sign-out.main' : 'account.sign-out.text'),
+    t('account.sign-out.action'),
+    () => deck.logout(account.id),
+  ) });
+  if (account.id !== 'main') items.push({ label: t('common.delete'), danger: true, run: () => confirmAccountAction(
+    t('account.delete.title', { name: account.name }),
+    t('account.delete.text', { folder: account.configDir }),
+    t('account.delete.action'),
+    () => deck.removeAccount(account.id),
+  ) });
   return items;
 }
 
@@ -593,15 +599,15 @@ function capsBlock(account) {
 }
 
 // frugal: blocks are redrawn on every status line, so keyboard focus on Use is lost when a reading arrives.
-function accountBlock(account, primary, chat, caps) {
+function accountBlock(account, featured, caps = false) {
   const block = node('section', 'account');
   const head = node('div', 'row');
   const main = node('div', 'row__main');
   const controls = node('div', 'row__controls');
   const age = account.limits?.at ? t('account.read-ago', { duration: spanText(Date.now() - account.limits.at) }) : '';
-  main.append(accountName(account, [account.configDir, primary ? '' : age]));
+  main.append(accountName(account, [account.configDir, featured ? '' : age]));
   if (account.id === accountState.primary) controls.append(node('span', 'tag tag--primary', t('account.primary')));
-  if (account.signedIn && (!primary || switchable(account).length)) {
+  if (account.signedIn && (!featured || switchable(account).length)) {
     const button = node('button', 'btn', t('account.use'));
     button.type = 'button';
     button.dataset.tip = switchable(account).length ? t('account.use.restart-tip') : t('account.use.new-tip');
@@ -624,52 +630,61 @@ function accountBlock(account, primary, chat, caps) {
   return block;
 }
 
-function drawOthers() {
-  const { others } = accountState;
-  const benched = others.filter((other) => other.exhaustedUntil);
-  const ready = tp('usage.ready-count', others.length - benched.length);
-  $('usage-others').hidden = !others.length;
-  $('others-count').textContent = benched.some((other) => other.benchReason === 'errors')
+function delegateSummary(delegates) {
+  const benched = delegates.filter((delegate) => delegate.exhaustedUntil);
+  const ready = tp('usage.ready-count', delegates.length - benched.length);
+  return benched.some((delegate) => delegate.benchReason === 'errors')
     ? failureLabels.benched(ready, benched.length)
     : benched.length ? tp('usage.at-limit-count', benched.length, { ready }) : ready;
-  $('others').replaceChildren(...others.flatMap((other) => {
-    let state = t('account.steps.ready');
-    if (other.exhaustedUntil) {
-      const until = other.exhaustedUntil * 1000;
-      const reason = other.benchReason;
-      state = reason === 'limit' || reason === 'errors'
-        ? failureLabels[reason](benchTime.format(until))
-        : t('usage.until', { time: resetDay.format(until) });
-    }
-    const limits = accountLimits(other).filter(([, limit]) => limit).map(([label, limit]) => limitRow(label, limit));
-    return [
-      accountName(other, [[other.kind, other.model].filter(Boolean).join(': ')]),
-      node('span', '', other.usedToday ? tp('usage.used-today', other.usedToday, { state }) : state),
-      ...limits,
-      ...capsBlock(other),
-    ];
-  }));
+}
+
+function delegateRow(other) {
+  let state = t('account.steps.ready');
+  if (other.exhaustedUntil) {
+    const until = other.exhaustedUntil * 1000;
+    const reason = other.benchReason;
+    state = reason === 'limit' || reason === 'errors'
+      ? failureLabels[reason](benchTime.format(until))
+      : t('usage.until', { time: resetDay.format(until) });
+  }
+  const limits = accountLimits(other).filter(([, limit]) => limit).map(([label, limit]) => limitRow(label, limit));
+  return [
+    accountName(other, [[other.kind, other.model].filter(Boolean).join(': ')]),
+    node('span', '', other.usedToday ? tp('usage.used-today', other.usedToday, { state }) : state),
+    ...limits,
+    ...capsBlock(other),
+  ];
+}
+
+function drawAccountStatus(panel, empty) {
+  const status = accountsLoading ? t('account.loading') : accountsError || empty;
+  panel.querySelector('[role="status"]').textContent = status;
+  panel.hidden = !status;
+  panel.querySelector('button').hidden = !accountsError;
 }
 
 function drawAccounts() {
-  const chat = chats.get(activeId);
-  const top = $('usage').classList.contains('usage--top');
-  const currentId = chat?.account ?? accountState.primary;
-  const current = accountState.accounts.find((account) => account.id === currentId);
-  const hasAccounts = current || (top && (accountState.accounts.length || accountState.others.length));
-  const empty = top ? t('account.empty') : t('account.empty-chat');
-  const status = accountsLoading ? t('account.loading') : accountsError || (hasAccounts ? '' : empty);
-  $('accounts-status').textContent = status;
-  $('accounts-state').hidden = !status;
-  $('accounts-retry').hidden = !accountsError;
-  // The usage panel shows the account of the chat on screen, the one its meters read; switching in another chat leaves it alone.
-  if (!top) {
-    $('accounts').replaceChildren(...(current ? [accountBlock(current, true, chat)] : []));
-    return;
-  }
-  const rest = accountState.accounts.filter((account) => account !== current);
-  $('accounts').replaceChildren(...(current ? [accountBlock(current, true, chat, true)] : []), ...(rest.length ? [node('h3', 'accounts__heading', t('account.others'))] : []), ...rest.map((account) => accountBlock(account, false, chat, true)));
-  drawOthers();
+  const { accounts, primary, others } = accountState;
+  const main = accounts.find((account) => account.id === primary);
+  const currentId = chats.get(activeId)?.account;
+  const current = accounts.find((account) => account.id === currentId) ?? main;
+  drawAccountStatus($('accounts-state'), current ? '' : t('account.empty-chat'));
+  $('accounts').replaceChildren(...(current ? [accountBlock(current, true)] : []));
+  $('usage-delegates').hidden = !others.length;
+  $('usage-delegate-count').textContent = others.length ? delegateSummary(others) : '';
+
+  if (!settingsDialog.open || $('settings-accounts').closest('.settings__section').hidden) return;
+  drawAccountStatus($('settings-accounts-state'), accounts.length ? '' : t('account.empty'));
+  const ordered = main ? [main, ...accounts.filter((account) => account !== main)] : accounts;
+  $('settings-accounts').replaceChildren(...ordered.map((account) => accountBlock(account, account === main, true)));
+
+  const openCode = others.filter((other) => other.kind === 'opencode');
+  $('settings-delegates-empty').hidden = Boolean(accountsLoading || accountsError || others.length);
+  $('settings-delegates').replaceChildren(...others.filter((other) => other.kind !== 'opencode').flatMap(delegateRow));
+  $('settings-opencode').hidden = !openCode.length;
+  $('settings-opencode-models').textContent = tp('usage.model-count', openCode.length);
+  $('settings-opencode-status').textContent = delegateSummary(openCode);
+  $('settings-opencode-delegates').replaceChildren(...openCode.flatMap(delegateRow));
 }
 
 // Open chats on another account; login chats keep theirs.
@@ -1401,6 +1416,7 @@ function resumeSession(session) {
 }
 
 const accountDialog = $('account-dialog');
+let accountAddReturn = false;
 const accountForm = $('account-form');
 let accountAdd = null;
 
@@ -1459,19 +1475,25 @@ function accountResult(result, json = false) {
   catch { throw new Error(t('account.error.update')); }
 }
 
+function closeAccountAdd() {
+  accountDialog.close();
+  if (accountAddReturn) {
+    accountAddReturn = false;
+    openSettings('accounts').then(() => $('account-add').focus());
+  }
+}
+
 async function accountReady(run) {
   run.step = 2;
   accountStep(2, 'running');
   setAccounts(await deck.getAccounts());
   if (accountAdd !== run) return;
-  drawAccounts();
-  drawOthers();
   accountStep(2, 'done');
   run.busy = false;
   $('account-cancel').disabled = false;
   $('account-cancel').textContent = t('common.close');
   setTimeout(() => {
-    if (accountAdd === run) { accountAdd = null; accountDialog.close(); }
+    if (accountAdd === run) { accountAdd = null; closeAccountAdd(); }
   }, 1000);
 }
 
@@ -1481,7 +1503,7 @@ function cancelAccountAdd() {
   accountAdd = null;
   run?.exit?.(1);
   $('account-key').value = '';
-  accountDialog.close();
+  closeAccountAdd();
   if (run?.tab) closeChat(run.tab, true);
 }
 
@@ -1562,6 +1584,10 @@ accountForm.onsubmit = async (event) => {
         const exited = new Promise((resolve) => { run.exit = resolve; });
         // Leave the progress dialog visible while allowing interaction with the login tab.
         accountDialog.close();
+        if (settingsDialog.open) {
+          accountAddReturn = true;
+          settingsDialog.close();
+        }
         accountDialog.show();
         $('account-cancel').disabled = false;
         const result = await openChat({ id: run.tab, cwd: t('account.sign-in.folder', { name }), name: t('account.sign-in.title', { name }), login: name,
@@ -2129,8 +2155,7 @@ deck.onExit((id, code) => {
   if (chat.login && !chat.accountSetup && code === 0) setTimeout(() => {
     if (!chats.has(id)) return;
     closeChat(id);
-    $('usage').classList.add('usage--top');
-    $('usage').showPopover();
+    openSettings('accounts');
   }, 1500);
 });
 
@@ -2164,8 +2189,11 @@ function setAccounts(state) {
 }
 
 async function loadAccounts(refresh = false) {
-  if (accountsLoading) await accountsLoading;
-  if (accountsLoading) return;
+  if (accountsLoading) {
+    drawAccounts();
+    await accountsLoading;
+    if (accountsLoading) return;
+  }
   accountsError = '';
   const request = async () => {
     if (refresh) await deck.refreshAccounts();
@@ -2184,23 +2212,19 @@ async function loadAccounts(refresh = false) {
   }
 }
 
-$('accounts-retry').onclick = () => loadAccounts(true);
+for (const id of ['accounts-state', 'settings-accounts-state']) $(id).querySelector('button').onclick = () => loadAccounts(true);
 deck.onAccounts(setAccounts);
 loadAccounts();
 
-let resetClock = 0;
-
 $('usage').addEventListener('toggle', (event) => {
-  clearInterval(resetClock);
-  if (event.newState === 'closed') {
-    chats.get(activeId)?.term.focus();
-    return;
-  }
-  loadAccounts(true);
-  resetClock = setInterval(() => {
-    for (const element of $('usage').querySelectorAll('[data-reset]')) element.textContent = resetLabel(Number(element.dataset.reset));
-  }, 30000);
+  if (event.newState === 'open') loadAccounts(true);
+  else if (!settingsDialog.open) chats.get(activeId)?.term.focus();
 });
+
+setInterval(() => {
+  const resets = document.querySelectorAll('#usage:popover-open [data-reset], #settings-dialog[open] [data-section="accounts"]:not([hidden]) [data-reset]');
+  for (const element of resets) element.textContent = resetLabel(Number(element.dataset.reset));
+}, 30000);
 
 let frame = 0;
 new ResizeObserver(() => {
@@ -3105,10 +3129,16 @@ $('archived').onclick = async () => {
 };
 
 const menu = $('menu');
+settingsDialog.addEventListener('close', () => {
+  if (settingsDialog.contains(menu)) menu.hidePopover();
+});
 
 // A source inside another popover nests the menu in it, so opening the menu leaves that popover open.
 function openMenu(x, y, items, source) {
   if (menu.matches(':popover-open')) menu.hidePopover();
+  // A menu inside a modal must be its descendant to receive focus and clicks.
+  const parent = source?.closest('dialog') ?? document.body;
+  if (menu.parentElement !== parent) parent.append(menu);
   menu.replaceChildren(...items.map(({ label, run, danger, checked, icon: glyph }) => {
     const item = document.createElement('button');
     item.type = 'button';
@@ -3167,20 +3197,7 @@ $('ask-cancel').onclick = () => askDialog.close();
 askDialog.addEventListener('close', () => {
   if (askReturn && !$('usage').matches(':popover-open')) $('usage').showPopover();
 });
-// The panel opens under the menu button or over the footer one, whichever was used.
-function openAccounts() {
-  $('usage').classList.add('usage--top');
-  drawAccounts();
-  $('usage').showPopover({ source: $('app-menu') });
-}
-$('usage-open').addEventListener('click', () => {
-  $('usage').classList.remove('usage--top');
-  drawAccounts();
-});
-$('usage-all').addEventListener('click', () => {
-  $('usage').hidePopover();
-  openAccounts();
-});
+$('usage-manage').onclick = () => openSettings('accounts');
 
 // A translated group label can share its spelling with a user-defined group.
 function setComboValue(input, value, label = value) {
@@ -3503,10 +3520,12 @@ for (const dialog of document.querySelectorAll('dialog.settings')) {
   };
 }
 function showSettingsSection(name) {
-  name = showSection($('settings-dialog'), name);
+  name = showSection(settingsDialog, name);
+  if (name === 'accounts' && settingsDialog.open) loadAccounts(true);
   if (name === 'debug') debugConsole.scrollTop = debugConsole.scrollHeight;
   if (name === 'updates' && !updatesBusy) loadUpdates();
   localStorage.setItem('settingsSection', name);
+  return name;
 }
 
 function updateExternalCount() {
@@ -3516,7 +3535,7 @@ function updateExternalCount() {
 }
 
 async function openSettings(section = localStorage.getItem('settingsSection')) {
-  showSettingsSection(section);
+  section = showSettingsSection(section);
   $('settings-confirm-close').checked = confirmsClose();
   $('settings-always-trust').checked = alwaysTrusts();
   $('settings-bypass').checked = bypassOn();
@@ -3546,7 +3565,10 @@ async function openSettings(section = localStorage.getItem('settingsSection')) {
   $('settings-debug').checked = localStorage.getItem('debugLog') === 'true';
   debugConsole.replaceChildren();
   showDebugLines(await deck.debugLines());
-  $('settings-dialog').showModal();
+  if (!settingsDialog.open) {
+    settingsDialog.showModal();
+    if (section === 'accounts') loadAccounts(true);
+  }
   debugConsole.scrollTop = debugConsole.scrollHeight;
   loadActivity();
 }
@@ -4775,7 +4797,7 @@ $('app-menu').onclick = () => {
   const { right, bottom } = $('app-menu').getBoundingClientRect();
   openMenu(right, bottom + 4, [
     { label: t('menu.new-in-folder'), run: startInPicked, icon: 'folder' },
-    { label: t('settings.accounts.title'), run: openAccounts, icon: 'user' },
+    { label: t('settings.accounts.title'), run: () => openSettings('accounts'), icon: 'user' },
     { label: t('menu.tasks'), run: openTasks, icon: 'tasks' },
     { label: t('settings.title'), run: () => openSettings(), icon: 'settings' },
     { label: t('mcp.title'), run: () => openMcpDialog({ global: true }), icon: 'plug' },

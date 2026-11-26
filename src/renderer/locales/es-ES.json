@@ -1,5 +1,5 @@
 {
-  "account.empty": "Aún no hay cuentas. Selecciona Añadir cuenta para empezar.",
+  "account.empty": "Aún no hay cuentas de Claude. Selecciona Añadir cuenta para empezar.",
   "account.title": "Añadir cuenta",
   "badge.details.empty": "Muestra el modelo, esfuerzo, contexto y coste una vez que el chat envía una línea de estado",
   "common.add": "Añadir",

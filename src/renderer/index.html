@@ -151,16 +151,12 @@
   <div id="meter-context" class="meter" hidden data-i18n="usage.context.label">Context <meter aria-label="Context used" min="0" max="100" low="60" high="80" optimum="0" data-i18n-aria-label="usage.context.meter.label"></meter><span class="measured"></span></div>
   <div id="usage-tokens" class="meter" hidden data-i18n="usage.tokens.label">Chat tokens <span class="measured"></span></div>
   <div id="accounts-state" class="empty" hidden>
-    <p id="accounts-status" role="status"></p>
-    <button id="accounts-retry" class="btn" type="button" hidden data-i18n="common.retry">Retry</button>
+    <p role="status"></p>
+    <button class="btn" type="button" hidden data-i18n="common.retry">Retry</button>
   </div>
   <div id="accounts" class="accounts"></div>
-  <details id="usage-others" class="usage__others" hidden>
-    <summary data-i18n="usage.delegates.label">Delegates <span id="others-count" class="usage__count"></span></summary>
-    <div id="others" class="others"></div>
-  </details>
-  <button id="usage-all" class="btn is-linked usage__all" type="button" data-i18n="usage.all.label">Show all accounts</button>
-  <button id="account-add" class="btn" type="button" data-tip="Install and sign in to an account" data-i18n-tip="usage.add-account.tip" data-i18n="usage.add-account.label">Add account…</button>
+  <p id="usage-delegates" class="usage__delegates" hidden><span data-i18n="usage.delegates.label">Delegates</span> <span id="usage-delegate-count" class="row__meta"></span></p>
+  <button id="usage-manage" class="btn is-linked usage__manage" type="button" data-i18n="usage.manage-accounts">Manage accounts…</button>
 </div>
 <dialog id="palette" class="palette" closedby="any" aria-label="Search chats" data-i18n-aria-label="palette.label">
   <input id="palette-query" class="palette__query" type="text" role="combobox" aria-controls="palette-list" aria-expanded="true" aria-autocomplete="list" aria-label="Search chats" placeholder="Search titles, folders and messages" autocomplete="off" spellcheck="false" data-i18n-aria-label="palette.label" data-i18n-placeholder="palette.query.placeholder">
@@ -205,7 +201,7 @@
       <label><input type="radio" name="account-kind" value="claude" checked>Claude</label>
       <label><input type="radio" name="account-kind" value="codex">Codex</label>
       <label><input type="radio" name="account-kind" value="grok">Grok</label>
-      <label><input type="radio" name="account-kind" value="opencode">OpenCode</label>
+      <label data-i18n="account.kind.opencode"><input type="radio" name="account-kind" value="opencode">OpenCode</label>
       <label><input type="radio" name="account-kind" value="gemini">Gemini</label>
     </div>
     <div id="account-auth-field" class="segmented" role="radiogroup" aria-label="Sign in with" data-i18n-aria-label="account.auth.label" hidden>
@@ -449,7 +445,31 @@
         </div>
       </section>
       <section class="settings__section" data-section="accounts" hidden>
-        <h3 class="settings__title" data-i18n="settings.accounts.title">Accounts</h3>
+        <section class="accounts accounts--boxed" aria-labelledby="settings-claude-title">
+          <h3 id="settings-claude-title" class="settings__title" data-i18n="settings.accounts.claude">Claude</h3>
+          <div id="settings-accounts-state" class="empty" hidden>
+            <p role="status"></p>
+            <button class="btn" type="button" hidden data-i18n="common.retry">Retry</button>
+          </div>
+          <div id="settings-accounts" class="accounts"></div>
+        </section>
+        <section aria-labelledby="settings-delegates-title">
+          <h3 id="settings-delegates-title" class="settings__title" data-i18n="usage.delegates.label">Delegates</h3>
+          <div id="settings-delegates-empty" class="empty" hidden>
+            <p data-i18n="settings.accounts.no-delegates">No delegates yet. Select Add account to get started.</p>
+          </div>
+          <div id="settings-delegates" class="others"></div>
+          <details id="settings-opencode" hidden>
+            <summary class="row row--interactive">
+              <svg class="icon" aria-hidden="true"><use href="#i-chevron"/></svg>
+              <span class="row__main" data-i18n="account.kind.opencode">OpenCode</span>
+              <span id="settings-opencode-models" class="row__meta"></span>
+              <span id="settings-opencode-status" class="row__meta"></span>
+            </summary>
+            <div id="settings-opencode-delegates" class="others"></div>
+          </details>
+        </section>
+        <button id="account-add" class="btn" type="button" data-tip="Install and sign in to an account" data-i18n-tip="usage.add-account.tip" data-i18n="usage.add-account.label">Add account…</button>
         <div class="settings__row" data-tip="Delegated work then spends another account's limits, not the one already in use" data-i18n-tip="settings.accounts.roles.tip">
           <label class="organize__check" data-i18n="settings.accounts.roles.label"><input id="settings-roles" type="checkbox"> Never delegate to the account a chat runs on</label>
           <p class="settings__hint" data-i18n="settings.accounts.roles.hint">Applies to chats started after the change.</p>
