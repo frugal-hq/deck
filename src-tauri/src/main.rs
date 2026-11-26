@@ -16,6 +16,7 @@ mod mcp;
 mod organizer;
 mod plugins;
 mod os;
+mod procs;
 mod statusline;
 mod tasks;
 mod update;
@@ -94,6 +95,7 @@ fn main() {
                 .and_then(|text| serde_json::from_str::<serde_json::Value>(&text).ok()).filter(|v| v.is_object()).unwrap_or_default();
             if let Some(tag) = ui["language"].as_str() { i18n::set_language(tag); }
             debug::init(app.handle().clone(), ui["debugLog"] == "true");
+            procs::watch(app.handle().clone());
             let accounts = accounts::Accounts::new(home, codex_home);
             if let Err(error) = accounts.migrate_deck_servers() {
                 debug_log!("mcp", "Failed to migrate Deck MCP servers: {error}");
@@ -284,6 +286,11 @@ fn main() {
             chat::chat_input,
             chat::chat_resize,
             chat::chat_kill,
+            chat::chat_processes,
+            chat::chat_process_kill,
+            procs::perf_get,
+            procs::perf_set,
+            procs::perf_machine,
             chat::chat_recorded_sessions,
             tasks::chat_subagents,
             tasks::tasks_all,

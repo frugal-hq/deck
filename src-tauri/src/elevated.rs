@@ -4,6 +4,7 @@
 // frugal: the secret rides in the helper's arguments; a release build must install the helper where non-admins cannot write.
 
 use base64::Engine;
+use crate::procs::{self, Job, Limits};
 use portable_pty::{native_pty_system, Child, ChildKiller, CommandBuilder, ExitStatus, MasterPty, PtySize};
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
@@ -132,7 +133,7 @@ fn powershell(script: &str) -> Command {
 }
 
 // Why a run fell back to UAC goes to this log.
-fn log(text: &str) {
+pub(crate) fn log(text: &str) {
     let Some(home) = std::env::var_os("USERPROFILE") else { return };
     let ms = SystemTime::now().duration_since(UNIX_EPOCH).map_or(0, |since| since.as_millis() as u64);
     let file = PathBuf::from(home).join(".frugal-deck").join("elevated.log");
@@ -174,6 +175,7 @@ fn register_task() {
 struct Channel {
     output: mpsc::Sender<Vec<u8>>,
     status: Arc<Status>,
+    requests: HashMap<String, mpsc::Sender<Result<Value, String>>>,
 }
 
 #[derive(Default)]
@@ -212,6 +214,15 @@ fn dispatch(connection: &Connection, mut reader: BufReader<TcpStream>) {
                     channel.status.set(message["code"].as_u64().and_then(|code| u32::try_from(code).ok()).unwrap_or(1));
                 }
             }
+            Some("process_result") => {
+                if let (Some(channel), Some(r)) = (channels.get_mut(c), message["r"].as_str()) {
+                    if let Some(reply) = channel.requests.remove(r) {
+                        let result = serde_json::from_value(message["d"].clone())
+                            .map_err(|error| error.to_string()).and_then(|result| result);
+                        let _ = reply.send(result);
+                    }
+                }
+            }
             _ => {}
         }
     }
@@ -221,18 +232,45 @@ fn dispatch(connection: &Connection, mut reader: BufReader<TcpStream>) {
     }
 }
 
-struct Link {
+pub(crate) struct Link {
     connection: Arc<Connection>,
     c: String,
     status: Arc<Status>,
 }
 
 impl Link {
-    fn send(&self, mut message: Value) {
+    fn send(&self, mut message: Value) -> bool {
         if self.status.code.lock().unwrap().is_none() {
             message["c"] = json!(self.c);
-            send(&*self.connection.writer.lock().unwrap(), &message);
+            return send(&*self.connection.writer.lock().unwrap(), &message);
         }
+        false
+    }
+
+    pub(crate) fn process_request(&self, pid: Option<u32>) -> Result<Value, String> {
+        let r = random_hex(16);
+        let (reply, response) = mpsc::channel();
+        {
+            let mut channels = self.connection.channels.lock().unwrap();
+            let channel = channels.as_mut().and_then(|channels| channels.get_mut(&self.c))
+                .ok_or("Administrator chat is no longer live")?;
+            channel.requests.insert(r.clone(), reply);
+        }
+        let message = match pid {
+            Some(pid) => json!({ "t": "process_kill", "r": r, "pid": pid }),
+            None => json!({ "t": "processes", "r": r }),
+        };
+        if self.send(message) {
+            match response.recv_timeout(HANDSHAKE) {
+                Ok(result) => return result,
+                Err(mpsc::RecvTimeoutError::Disconnected) => return Err("Administrator chat is no longer live".into()),
+                Err(mpsc::RecvTimeoutError::Timeout) => {}
+            }
+        }
+        if let Some(channel) = self.connection.channels.lock().unwrap().as_mut().and_then(|channels| channels.get_mut(&self.c)) {
+            channel.requests.remove(&r);
+        }
+        Err("Administrator chat process request failed or timed out".into())
     }
 }
 
@@ -367,9 +405,17 @@ pub struct Host {
 }
 
 impl Host {
+    pub(crate) fn apply_limits(&self, limits: Limits) {
+        let Ok(slot) = self.connection.try_lock() else { return };
+        let Some(connection) = slot.as_ref() else { return };
+        let c = connection.channels.lock().unwrap().as_ref().and_then(|channels| channels.keys().next().cloned());
+        let (Some(c), Ok(writer)) = (c, connection.writer.try_lock()) else { return };
+        send(&*writer, &json!({ "t": "perf", "c": c, "d": limits }));
+    }
+
     // Blocks until the helper is connected (UAC, up to 120 s). Callers run it off the main thread.
     #[allow(clippy::type_complexity)]
-    pub fn spawn(&self, command: &CommandBuilder, size: PtySize) -> Result<(Box<dyn MasterPty + Send>, Box<dyn Read + Send>, Box<dyn Write + Send>, Box<dyn Child + Send + Sync>), String> {
+    pub(crate) fn spawn(&self, command: &CommandBuilder, size: PtySize) -> Result<(Box<dyn MasterPty + Send>, Box<dyn Read + Send>, Box<dyn Write + Send>, Box<dyn Child + Send + Sync>, Arc<Link>), String> {
         let c = random_hex(16);
         let status = Arc::new(Status::default());
         let (output, received) = mpsc::channel();
@@ -378,7 +424,7 @@ impl Host {
         let connection = loop {
             if let Some(connection) = slot.as_ref() {
                 if let Some(channels) = connection.channels.lock().unwrap().as_mut() {
-                    channels.insert(c.clone(), Channel { output, status: status.clone() });
+                    channels.insert(c.clone(), Channel { output, status: status.clone(), requests: HashMap::new() });
                     break connection.clone();
                 }
             }
@@ -389,6 +435,7 @@ impl Host {
         let text = |text: &std::ffi::OsString| text.to_string_lossy().into_owned();
         let argv = command.get_argv();
         let env: serde_json::Map<String, Value> = command.iter_extra_env_as_str().map(|(key, value)| (key.to_owned(), json!(value))).collect();
+        link.send(json!({ "t": "perf", "d": procs::limits() }));
         link.send(json!({
             "t": "start",
             "file": argv.first().map(text),
@@ -406,7 +453,7 @@ impl Host {
         };
         let reader = master.try_clone_reader().map_err(|error| error.to_string())?;
         let writer = master.take_writer().map_err(|error| error.to_string())?;
-        Ok((Box::new(master), reader, writer, Box::new(RemoteChild(link))))
+        Ok((Box::new(master), reader, writer, Box::new(RemoteChild(link.clone())), link))
     }
 
     fn connect(&self) -> Result<Arc<Connection>, String> {
@@ -473,14 +520,23 @@ pub fn run_helper(args: &[String]) {
 }
 
 struct Term {
+    job: Option<Job>,
     master: Box<dyn MasterPty + Send>,
     writer: Box<dyn Write + Send>,
     killer: Box<dyn ChildKiller + Send + Sync>,
 }
 
+impl Term {
+    fn kill(&mut self) {
+        if !self.job.take().is_some_and(Job::terminate) {
+            let _ = self.killer.kill();
+        }
+    }
+}
+
 type Terms = Arc<Mutex<HashMap<String, Term>>>;
 
-fn open(message: &Value) -> Option<(Box<dyn MasterPty + Send>, Box<dyn Read + Send>, Box<dyn Write + Send>, Box<dyn Child + Send + Sync>)> {
+fn open(message: &Value) -> Option<(Box<dyn MasterPty + Send>, Box<dyn Read + Send>, Box<dyn Write + Send>, Box<dyn Child + Send + Sync>, Option<Job>)> {
     let size = PtySize { rows: u16::try_from(message["rows"].as_u64()?).ok()?, cols: u16::try_from(message["cols"].as_u64()?).ok()?, pixel_width: 0, pixel_height: 0 };
     let mut command = CommandBuilder::new(message["file"].as_str()?);
     for arg in message["args"].as_array()? {
@@ -496,8 +552,10 @@ fn open(message: &Value) -> Option<(Box<dyn MasterPty + Send>, Box<dyn Read + Se
     let pair = native_pty_system().openpty(size).ok()?;
     let reader = pair.master.try_clone_reader().ok()?;
     let writer = pair.master.take_writer().ok()?;
+    let job = Job::new();
     let child = pair.slave.spawn_command(command).ok()?;
-    Some((pair.master, reader, writer, child))
+    let job = job.and_then(|job| job.attach(child.as_ref()));
+    Some((pair.master, reader, writer, child, job))
 }
 
 fn relay(mut reader: Box<dyn Read + Send>, writer: &Mutex<TcpStream>, c: &str) {
@@ -514,11 +572,11 @@ fn relay(mut reader: Box<dyn Read + Send>, writer: &Mutex<TcpStream>, c: &str) {
 }
 
 fn start(message: &Value, c: &str, terms: &Terms, writer: &Arc<Mutex<TcpStream>>) {
-    let Some((master, reader, pty_writer, mut child)) = open(message) else {
+    let Some((master, reader, pty_writer, mut child, job)) = open(message) else {
         send(&*writer.lock().unwrap(), &json!({ "t": "exit", "c": c, "code": 1 }));
         return;
     };
-    terms.lock().unwrap().insert(c.to_owned(), Term { master, writer: pty_writer, killer: child.clone_killer() });
+    terms.lock().unwrap().insert(c.to_owned(), Term { job, master, writer: pty_writer, killer: child.clone_killer() });
     let (terms, writer, c) = (terms.clone(), writer.clone(), c.to_owned());
     thread::spawn(move || {
         let reading = {
@@ -527,7 +585,10 @@ fn start(message: &Value, c: &str, terms: &Terms, writer: &Arc<Mutex<TcpStream>>
         };
         let code = child.wait().map_or(1, |status| status.exit_code());
         // Dropping the master closes the pseudoconsole, so the reader ends once the output drained and exit comes after it.
-        let term = terms.lock().unwrap().remove(&c);
+        let mut term = terms.lock().unwrap().remove(&c);
+        if let Some(job) = term.as_mut().and_then(|term| term.job.take()) {
+            job.terminate();
+        }
         drop(term);
         let _ = reading.join();
         send(&*writer.lock().unwrap(), &json!({ "t": "exit", "c": c, "code": code }));
@@ -556,6 +617,12 @@ fn serve(addr: SocketAddrV4, secret: &str, elevated: bool) {
     while let Some(message) = read_message(&mut reader) {
         let Some(c) = message["c"].as_str().filter(|c| is_hex(c, 32)) else { break };
         let t = message["t"].as_str().unwrap_or_default();
+        if t == "perf" {
+            let Ok(limits) = serde_json::from_value::<Limits>(message["d"].clone()) else { break };
+            if !limits.valid() { break }
+            procs::apply_limits(limits);
+            continue;
+        }
         if t == "start" && !terms.lock().unwrap().contains_key(c) {
             start(&message, c, &terms, &writer);
             continue;
@@ -577,14 +644,28 @@ fn serve(addr: SocketAddrV4, secret: &str, elevated: bool) {
             }
             ("kill", ..) => {
                 if let Some(term) = term {
-                    let _ = term.killer.kill();
+                    term.kill();
                 }
+            }
+            ("processes" | "process_kill", ..) => {
+                let Some(r) = message["r"].as_str().filter(|r| is_hex(r, 32)) else { break };
+                let result = (|| {
+                    let job = term.and_then(|term| term.job.as_mut()).ok_or("Chat has no process job")?;
+                    if t == "process_kill" {
+                        let pid = message["pid"].as_u64().and_then(|pid| u32::try_from(pid).ok())
+                            .filter(|&pid| pid != 0).ok_or("Invalid PID")?;
+                        job.kill(pid)
+                    } else {
+                        job.processes()
+                    }
+                })();
+                send(&*writer.lock().unwrap(), &json!({ "t": "process_result", "c": c, "r": r, "d": result }));
             }
             _ => break,
         }
     }
     for term in terms.lock().unwrap().values_mut() {
-        let _ = term.killer.kill();
+        term.kill();
     }
 }
 
@@ -620,12 +701,53 @@ mod tests {
         for (key, value) in std::env::vars() {
             command.env(key, value);
         }
-        let (_master, mut reader, mut writer, mut child) = host.spawn(&command, PtySize::default()).unwrap();
+        let (_master, mut reader, mut writer, mut child, _) = host.spawn(&command, PtySize::default()).unwrap();
         // ConPTY asks for the cursor position before it runs anything; xterm.js answers it in the app.
         writer.write_all(b"\x1b[1;1R").unwrap();
         let mut output = String::new();
         reader.read_to_string(&mut output).unwrap();
         assert!(output.contains("hi"), "{output:?}");
         assert_eq!(child.wait().unwrap().exit_code(), 0);
+    }
+
+    #[test]
+    fn procs_elevated_chat_jobs() {
+        use std::os::windows::io::{AsRawHandle, FromRawHandle, OwnedHandle};
+        use windows::Win32::Foundation::{HANDLE, WAIT_OBJECT_0};
+        use windows::Win32::System::Threading::{OpenProcess, WaitForSingleObject, PROCESS_SYNCHRONIZE};
+
+        let host = Host { launch: Some(local), ..Host::default() };
+        let mut command = CommandBuilder::new(system32().join("cmd.exe"));
+        command.args(["/d", "/c", "cmd.exe", "/d", "/k"]);
+        command.env("PATH", system32());
+        command.env("SystemRoot", system32().parent().unwrap());
+        for single_process in [true, false] {
+            let (_master, _reader, mut writer, mut child, link) = host.spawn(&command, PtySize::default()).unwrap();
+            writer.write_all(b"\x1b[1;1R").unwrap();
+            let deadline = std::time::Instant::now() + Duration::from_secs(5);
+            let pid = loop {
+                let list = link.process_request(None).unwrap();
+                let rows = list["processes"].as_array().unwrap();
+                if let Some(shell) = rows.iter().find(|row| rows.iter().any(|parent| parent["pid"] == row["ppid"])) {
+                    assert!(shell["name"].as_str().unwrap().eq_ignore_ascii_case("cmd.exe"));
+                    assert!(shell["cmd"].as_str().unwrap().contains("/k"));
+                    assert!(shell["ram_bytes"].as_u64().unwrap() > 0);
+                    assert!(shell["started_ms"].as_u64().unwrap() > 0);
+                    break shell["pid"].as_u64().unwrap() as u32;
+                }
+                assert!(std::time::Instant::now() < deadline, "{list}");
+                thread::sleep(Duration::from_millis(25));
+            };
+            assert!(link.process_request(Some(std::process::id())).unwrap_err().contains("not in this chat"));
+            let handle = unsafe { OpenProcess(PROCESS_SYNCHRONIZE, false, pid) }.unwrap();
+            let shell = unsafe { OwnedHandle::from_raw_handle(handle.0) };
+            if single_process {
+                assert_eq!(link.process_request(Some(pid)).unwrap(), json!({"ok": true}));
+            } else {
+                child.kill().unwrap();
+            }
+            assert_eq!(unsafe { WaitForSingleObject(HANDLE(shell.as_raw_handle()), 5000) }, WAIT_OBJECT_0);
+            assert_eq!(child.wait().unwrap().exit_code(), 1);
+        }
     }
 }

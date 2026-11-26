@@ -14,6 +14,7 @@ use std::time::{Duration, Instant};
 use tauri::{ipc::Channel, AppHandle, Emitter, Manager, State};
 use crate::accounts::{self, Accounts, MAIN};
 use crate::index::{self, Index};
+use crate::procs::Job;
 
 pub fn no_claude() -> String { crate::i18n::t("error.no-claude", &[]) }
 // Under a frame, so typing still echoes at once.
@@ -37,12 +38,22 @@ struct Activity {
 }
 
 struct Chat {
+    job: Option<Job>,
+    remote: Option<Arc<crate::elevated::Link>>,
     master: Box<dyn MasterPty + Send>,
     writer: Box<dyn Write + Send>,
     killer: Box<dyn ChildKiller + Send + Sync>,
     info: Option<Info>,
     activity: Arc<Activity>,
     exited: mpsc::Receiver<()>,
+}
+
+impl Chat {
+    fn kill(&mut self) {
+        if !self.job.take().is_some_and(Job::terminate) {
+            let _ = self.killer.kill();
+        }
+    }
 }
 
 #[derive(Default)]
@@ -55,8 +66,12 @@ pub struct Chats {
 
 impl Chats {
     pub fn kill_all(&self) {
-        for chat in self.live.lock().unwrap().values_mut() {
-            let _ = chat.killer.kill();
+        let mut live = self.live.lock().unwrap();
+        for chat in live.values_mut() {
+            chat.kill();
+        }
+        for cancelled in self.launching.lock().unwrap().values() {
+            cancelled.store(true, Ordering::Relaxed);
         }
     }
 
@@ -288,24 +303,29 @@ fn spawn(app: &AppHandle, id: &str, command: CommandBuilder, (cols, rows): (u16,
     let size = PtySize { rows, cols, pixel_width: 0, pixel_height: 0 };
     let started = if info.as_ref().is_some_and(|info| info.admin) {
         app.state::<crate::elevated::Host>().spawn(&command, size)
+            .map(|(master, reader, writer, child, link)| (master, reader, writer, child, None, Some(link)))
     } else {
         native_pty_system().openpty(size).map_err(|error| error.to_string()).and_then(|pair| {
             let reader = pair.master.try_clone_reader().map_err(|error| error.to_string())?;
             let writer = pair.master.take_writer().map_err(|error| error.to_string())?;
+            let job = Job::new();
             let child = pair.slave.spawn_command(command).map_err(|error| error.to_string())?;
-            Ok((pair.master, reader, writer, child))
+            let job = job.and_then(|job| job.attach(child.as_ref()));
+            Ok((pair.master, reader, writer, child, job, None))
         })
     };
     let mut live = chats.live.lock().unwrap();
     chats.launching.lock().unwrap().remove(id);
-    let (master, reader, writer, mut child) = started.map_err(|error| json!({ "error": if fail { crate::i18n::t("error.claude-start-failed", &[("error", &error)]) } else { error } }))?;
+    let (master, reader, writer, mut child, job, remote) = started.map_err(|error| json!({ "error": if fail { crate::i18n::t("error.claude-start-failed", &[("error", &error)]) } else { error } }))?;
     if cancelled.load(Ordering::Relaxed) {
-        let _ = child.kill();
+        if !job.is_some_and(Job::terminate) {
+            let _ = child.kill();
+        }
         return Err(json!({ "error": crate::i18n::t("error.chat-closed-before-start", &[]) }));
     }
     let activity = Arc::new(Activity { muted: AtomicBool::new(false), last_output: Mutex::new(Instant::now()) });
     let (done, exited) = mpsc::channel();
-    live.insert(id.to_owned(), Chat { master, writer, killer: child.clone_killer(), info, activity: activity.clone(), exited });
+    live.insert(id.to_owned(), Chat { job, remote, master, writer, killer: child.clone_killer(), info, activity: activity.clone(), exited });
     drop(live);
 
     let (app, id) = (app.clone(), id.to_owned());
@@ -317,7 +337,7 @@ fn spawn(app: &AppHandle, id: &str, command: CommandBuilder, (cols, rows): (u16,
         let code = child.wait().map_or(1, |status| status.exit_code());
         let _ = done.send(());
         // A switch takes the chat out first, so the restart never reads as an exit.
-        let chat = {
+        let mut chat = {
             let chats = app.state::<Chats>();
             let mut live = chats.live.lock().unwrap();
             if activity.muted.load(Ordering::Relaxed) { None } else { Some(live.remove(&id)) }
@@ -325,6 +345,9 @@ fn spawn(app: &AppHandle, id: &str, command: CommandBuilder, (cols, rows): (u16,
         // Dropped outside the lock: closing the pseudoconsole waits for its output to drain.
         let replaced = chat.is_none();
         crate::debug_log!("chat", "{id}: process exited with {code}{}", if replaced { ", replaced by an account switch" } else { "" });
+        if let Some(job) = chat.as_mut().and_then(|chat| chat.as_mut()).and_then(|chat| chat.job.take()) {
+            job.terminate();
+        }
         drop(chat);
         let _ = reading.join();
         if !replaced {
@@ -592,7 +615,7 @@ fn switch_account(app: &AppHandle, o: SwitchOptions, output: Channel<Value>) -> 
     let mut chat = live.remove(&o.id).unwrap();
     chat.activity.muted.store(true, Ordering::Relaxed);
     drop(live);
-    let _ = chat.killer.kill();
+    chat.kill();
     let _ = chat.exited.recv();
     drop(chat);
     let _ = app.emit("chat:restarting", [&o.id]);
@@ -737,11 +760,42 @@ pub fn chat_resize(chats: tauri::State<Chats>, id: String, cols: u16, rows: u16)
 pub fn chat_kill(chats: tauri::State<Chats>, id: String) {
     let mut live = chats.live.lock().unwrap();
     if let Some(chat) = live.get_mut(&id) {
-        let _ = chat.killer.kill();
+        chat.kill();
     }
     if let Some(cancelled) = chats.launching.lock().unwrap().get(&id) {
         cancelled.store(true, Ordering::Relaxed);
     }
+}
+
+async fn process_request(app: AppHandle, id: String, pid: Option<u32>) -> Result<Value, String> {
+    if !is_uuid(&id) || pid == Some(0) {
+        return Err("Invalid chat ID or PID".into());
+    }
+    tauri::async_runtime::spawn_blocking(move || {
+        let chats = app.state::<Chats>();
+        let remote = {
+            let mut live = chats.live.lock().map_err(|error| error.to_string())?;
+            let chat = live.get_mut(&id).ok_or("Chat is not live")?;
+            if let Some(job) = &mut chat.job {
+                return match pid {
+                    Some(pid) => job.kill(pid),
+                    None => job.processes(),
+                };
+            }
+            chat.remote.clone().ok_or("Chat has no process job")?
+        };
+        remote.process_request(pid)
+    }).await.map_err(|error| error.to_string())?
+}
+
+#[tauri::command]
+pub async fn chat_processes(app: AppHandle, id: String) -> Result<Value, String> {
+    process_request(app, id, None).await
+}
+
+#[tauri::command]
+pub async fn chat_process_kill(app: AppHandle, id: String, pid: u32) -> Result<Value, String> {
+    process_request(app, id, Some(pid)).await
 }
 
 #[cfg(test)]
