@@ -5353,6 +5353,13 @@ async function updateFrugal(button) {
 }
 pollUpdates();
 setInterval(pollUpdates, 6 * 60 * 60 * 1000);
+// Builds and plugin releases land while the Deck stays open; recheck on focus, throttled for GitHub's rate limit.
+let lastFocusPoll = Date.now();
+window.addEventListener('focus', () => {
+  if (Date.now() - lastFocusPoll < 15 * 60 * 1000) return;
+  lastFocusPoll = Date.now();
+  pollUpdates();
+});
 render();
 for (const button of document.querySelectorAll('[data-window-action]')) {
   button.onclick = () => deck.windowAction(button.dataset.windowAction);
