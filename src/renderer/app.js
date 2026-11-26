@@ -4,7 +4,7 @@ import { matchSessions } from './palette.mjs';
 import { groupChats, buildTree } from './chats.mjs';
 import { trustPromptKey } from './trust.mjs';
 import { trimSilence, encodeWav, joinChunks } from './voice.mjs';
-import { loadLocale, applyI18n } from './i18n.mjs';
+import { loadLocale, applyI18n, t, tp } from './i18n.mjs';
 
 await loadLocale();
 applyI18n();
@@ -35,7 +35,7 @@ function inlineIcon(name) {
   return svg;
 }
 
-const STATUS_LABEL = { working: 'Working', waiting: 'Waiting for your answer', replied: 'Replied' };
+const STATUS_LABEL = { working: t('chat.status.working'), waiting: t('chat.status.waiting'), replied: t('chat.status.replied') };
 // Chats in the middle of a turn, highlighted in the tabs while the switch dialog asks about them.
 let switchBusy = new Set();
 
@@ -93,10 +93,10 @@ function togglePin(chat) {
 let draggedTab = null;
 
 const STATE_LABEL = {
-  starting: () => 'Starting',
-  running: () => 'Running',
-  exited: (chat) => `Exited with code ${chat.exitCode}`,
-  error: () => 'Failed to start',
+  starting: () => t('chat.state.starting'),
+  running: () => t('chat.state.running'),
+  exited: (chat) => t('chat.state.exited', { code: chat.exitCode }),
+  error: () => t('chat.state.failed'),
 };
 
 function tabElement(chat) {
@@ -114,7 +114,7 @@ function tabElement(chat) {
   close.className = 'tab__close';
   close.append(icon('x'));
   close.onclick = () => closeChat(chat.id);
-  close.dataset.tip = 'Close this chat';
+  close.dataset.tip = t('tab.close.tip');
   tab.addEventListener('auxclick', (event) => {
     if (event.button !== 1) return;
     event.preventDefault();
@@ -126,8 +126,8 @@ function tabElement(chat) {
   tab.addEventListener('contextmenu', (event) => {
     event.preventDefault();
     openMenu(event.clientX, event.clientY, [
-      { label: chat.pinned ? 'Unpin tab' : 'Pin tab', run: () => togglePin(chat) },
-      { label: 'Close', run: () => closeChat(chat.id) },
+      { label: chat.pinned ? t('tab.unpin') : t('tab.pin'), run: () => togglePin(chat) },
+      { label: t('common.close'), run: () => closeChat(chat.id) },
     ], tab);
   });
   tab.draggable = true;
@@ -174,7 +174,7 @@ function render() {
     if (chat.id === activeId) open.setAttribute('aria-current', 'true');
     else open.removeAttribute('aria-current');
     chat.tab.classList.toggle('tab--busy', switchBusy.has(chat.id));
-    close.setAttribute('aria-label', `Close chat ${chat.name}`);
+    close.setAttribute('aria-label', t('tab.close.label', { name: chat.name }));
   }
 
   const chat = chats.get(activeId);
@@ -194,13 +194,13 @@ function render() {
   historyButton.hidden = chatCount < 2;
   const historyLabel = historyButton.querySelector('span');
   if (historyLabel) historyLabel.textContent = chatCount;
-  historyButton.dataset.tip = `${chatCount} sessions in this chat. Open another one`;
-  historyButton.setAttribute('aria-label', `${chatCount} sessions in this chat`);
+  historyButton.dataset.tip = tp('chat.history.tip', chatCount);
+  historyButton.setAttribute('aria-label', tp('chat.history.label', chatCount));
   const linked = Boolean(activeSession?.parentId);
   const linkButton = $('link-chat');
   linkButton.classList.toggle('is-linked', linked);
-  linkButton.querySelector('span').textContent = linked ? 'Linked' : 'Link';
-  linkButton.dataset.tip = linked ? 'Already linked to a chat. Click to move or unlink it' : 'Join this chat to another chat';
+  linkButton.querySelector('span').textContent = linked ? t('chat.link.linked') : t('chat.link.label');
+  linkButton.dataset.tip = linked ? t('chat.link.linked-tip') : t('chat.link.tip');
   if (!chat) return;
   $('path').textContent = chat.cwd;
   drawMeters();
@@ -213,10 +213,10 @@ const WARN_PCT = 80;
 const DAY_MS = 86400000;
 const resetDay = new Intl.DateTimeFormat('en-US', { weekday: 'short', hour: 'numeric', minute: '2-digit' });
 const failureLabels = {
-  causes: { account: 'Account', env: 'Environment', brief: 'Brief', code: 'Code', frugal: 'Frugal' },
-  limit: (time) => `Limit until ${time}`,
-  errors: (time) => `Errors until ${time}`,
-  benched: (ready, count) => `${ready} ready, ${count} benched`,
+  causes: { account: t('clean.col.account'), env: t('task.cause.environment'), brief: t('task.cause.brief'), code: t('task.cause.code'), frugal: 'Frugal' },
+  limit: (time) => t('usage.limit-until', { time }),
+  errors: (time) => t('usage.errors-until', { time }),
+  benched: (ready, count) => tp('usage.benched-count', count, { ready }),
 };
 const benchTime = resetDay;
 const resetExact = new Intl.DateTimeFormat('en-US', { dateStyle: 'medium', timeStyle: 'short' });
@@ -235,17 +235,20 @@ const liveLimit = (limit) => (limit && (!limit.resetsAt || limit.resetsAt * 1000
 
 function spanText(ms) {
   const minutes = Math.max(1, Math.round(ms / 60000));
-  if (minutes < 60) return `${minutes} min`;
-  if (minutes < 1440) return `${Math.floor(minutes / 60)} h${minutes % 60 ? ` ${minutes % 60} min` : ''}`;
-  return `${Math.floor(minutes / 1440)} d ${Math.floor((minutes % 1440) / 60)} h`;
+  if (minutes < 60) return tp('time.minutes', minutes);
+  if (minutes < 1440) {
+    const hours = tp('time.hours', Math.floor(minutes / 60));
+    return minutes % 60 ? t('time.hours-minutes', { hours, minutes: tp('time.minutes', minutes % 60) }) : hours;
+  }
+  return t('time.days-hours', { days: tp('time.days', Math.floor(minutes / 1440)), hours: tp('time.hours', Math.floor((minutes % 1440) / 60)) });
 }
 
 function resetLabel(resetsAt) {
   const ms = resetsAt * 1000 - Date.now();
-  return ms < DAY_MS ? `in ${spanText(ms)}` : resetDay.format(resetsAt * 1000);
+  return ms < DAY_MS ? t('usage.reset-in', { duration: spanText(ms) }) : resetDay.format(resetsAt * 1000);
 }
 
-const limitTip = (label, limit) => (limit.resetsAt ? `${label} resets ${resetExact.format(limit.resetsAt * 1000)}` : `${label} has no reset time yet`);
+const limitTip = (label, limit) => (limit.resetsAt ? t('usage.reset-time', { label, time: resetExact.format(limit.resetsAt * 1000) }) : t('usage.no-reset', { label }));
 
 function node(tag, className, text) {
   const element = document.createElement(tag);
@@ -262,16 +265,16 @@ function resetNode(tag, className, limit) {
 
 function usageMeter(label, limit) {
   const meter = Object.assign(node('meter'), { min: 0, max: 100, low: 60, high: 80, optimum: 0, value: limit.pct });
-  meter.setAttribute('aria-label', `${label} used`);
+  meter.setAttribute('aria-label', t('usage.meter.used', { label }));
   return meter;
 }
 
 function askRename(account) {
   ask({
-    title: 'Rename account',
-    text: 'Only changes how Deck shows it.',
+    title: t('account.rename.title'),
+    text: t('account.rename.hint'),
     value: account.name,
-    action: 'Rename',
+    action: t('common.rename'),
     run: (name) => deck.renameAccount(account.id, name),
   });
 }
@@ -279,13 +282,13 @@ function askRename(account) {
 function accountName(account, details) {
   const button = node('button', 'account__name', account.name);
   button.type = 'button';
-  button.dataset.tip = [account.email, ...details, 'Click to rename'].filter(Boolean).join('\n');
+  button.dataset.tip = [account.email, ...details, t('account.rename.tip')].filter(Boolean).join('\n');
   button.onclick = () => askRename(account);
   return button;
 }
 
 function report(result) {
-  if (result?.error) ask({ title: 'Account', text: result.error, action: 'Close', run: () => {} });
+  if (result?.error) ask({ title: t('clean.col.account'), text: result.error, action: t('common.close'), run: () => {} });
 }
 
 // Voice: the badge records here, whisper.cpp transcribes in the main process, and the text lands at the cursor unsent.
@@ -300,7 +303,24 @@ const allowsClipboard = () => localStorage.getItem('allowClipboard') !== 'false'
 const applyPermissions = () => deck.setPermissions(allowsMic(), allowsClipboard());
 applyPermissions();
 // tokens.css derives every accent shade from --accent-hue, so a new hue repaints the app at once; terminals keep their own copy.
-const ACCENTS = [['Rose', 12.5], ['Red', 35], ['Orange', 57.5], ['Yellow', 80], ['Lime', 102.5], ['Chartreuse', 125], ['Green', 147.5], ['Emerald', 170], ['Teal', 192.5], ['Cyan', 215], ['Sky', 237.5], ['Blue', 260], ['Indigo', 282.5], ['Violet', 305], ['Magenta', 327.5], ['Pink', 350]];
+const ACCENTS = [
+  [t('settings.appearance.accent.rose'), 12.5],
+  [t('settings.appearance.accent.red'), 35],
+  [t('settings.appearance.accent.orange'), 57.5],
+  [t('settings.appearance.accent.yellow'), 80],
+  [t('settings.appearance.accent.lime'), 102.5],
+  [t('settings.appearance.accent.chartreuse'), 125],
+  [t('settings.appearance.accent.green'), 147.5],
+  [t('settings.appearance.accent.emerald'), 170],
+  [t('settings.appearance.accent.teal'), 192.5],
+  [t('settings.appearance.accent.cyan'), 215],
+  [t('settings.appearance.accent.sky'), 237.5],
+  [t('settings.appearance.accent.blue'), 260],
+  [t('settings.appearance.accent.indigo'), 282.5],
+  [t('settings.appearance.accent.violet'), 305],
+  [t('settings.appearance.accent.magenta'), 327.5],
+  [t('settings.appearance.accent.pink'), 350],
+];
 const accentHue = () => ACCENTS.find(([, hue]) => String(hue) === localStorage.getItem('accentHue'))?.[1] ?? 80;
 const applyAccent = () => {
   document.documentElement.style.setProperty('--accent-hue', accentHue());
@@ -308,8 +328,8 @@ const applyAccent = () => {
 };
 applyAccent();
 const decimal = new Intl.NumberFormat('en-US', { maximumFractionDigits: 1 });
-const sizeText = (bytes) => (bytes >= 1e9 ? `${decimal.format(bytes / 1e9)} GB` : `${decimal.format(bytes / 1e6)} MB`);
-const voiceError = (text) => ask({ title: 'Voice', text, action: 'Close', run: () => {} });
+const sizeText = (bytes) => (bytes >= 1e9 ? t('voice.size-gb', { size: decimal.format(bytes / 1e9) }) : t('voice.size-mb', { size: decimal.format(bytes / 1e6) }));
+const voiceError = (text) => ask({ title: t('settings.voice.title'), text, action: t('common.close'), run: () => {} });
 let recording = null;
 let downloadingFor = null;
 // Whether the chosen local model is on disk; null until checked or when local dictation is off.
@@ -322,17 +342,18 @@ async function checkVoice() {
   for (const chat of chats.values()) drawBadge(chat);
 }
 
-function setVoice(chat, label) {
-  chat.voice = label;
+function setVoice(chat, state, percent) {
+  chat.voice = state;
+  chat.voicePercent = percent;
   drawBadge(chat);
   const mic = chat.editPanel?.querySelector('.prompt-edit__mic');
   if (!mic) return;
-  mic.setAttribute('aria-pressed', String(label === 'Listening' && recording?.area?.form === chat.editPanel));
-  mic.disabled = Boolean(label) && label !== 'Listening';
+  mic.setAttribute('aria-pressed', String(state === 'listening' && recording?.area?.form === chat.editPanel));
+  mic.disabled = Boolean(state) && state !== 'listening';
 }
 
 deck.onVoiceProgress((received, total) => {
-  if (downloadingFor) setVoice(downloadingFor, `Downloading ${Math.floor((received / total) * 100)}%`);
+  if (downloadingFor) setVoice(downloadingFor, 'downloading', Math.floor((received / total) * 100));
 });
 
 // Claude Code records while Space is held, and a terminal sends a held key as repeated presses (checked with 2.1.322).
@@ -387,7 +408,7 @@ async function holdToTalk(chat) {
     mic = await openMic(chat);
   } catch {} // Only the spectrum needs it: Claude Code records on its own.
   recording = { chat, stream: mic.stream, context: mic.context, hold: setInterval(() => deck.input(chat.id, ' '), HOLD_MS) };
-  setVoice(chat, 'Listening');
+  setVoice(chat, 'listening');
 }
 
 // Claude Code reads the prompt file back and redraws before it takes the held Space.
@@ -407,10 +428,13 @@ async function toggleDictation(chat, area) {
   const status = await deck.voiceStatus(model);
   if (status.error) return voiceError(status.error);
   if (status.needs > 0) {
-    const what = status.cli ? `the ${model} model` : `whisper.cpp and the ${model} model`;
-    if (!await askConfirm('Download voice files?', `Local dictation needs ${what}: ${sizeText(status.needs)}. They download once and stay on this computer.`, 'Download')) return;
+    const size = sizeText(status.needs);
+    const message = status.cli
+      ? t('voice.download.model', { model, size })
+      : t('voice.download.files', { model, size });
+    if (!await askConfirm(t('voice.download.title'), message, t('voice.download.action'))) return;
     downloadingFor = chat;
-    setVoice(chat, 'Downloading');
+    setVoice(chat, 'downloading');
     const result = await deck.voicePrepare(model);
     downloadingFor = null;
     setVoice(chat, null);
@@ -426,9 +450,9 @@ async function toggleDictation(chat, area) {
     source.connect(processor);
     processor.connect(context.destination);
     recording = { chat, stream, context, chunks, area };
-    setVoice(chat, 'Listening');
+    setVoice(chat, 'listening');
   } catch (error) {
-    voiceError(`The microphone is not available: ${error.message}. Check that it is connected and allowed in Settings.`);
+    voiceError(t('voice.mic-unavailable', { error: error.message }));
   }
 }
 
@@ -446,9 +470,9 @@ async function stopDictation() {
   const samples = trimSilence(joinChunks(chunks), VOICE_RATE);
   if (!samples.length) {
     setVoice(chat, null);
-    return voiceError('No speech was heard. Record again.');
+    return voiceError(t('voice.no-speech'));
   }
-  setVoice(chat, 'Transcribing');
+  setVoice(chat, 'transcribing');
   const result = await deck.voiceTranscribe({ audio: encodeWav(samples, VOICE_RATE), model: voiceModel(), language: voiceLanguage() });
   setVoice(chat, null);
   if (result.error) return voiceError(result.error);
@@ -468,22 +492,24 @@ function showVoiceOptions() {
 
 function signIn(account) {
   $('usage').hidePopover();
-  openChat({ id: crypto.randomUUID(), cwd: `Sign in to ${account.name}`, name: `Sign in: ${account.name}`, login: account.name, accountId: account.id });
+  openChat({ id: crypto.randomUUID(), cwd: t('account.sign-in.folder', { name: account.name }), name: t('account.sign-in.title', { name: account.name }), login: account.name, accountId: account.id });
 }
 
 function accountMenu(account) {
-  const items = [{ label: 'Rename…', run: () => askRename(account) }];
-  if (!account.signedIn) items.push({ label: 'Sign in', run: () => signIn(account) });
-  else items.push({ label: 'Sign out', run: () => ask({
-    title: `Sign out of ${account.name}?`,
-    text: `Its folder, chats and settings stay, so you can sign in to it again later.${account.id === 'main' ? ' Claude Code in your terminals uses this sign-in too, so finish their work first.' : ''}`,
-    action: 'Sign out',
+  const items = [{ label: t('account.rename.menu'), run: () => askRename(account) }];
+  if (!account.signedIn) items.push({ label: t('account.steps.sign-in'), run: () => signIn(account) });
+  else items.push({ label: t('account.sign-out.action'), run: () => ask({
+    title: t('account.sign-out.title', { name: account.name }),
+    text: account.id === 'main'
+      ? t('account.sign-out.main')
+      : t('account.sign-out.text'),
+    action: t('account.sign-out.action'),
     run: async () => report(await deck.logout(account.id)),
   }) });
-  if (account.id !== 'main') items.push({ label: 'Delete', danger: true, run: () => ask({
-    title: `Delete ${account.name}?`,
-    text: `This deletes ${account.configDir}, with its sign-in and settings. Its chats move to Main first. It also leaves Frugal. This cannot be undone.`,
-    action: 'Delete',
+  if (account.id !== 'main') items.push({ label: t('common.delete'), danger: true, run: () => ask({
+    title: t('account.delete.title', { name: account.name }),
+    text: t('account.delete.text', { folder: account.configDir }),
+    action: t('common.delete'),
     danger: true,
     run: async () => report(await deck.removeAccount(account.id)),
   }) });
@@ -503,18 +529,18 @@ function withMenu(target, account) {
 
 // What the panel says under a name: that there is no login, and a warning when another account shares it. The email is in the name's tooltip.
 function loginLines(account) {
-  const lines = account.signedIn ? [] : [node('span', 'account__email', 'Signed out')];
-  if (account.sameLogin.length) lines.push(node('span', 'account__detail is-warn', `Same sign-in as ${account.sameLogin.join(', ')}`));
+  const lines = account.signedIn ? [] : [node('span', 'account__email', t('account.signed-out'))];
+  if (account.sameLogin.length) lines.push(node('span', 'account__detail is-warn', t('account.same-sign-in', { names: account.sameLogin.join(', ') })));
   return lines;
 }
 
-const accountLimits = (account) => [['5-hour limit', liveLimit(account.limits?.fiveHour)], ['Weekly', liveLimit(account.limits?.sevenDay)]];
+const accountLimits = (account) => [[t('usage.five-hour'), liveLimit(account.limits?.fiveHour)], [t('usage.weekly'), liveLimit(account.limits?.sevenDay)]];
 
 // One limit as a label, its reset and percent on a line, with a full-width bar under them.
 function limitRow(label, limit) {
   const row = node('div', 'limit');
   row.dataset.tip = limitTip(label, limit);
-  const used = node('span', 'limit__pct', `${Math.round(limit.pct)}%`);
+  const used = node('span', 'limit__pct', t('common.percent', { percent: Math.round(limit.pct) }));
   used.classList.toggle('is-warn', limit.pct >= WARN_PCT);
   row.append(node('span', 'limit__label', label), resetNode('span', 'limit__reset', limit), used, usageMeter(label, limit));
   return row;
@@ -544,10 +570,10 @@ function capsBlock(account) {
   const box = node('details', 'caps');
   box.open = openCaps.has(account.id);
   box.ontoggle = () => (box.open ? openCaps.add(account.id) : openCaps.delete(account.id));
-  const value = `5h ${account.caps.fiveHour}% · weekly ${account.caps.sevenDay}%`;
+  const value = t('usage.caps-summary', { fiveHour: account.caps.fiveHour, weekly: account.caps.sevenDay });
   const summary = node('summary', 'caps__summary');
-  summary.append(node('span', '', 'Delegate limits'), node('span', 'caps__value', value));
-  box.append(summary, capControl(account, 'fiveHour', 'Max 5h %'), capControl(account, 'sevenDay', 'Max weekly %'));
+  summary.append(node('span', '', t('usage.delegate-limits')), node('span', 'caps__value', value));
+  box.append(summary, capControl(account, 'fiveHour', t('usage.max-five-hour')), capControl(account, 'sevenDay', t('usage.max-weekly')));
   return [box];
 }
 
@@ -555,13 +581,13 @@ function capsBlock(account) {
 function accountBlock(account, primary, chat, caps) {
   const block = node('section', 'account');
   const head = node('div', 'account__head');
-  const age = account.limits?.at ? `Read ${spanText(Date.now() - account.limits.at)} ago` : '';
+  const age = account.limits?.at ? t('account.read-ago', { duration: spanText(Date.now() - account.limits.at) }) : '';
   head.append(accountName(account, [account.configDir, primary ? '' : age]));
-  if (account.id === accountState.primary) head.append(node('span', 'tag tag--primary', 'Primary'));
+  if (account.id === accountState.primary) head.append(node('span', 'tag tag--primary', t('account.primary')));
   if (account.signedIn && (!primary || switchable(account).length)) {
-    const button = node('button', 'btn', 'Use');
+    const button = node('button', 'btn', t('account.use'));
     button.type = 'button';
-    button.dataset.tip = switchable(account).length ? 'Restart every open chat on this account. New chats use it too' : 'New chats start on this account';
+    button.dataset.tip = switchable(account).length ? t('account.use.restart-tip') : t('account.use.new-tip');
     button.onclick = () => useAccount(account);
     head.append(button);
   }
@@ -570,10 +596,12 @@ function accountBlock(account, primary, chat, caps) {
   const limits = accountLimits(account).filter(([, limit]) => limit);
   if (limits.length) block.append(...limits.map(([label, limit]) => limitRow(label, limit)));
   else if (!accountsLoading && !accountsError) {
-    const next = account.signedIn ? 'Open a chat on this account to get a reading.' : 'Sign in to this account to get a reading.';
-    block.append(node('p', 'empty account__detail', `No reading yet. ${next}`));
+    const message = account.signedIn
+      ? t('account.no-reading.signed-in')
+      : t('account.no-reading.signed-out');
+    block.append(node('p', 'empty account__detail', message));
   }
-  if (caps && account.usedToday) block.append(node('span', 'account__detail', `${account.usedToday} delegated today`));
+  if (caps && account.usedToday) block.append(node('span', 'account__detail', tp('account.delegated-today', account.usedToday)));
   if (caps) block.append(...capsBlock(account));
   return block;
 }
@@ -581,24 +609,24 @@ function accountBlock(account, primary, chat, caps) {
 function drawOthers() {
   const { others } = accountState;
   const benched = others.filter((other) => other.exhaustedUntil);
-  const ready = others.length - benched.length;
+  const ready = tp('usage.ready-count', others.length - benched.length);
   $('usage-others').hidden = !others.length;
   $('others-count').textContent = benched.some((other) => other.benchReason === 'errors')
     ? failureLabels.benched(ready, benched.length)
-    : `${ready} ready${benched.length ? `, ${benched.length} at limit` : ''}`;
+    : benched.length ? tp('usage.at-limit-count', benched.length, { ready }) : ready;
   $('others').replaceChildren(...others.flatMap((other) => {
-    let state = 'Ready';
+    let state = t('account.steps.ready');
     if (other.exhaustedUntil) {
       const until = other.exhaustedUntil * 1000;
       const reason = other.benchReason;
       state = reason === 'limit' || reason === 'errors'
         ? failureLabels[reason](benchTime.format(until))
-        : `Until ${resetDay.format(until)}`;
+        : t('usage.until', { time: resetDay.format(until) });
     }
     const limits = accountLimits(other).filter(([, limit]) => limit).map(([label, limit]) => limitRow(label, limit));
     return [
       accountName(other, [[other.kind, other.model].filter(Boolean).join(': ')]),
-      node('span', '', other.usedToday ? `${state} · ${other.usedToday} today` : state),
+      node('span', '', other.usedToday ? tp('usage.used-today', other.usedToday, { state }) : state),
       ...limits,
       ...capsBlock(other),
     ];
@@ -611,8 +639,8 @@ function drawAccounts() {
   const currentId = chat?.account ?? accountState.primary;
   const current = accountState.accounts.find((account) => account.id === currentId);
   const hasAccounts = current || (top && (accountState.accounts.length || accountState.others.length));
-  const empty = top ? 'No accounts yet. Select Add account to get started.' : 'No Claude account for this chat. Open All accounts to see your accounts.';
-  const status = accountsLoading ? 'Loading account usage…' : accountsError || (hasAccounts ? '' : empty);
+  const empty = top ? t('account.empty') : t('account.empty-chat');
+  const status = accountsLoading ? t('account.loading') : accountsError || (hasAccounts ? '' : empty);
   $('accounts-status').textContent = status;
   $('accounts-state').hidden = !status;
   $('accounts-retry').hidden = !accountsError;
@@ -622,7 +650,7 @@ function drawAccounts() {
     return;
   }
   const rest = accountState.accounts.filter((account) => account !== current);
-  $('accounts').replaceChildren(...(current ? [accountBlock(current, true, chat, true)] : []), ...(rest.length ? [node('h3', 'accounts__heading', 'Other Claude accounts')] : []), ...rest.map((account) => accountBlock(account, false, chat, true)));
+  $('accounts').replaceChildren(...(current ? [accountBlock(current, true, chat, true)] : []), ...(rest.length ? [node('h3', 'accounts__heading', t('account.others'))] : []), ...rest.map((account) => accountBlock(account, false, chat, true)));
   drawOthers();
 }
 
@@ -646,11 +674,11 @@ async function useAccount(account) {
   if (busy.length) {
     const name = account.email || account.id;
     const choice = await askBusy(busy, busy.length < open.length, {
-      title: `Switch every chat to ${name}?`,
-      message: `Switching stops the turn in progress and reopens the chat on ${name} with its history.`,
-      cancel: 'Every chat stays on its account',
-      idle: ['Switch idle chats only', 'Busy chats keep working on their account'],
-      all: ['Switch all', 'Stops the busy chats and reopens every chat on the new account'],
+      title: t('account.switch.title', { name }),
+      message: t('account.switch.message', { name }),
+      cancel: t('account.switch.cancel-tip'),
+      idle: [t('account.switch.idle'), t('account.switch.idle-tip')],
+      all: [t('account.switch.all'), t('account.switch.all-tip')],
     });
     if (choice !== 'all' && choice !== 'idle') return;
     if (choice === 'idle') {
@@ -667,14 +695,14 @@ async function useAccount(account) {
 function askBusy(busy, someIdle, text) {
   const dialog = $('switch-dialog');
   $('switch-title').textContent = text.title;
-  $('switch-message').textContent = `${busy.length === 1 ? 'This chat is' : 'These chats are'} still working. ${text.message} Click one to look at it first.`;
+  $('switch-message').textContent = tp('dialog.busy.message', busy.length, { message: text.message });
   $('switch-cancel').dataset.tip = text.cancel;
   [$('switch-idle').textContent, $('switch-idle').dataset.tip] = text.idle;
   [$('switch-all').textContent, $('switch-all').dataset.tip] = text.all;
   $('switch-list').replaceChildren(...busy.map((chat) => {
     const item = node('button', 'switch__chat');
     item.type = 'button';
-    item.append(node('span', 'switch__name', chat.name), node('span', 'switch__status', isWorking(chat) ? STATUS_LABEL[chat.status] : 'Waiting on a delegate'));
+    item.append(node('span', 'switch__name', chat.name), node('span', 'switch__status', isWorking(chat) ? STATUS_LABEL[chat.status] : t('task.waiting')));
     item.onclick = () => activate(chat.id);
     return item;
   }));
@@ -718,10 +746,10 @@ function drawMeters() {
   const sevenDay = liveLimit(limits.sevenDay);
   const context = chat?.context ?? null;
   const tracksTokens = chat?.inputTokens !== null && chat?.inputTokens !== undefined || chat?.outputTokens !== null && chat?.outputTokens !== undefined;
-  const tokenText = tracksTokens ? `${compact.format(chat.inputTokens ?? 0)} in, ${compact.format(chat.outputTokens ?? 0)} out` : '';
+  const tokenText = tracksTokens ? t('usage.tokens.in-out', { input: compact.format(chat.inputTokens ?? 0), output: compact.format(chat.outputTokens ?? 0) }) : '';
   const sized = chat?.contextTokens !== null && chat?.contextTokens !== undefined && chat?.contextSize !== null && chat?.contextSize !== undefined;
-  drawMeter('meter-context', context, context === null ? '' : `${Math.round(context)}%`);
-  $('meter-context').dataset.tip = [sized ? `${compact.format(chat.contextTokens)} of ${compact.format(chat.contextSize)}` : '', tokenText].filter(Boolean).join('\n') || 'Context used by this chat';
+  drawMeter('meter-context', context, context === null ? '' : t('common.percent', { percent: Math.round(context) }));
+  $('meter-context').dataset.tip = [sized ? t('usage.context.of', { used: compact.format(chat.contextTokens), total: compact.format(chat.contextSize) }) : '', tokenText].filter(Boolean).join('\n') || t('usage.context.tip');
   const tokens = $('usage-tokens');
   tokens.hidden = !tracksTokens || context !== null;
   if (!tokens.hidden) tokens.querySelector('.measured').textContent = tokenText;
@@ -730,8 +758,8 @@ function drawMeters() {
   const worst = Math.max(fiveHour?.pct ?? 0, sevenDay?.pct ?? 0);
   const warning = worst >= WARN_PCT;
   button.classList.toggle('is-warn', warning);
-  button.dataset.tip = warning ? 'This account is close to its limit. Open to switch accounts' : 'Usage and accounts';
-  button.textContent = warning ? `Limit ${Math.round(worst)}%` : context === null ? 'Usage' : `Context ${Math.round(context)}%`;
+  button.dataset.tip = warning ? t('usage.limit-warning.tip') : t('usage.open.tip');
+  button.textContent = warning ? t('usage.limit-percent', { percent: Math.round(worst) }) : context === null ? t('usage.label') : t('usage.context-percent', { percent: Math.round(context) });
   drawAccounts();
 }
 
@@ -824,45 +852,45 @@ function elapsed(chat) {
 function drawInfo(chat) {
   if (!infoPanelOpen || !chat || chat.id !== activeId) return;
   const account = [...accountState.accounts, ...accountState.others].find((entry) => entry.id === chat.account);
-  const context = [chat.context != null ? `${Math.round(chat.context)}%` : '', chat.contextTokens != null && chat.contextSize != null ? `${compact.format(chat.contextTokens)} / ${compact.format(chat.contextSize)}` : ''].filter(Boolean).join(' \u00b7 ');
-  const tokens = chat.inputTokens != null || chat.outputTokens != null ? `${compact.format(chat.inputTokens ?? 0)} in / ${compact.format(chat.outputTokens ?? 0)} out` : '';
+  const context = [chat.context != null ? t('common.percent', { percent: Math.round(chat.context) }) : '', chat.contextTokens != null && chat.contextSize != null ? t('usage.context.ratio', { used: compact.format(chat.contextTokens), total: compact.format(chat.contextSize) }) : ''].filter(Boolean).join(' \u00b7 ');
+  const tokens = chat.inputTokens != null || chat.outputTokens != null ? t('info.tokens.in-out', { input: compact.format(chat.inputTokens ?? 0), output: compact.format(chat.outputTokens ?? 0) }) : '';
   const title = chat.title?.replace(/^[^\p{L}\p{N}\s] /u, ''); // Without the spinner mark (isBusyTitle).
   const rows = [
-    ['Task', [chat.name, title !== chat.name && title].filter(Boolean).join('\n')],
-    ['State', STATE_LABEL[chat.state](chat)],
-    ['Session', chat.id],
-    ['Account', account?.name ?? chat.account],
-    ['Model', chat.model],
-    ['Effort', chat.effort],
-    ['Elapsed', elapsed(chat)],
-    ['Context', context],
-    ['Tokens', tokens],
-    ['Cost', chat.cost > 0 ? '$' + chat.cost.toFixed(2) : ''],  // Claude Code may report 0 for a chat it did not price
+    [t('info.task'), [chat.name, title !== chat.name && title].filter(Boolean).join('\n')],
+    [t('info.state'), STATE_LABEL[chat.state](chat)],
+    [t('info.session'), chat.id],
+    [t('clean.col.account'), account?.name ?? chat.account],
+    [t('account.model.label'), chat.model],
+    [t('sort.effort.label'), chat.effort],
+    [t('info.elapsed'), elapsed(chat), 'info-elapsed'],
+    [t('usage.context.label'), context],
+    [t('info.tokens'), tokens],
+    [t('info.cost'), chat.cost > 0 ? t('common.cost-usd', { amount: chat.cost.toFixed(2) }) : ''],  // Claude Code may report 0 for a chat it did not price
   ];
-  $('info-details').replaceChildren(...rows.filter(([, value]) => value != null && value !== '').map(([label, value]) => {
+  $('info-details').replaceChildren(...rows.filter(([, value]) => value != null && value !== '').map(([label, value, id]) => {
     const row = node('div', 'info-panel__row');
     const detail = node('dd', '', value);
-    if (label === 'Elapsed') detail.id = 'info-elapsed';
+    if (id) detail.id = id;
     row.append(node('dt', '', label), detail);
     return row;
   }));
 }
 
-const TASK_STATUS = { running: 'Running', done: 'Done', failed: 'Failed', cancelled: 'Cancelled', 'not delegated': 'Not delegated' };
+const TASK_STATUS = { running: t('chat.state.running'), done: t('info.done.label'), failed: t('info.failed.label'), cancelled: t('info.cancelled.label'), 'not delegated': t('task.not-delegated') };
 
 // Accounts go by the name the usage panel shows; a run job with no account ran its command here, with no model.
 const accountLabel = (id) => [...accountState.accounts, ...accountState.others].find((account) => account.id === id)?.name ?? id.replace(/^oc-/, '');
 // Local: subagents of the chat and run jobs that ran here. A delegate job's account is logged only when it ends, so its kind marks it while it runs.
 const isLocal = (task) => !task.account && (!task.kind || task.kind === 'run');
-const taskAccount = (task) => (task.account ? accountLabel(task.account) : task.kind === 'run' ? 'Local' : '');
-const taskSpan = (seconds) => (seconds == null ? '' : seconds < 60 ? `${seconds} s` : spanText(seconds * 1000));
+const taskAccount = (task) => (task.account ? accountLabel(task.account) : task.kind === 'run' ? t('info.local.label') : '');
+const taskSpan = (seconds) => (seconds == null ? '' : seconds < 60 ? tp('time.seconds', seconds) : spanText(seconds * 1000));
 // A run job's command names it, without the cd, export and set steps around it.
 const commandTitle = (check) => check.split(/;|&&/).map((part) => part.trim()).filter((part) => part && !/^(set|export|cd|taskkill)\b|^\w+=/.test(part)).join(' && ') || check;
 
 const isFailed = (task) => task.status === 'failed' || task.status === 'not delegated';
 // An edit whose check failed with no error, or the same way twice: the check or the brief was wrong, the changes stay in the tree.
 const checkFailed = (task) => task.status === 'failed' && task.kind === 'edit' && task.cause === 'brief';
-const taskStatus = (task) => (checkFailed(task) ? 'Check failed' : TASK_STATUS[task.status] ?? task.status);
+const taskStatus = (task) => (checkFailed(task) ? t('task.check-failed') : TASK_STATUS[task.status] ?? task.status);
 const TASK_CAUSES = ['account', 'env', 'brief', 'code', 'frugal'];
 function taskCauseRank(task) {
   const index = TASK_CAUSES.indexOf(task.cause);
@@ -877,13 +905,17 @@ function taskCauseChip(cause) {
 function whyFailed(task) {
   if (!isFailed(task)) return '';
   const tries = task.failures ?? [];
-  if (!tries.length) return task.result ? '' : 'Why it failed:\nNo end was logged: the delegate hung, or its chat closed while it ran.';
-  const details = node('span', '', checkFailed(task) ? 'Why the check failed:' : 'Why it failed:');
+  if (!tries.length) return task.result ? '' : t('task.no-end');
+  const details = node('span', '', checkFailed(task) ? t('task.why-check-failed') : t('task.why-failed'));
   for (const f of tries) {
     details.append('\n- ');
     const cause = taskCauseChip(f.cause);
     if (cause) details.append(cause, ' ');
-    details.append(`${accountLabel(f.account)}${f.model ? ` (${f.model})` : ''}, ${taskSpan(f.seconds)}, exit ${f.exit}: ${f.reason}`);
+    const account = accountLabel(f.account);
+    details.append(t('task.failure-detail', {
+      account: f.model ? t('task.account-model', { account, model: f.model }) : account,
+      duration: taskSpan(f.seconds), code: f.exit, reason: f.reason,
+    }));
   }
   return details;
 }
@@ -897,25 +929,25 @@ function taskRow(task) {
   if (cause) status.prepend(cause, ' ');
   head.append(node('span', 'info-panel__agent-title', title), status);
   row.append(head);
-  const cost = task.cost != null && `$${task.cost.toFixed(2)}`;
-  const tokens = task.tokens && `${compact.format(task.tokens)} tokens`;
+  const cost = task.cost != null && t('common.cost-usd', { amount: task.cost.toFixed(2) });
+  const tokens = task.tokens && tp('task.tokens', task.tokens, { count: compact.format(task.tokens) });
   const seconds = task.running ? Math.round((Date.now() - task.updatedAt) / 1000) : task.seconds;
   const meta = [taskAccount(task), task.model, task.level, taskSpan(seconds), tokens, cost].filter(Boolean).join(' · ');
   if (meta) row.append(node('p', 'info-panel__muted', meta));
   const chat = task.chat && currentIndex?.sessions?.find((s) => s.id === task.chat)?.title;
-  const label = (name, value) => (value ? `${name}: ${value}` : '');
+  const label = (name, value) => (value ? t('common.label-value', { label: name, value }) : '');
   const details = [
-    task.check ? label('Command', task.check) : label('Task', task.description),
-    label('Status', taskStatus(task)),
+    task.check ? label(t('task.command'), task.check) : label(t('info.task'), task.description),
+    label(t('clean.col.status'), taskStatus(task)),
     whyFailed(task),
-    label('Type', task.kind),
-    label('Level', task.level),
-    label('Account', task.kind === 'run' && !task.account ? 'ran here, with no model' : taskAccount(task)),
-    label('Model', task.model),
-    label('Time', taskSpan(task.seconds)),
-    label('Spend', [tokens, cost].filter(Boolean).join(', ')),
-    label('Chat', chat),
-    label('When', task.updatedAt && new Date(task.updatedAt).toLocaleString()),
+    label(t('mcp.add.type.label'), task.kind),
+    label(t('task.level'), task.level),
+    label(t('clean.col.account'), task.kind === 'run' && !task.account ? t('task.ran-here') : taskAccount(task)),
+    label(t('account.model.label'), task.model),
+    label(t('task.time'), taskSpan(task.seconds)),
+    label(t('task.spend'), [tokens, cost].filter(Boolean).join(', ')),
+    label(t('task.chat'), chat),
+    label(t('task.when'), task.updatedAt && new Date(task.updatedAt).toLocaleString()),
     task.result ? `\n${task.result}` : '',
   ].filter(Boolean);
   const tip = node('span');
@@ -955,7 +987,7 @@ function syncInfoPanel() {
   const open = infoPanelOpen && Boolean(chat);
   $('info-panel').hidden = !open;
   $('info-resize').hidden = !open;
-  const label = open ? 'Hide details' : 'Show details';
+  const label = open ? t('info.hide') : t('info.show');
   $('info-toggle').dataset.tip = label;
   $('info-toggle').setAttribute('aria-label', label);
   $('info-toggle').setAttribute('aria-expanded', String(open));
@@ -1004,24 +1036,24 @@ function makeBadge(chat) {
   const dot = node('button', 'term-badge__dot');
   dot.type = 'button';
   dot.append(icon('more'));
-  dot.dataset.tip = 'Chat details. Click to show or hide them';
+  dot.dataset.tip = t('badge.details.tip');
   const info = node('span', 'term-badge__info');
   const frugal = node('button', 'term-badge__action term-badge__frugal', 'Frugal');
   frugal.type = 'button';
-  frugal.dataset.tip = 'Type /frugal:frugal in the prompt, so the next message runs in Frugal mode';
+  frugal.dataset.tip = t('badge.frugal.tip');
   frugal.onclick = () => {
     chat.term.paste('/frugal:frugal ');
     chat.term.focus();
     chat.frugal = true;
     drawBadge(chat);
   };
-  const bypass = node('button', 'term-badge__action term-badge__bypass', 'Bypass permissions');
+  const bypass = node('button', 'term-badge__action term-badge__bypass', t('badge.bypass.label'));
   bypass.type = 'button';
-  bypass.dataset.tip = 'Restart this chat with Claude Code running every tool without asking';
+  bypass.dataset.tip = t('badge.bypass.tip');
   bypass.onclick = () => toggleBypass(chat);
-  const admin = node('button', 'term-badge__action term-badge__admin', 'Administrator');
+  const admin = node('button', 'term-badge__action term-badge__admin', t('badge.admin.label'));
   admin.type = 'button';
-  admin.dataset.tip = 'Restart this chat with Windows administrator rights';
+  admin.dataset.tip = t('badge.admin.tip');
   admin.onclick = () => toggleAdmin(chat);
   badge.append(dot, info, frugal, bypass, admin);
   dot.onclick = () => setInfoCollapsed(!infoCollapsed);
@@ -1036,8 +1068,8 @@ function makeBadge(chat) {
   const more = node('button', 'term-mic__more');
   more.type = 'button';
   more.append(icon('chevron'));
-  more.dataset.tip = 'Voice options';
-  more.setAttribute('aria-label', 'Voice options');
+  more.dataset.tip = t('voice.options');
+  more.setAttribute('aria-label', t('voice.options'));
   more.onclick = () => micMenu(chat);
   mic.append(record, more);
   const dock = node('div', 'term-dock');
@@ -1053,11 +1085,11 @@ function makeBadge(chat) {
     };
     return button;
   };
-  const edit = dockButton('edit', 'Open the prompt in an editor (Ctrl+G)', () => {
+  const edit = dockButton('edit', t('prompt.edit.tip'), () => {
     holdOutput(chat);
     deck.input(chat.id, '\x07');
   }, 'term-dock__edit');
-  const send = dockButton('send', 'Send the prompt (Enter)', () => deck.input(chat.id, '\r'), 'term-dock__send');
+  const send = dockButton('send', t('prompt.send.tip'), () => deck.input(chat.id, '\r'), 'term-dock__send');
   dock.append(edit, send, mic);
   chat.badge = badge;
   chat.mic = mic;
@@ -1108,11 +1140,13 @@ function drawBadge(chat) {
   drawInfo(chat);
   if (!chat.badge) return;
   const running = chat.state === 'running' || chat.state === 'starting';
-  const parts = [chat.model, chat.effort && `${chat.effort} effort`, chat.context != null && `${Math.round(chat.context)}% ctx`, chat.cost > 0 && `$${chat.cost.toFixed(2)}`].filter(Boolean);
+  const parts = [chat.model, chat.effort && t('badge.effort', { effort: chat.effort }), chat.context != null && t('badge.context', { percent: Math.round(chat.context) }), chat.cost > 0 && t('common.cost-usd', { amount: chat.cost.toFixed(2) })].filter(Boolean);
   const text = parts.join(' · ');
   const info = chat.badge.querySelector('.term-badge__info');
   info.textContent = text;
-  info.dataset.tip = `${chat.adminOn ? 'Running as administrator: ' : ''}${chat.bypassOn ? 'Bypass permissions is on: ' : ''}${text || 'Shows the model, effort, context and cost once the chat sends a status line'}`;
+  let tip = text || t('badge.details.empty');
+  if (chat.bypassOn) tip = t('badge.details.bypass', { details: tip });
+  info.dataset.tip = chat.adminOn ? t('badge.details.admin', { details: tip }) : tip;
   // Once on, here or for every chat, there is nothing left to turn on: the dot's color and tip say it is on.
   chat.badge.querySelector('.term-badge__bypass').hidden = !running || !chat.account || chat.bypassOn === true || bypassOn();
   chat.badge.querySelector('.term-badge__frugal').hidden = !running || !chat.account || chat.frugal === true;
@@ -1123,7 +1157,7 @@ function drawBadge(chat) {
   chat.badge.classList.toggle('is-collapsed', infoCollapsed);
 }
 
-const VOICE_MODES = [['off', 'Voice off'], ['local', 'Local model (whisper.cpp)'], ['anthropic', 'Anthropic (/voice)']];
+const VOICE_MODES = [['off', t('voice.off')], ['local', t('settings.voice.input.local')], ['anthropic', t('voice.anthropic')]];
 
 async function setVoiceMode(choice) {
   if (VOICE_NOTICES[choice] && !await askConfirm(...VOICE_NOTICES[choice])) return false;
@@ -1140,10 +1174,10 @@ async function micMenu(chat) {
   for (const [value, label] of VOICE_MODES) items.push({ label, checked: mode === value, run: () => value !== mode && setVoiceMode(value) });
   if (mode === 'local') {
     const inputs = (await navigator.mediaDevices.enumerateDevices()).filter((device) => device.kind === 'audioinput' && device.deviceId !== 'default' && device.deviceId !== 'communications');
-    items.push({ label: 'Default microphone', checked: !voiceDevice(), run: () => localStorage.removeItem('voiceDevice') });
-    inputs.forEach((device, index) => items.push({ label: device.label || `Microphone ${index + 1}`, checked: voiceDevice() === device.deviceId, run: () => localStorage.setItem('voiceDevice', device.deviceId) }));
+    items.push({ label: t('voice.default-microphone'), checked: !voiceDevice(), run: () => localStorage.removeItem('voiceDevice') });
+    inputs.forEach((device, index) => items.push({ label: device.label || t('voice.microphone', { number: index + 1 }), checked: voiceDevice() === device.deviceId, run: () => localStorage.setItem('voiceDevice', device.deviceId) }));
   }
-  items.push({ label: 'Voice settings', run: () => openSettings('voice') });
+  items.push({ label: t('voice.settings'), run: () => openSettings('voice') });
   const box = chat.mic.getBoundingClientRect();
   openMenu(box.right, box.top, items, chat.mic.querySelector('.term-mic__more'));
   menu.style.left = `${Math.max(8, box.right - menu.offsetWidth)}px`;
@@ -1153,15 +1187,16 @@ async function micMenu(chat) {
 function drawMic(chat, running) {
   const mode = voiceMode();
   const busy = mode === 'off' ? null : chat.voice;
-  const state = mode === 'off' ? 'off' : busy === 'Listening' ? 'listening' : busy ? 'busy' : mode === 'local' && voiceReady === false ? 'missing' : 'ready';
+  const state = mode === 'off' ? 'off' : busy === 'listening' ? 'listening' : busy ? 'busy' : mode === 'local' && voiceReady === false ? 'missing' : 'ready';
   const tip = {
-    off: 'Voice input is off. Click to turn it on',
-    missing: `Local dictation needs the ${voiceModel()} model. Click to download it, then speak`,
-    listening: 'Recording. Click to stop and type what was said into the prompt, unsent',
-    busy: `${busy}…`,
-    ready: mode === 'local' ? 'Click to record. Click again to stop, and the text lands in the prompt unsent'
-      : chat.voiceOn ? 'Click to record on Anthropic servers. Click again to stop, and Claude Code types the text into the prompt'
-      : 'Click to restart this chat with Anthropic voice on, then click again to record',
+    off: t('voice.off-tip'),
+    missing: t('voice.missing-tip', { model: voiceModel() }),
+    listening: t('voice.recording-tip'),
+    busy: busy === 'transcribing' ? t('voice.transcribing')
+      : chat.voicePercent == null ? t('voice.downloading') : t('voice.download-progress', { percent: chat.voicePercent }),
+    ready: mode === 'local' ? t('voice.record-local-tip')
+      : chat.voiceOn ? t('voice.record-anthropic-tip')
+      : t('voice.restart-tip'),
   }[state];
   chat.mic.dataset.state = state;
   chat.mic.hidden = !chat.account;
@@ -1171,7 +1206,7 @@ function drawMic(chat, running) {
   const record = chat.mic.querySelector('.term-mic__record');
   record.disabled = state === 'busy' || (state !== 'off' && state !== 'listening' && !running);
   record.querySelector('use').setAttribute('href', state === 'off' ? '#i-mic-off' : '#i-mic');
-  record.querySelector('.term-mic__text').textContent = state === 'busy' ? `${busy}…` : '';
+  record.querySelector('.term-mic__text').textContent = state === 'busy' ? tip : '';
   record.dataset.tip = tip;
   record.setAttribute('aria-label', tip);
 }
@@ -1197,12 +1232,12 @@ function promptPanel(chat, text) {
   chat.editPanel?.remove();
   chat.editPanel = null;
   const form = node('form', 'prompt-edit');
-  form.setAttribute('aria-label', 'Prompt Claude Code asked to edit');
+  form.setAttribute('aria-label', t('prompt.edit.label'));
   const area = node('textarea', 'prompt-edit__text');
   area.spellcheck = false;
   area.value = text;
   const files = node('ul', 'prompt-edit__files');
-  files.setAttribute('aria-label', 'Attached files');
+  files.setAttribute('aria-label', t('prompt.attachments'));
   const thumbs = new Map();
   const fileItem = (file) => {
     const item = node('li', 'prompt-edit__file');
@@ -1215,7 +1250,7 @@ function promptPanel(chat, text) {
     const remove = node('button', 'prompt-edit__remove');
     remove.type = 'button';
     remove.append(icon('x'));
-    remove.setAttribute('aria-label', `Remove ${name}`);
+    remove.setAttribute('aria-label', t('prompt.remove-file', { name }));
     remove.onclick = () => {
       const mention = mentionOf(file);
       const start = area.value.indexOf(mention);
@@ -1269,19 +1304,19 @@ function promptPanel(chat, text) {
   mic.type = 'button';
   mic.append(icon('mic'));
   mic.setAttribute('aria-pressed', 'false');
-  const micTip = voiceMode() === 'anthropic' ? 'Save this text to the prompt and dictate there with Anthropic voice' : 'Dictate into this text. Click again to stop';
+  const micTip = voiceMode() === 'anthropic' ? t('prompt.dictate-anthropic-tip') : t('prompt.dictate-tip');
   mic.dataset.tip = micTip;
   mic.setAttribute('aria-label', micTip);
   // Anthropic voice needs a chat launched with it, and that restart would drop this edit.
   mic.hidden = voiceMode() === 'off' || (voiceMode() === 'anthropic' && !chat.voiceOn);
   mic.onclick = () => toggleDictation(chat, area);
   actions.append(mic);
-  const cancel = node('button', 'btn', 'Cancel');
+  const cancel = node('button', 'btn', t('common.cancel'));
   cancel.type = 'button';
-  cancel.dataset.tip = 'Discard the edit and leave the prompt as it was';
-  const save = node('button', 'btn btn--primary', 'Save');
+  cancel.dataset.tip = t('prompt.discard-tip');
+  const save = node('button', 'btn btn--primary', t('common.save'));
   save.type = 'submit';
-  save.dataset.tip = 'Save the prompt back to Claude Code';
+  save.dataset.tip = t('prompt.save-tip');
   actions.append(cancel, save);
   const done = (text) => {
     deck.saveEdit(chat.id, text);
@@ -1331,7 +1366,7 @@ deck.onEdit((id, text) => {
 });
 
 function startChat(cwd, group) {
-  if (cwd) openChat({ id: crypto.randomUUID(), cwd, name: 'New chat', resume: false, group });
+  if (cwd) openChat({ id: crypto.randomUUID(), cwd, name: t('bar.new.label'), resume: false, group });
 }
 
 function resumeSession(session) {
@@ -1348,7 +1383,9 @@ function accountStep(index, state) {
   step.dataset.state = state;
   step.querySelector('svg')?.remove();
   step.prepend(state === 'running' ? statusIcon('working') : icon(state === 'done' ? 'replied' : state === 'failed' ? 'x' : 'more'));
-  step.setAttribute('aria-label', `${['Install', 'Sign in', 'Ready'][index]}: ${state}`);
+  step.setAttribute('aria-label', t('common.label-value', {
+    label: t(step.dataset.i18n), value: t(`account.steps.state.${state}`),
+  }));
   $('account-progress').hidden = ![...$('account-steps').children].some((li) => li.dataset.state === 'running');
 }
 
@@ -1374,8 +1411,8 @@ function addAccount() {
     accountForm.reset();
     $('account-log').textContent = '';
     $('account-error').textContent = '';
-    $('account-submit').textContent = 'Add';
-    $('account-cancel').textContent = 'Cancel';
+    $('account-submit').textContent = t('common.add');
+    $('account-cancel').textContent = t('common.cancel');
     $('account-cancel').disabled = false;
     for (let i = 0; i < 3; i++) accountStep(i, 'pending');
     accountFields();
@@ -1385,10 +1422,10 @@ function addAccount() {
 }
 
 function accountResult(result, json = false) {
-  if (result.code !== 0) throw new Error($('account-log').textContent.trim().split('\n').at(-1) || result.last || `Command exited with code ${result.code}.`);
+  if (result.code !== 0) throw new Error($('account-log').textContent.trim().split('\n').at(-1) || result.last || t('account.error.command-exit', { code: result.code }));
   if (!json) return result;
   try { return JSON.parse(result.last); }
-  catch { throw new Error('Update frugal to add this kind of account.'); }
+  catch { throw new Error(t('account.error.update')); }
 }
 
 async function accountReady(run) {
@@ -1401,7 +1438,7 @@ async function accountReady(run) {
   accountStep(2, 'done');
   run.busy = false;
   $('account-cancel').disabled = false;
-  $('account-cancel').textContent = 'Close';
+  $('account-cancel').textContent = t('common.close');
   setTimeout(() => {
     if (accountAdd === run) { accountAdd = null; accountDialog.close(); }
   }, 1000);
@@ -1443,9 +1480,9 @@ accountForm.onsubmit = async (event) => {
   const kind = accountForm.querySelector('[name="account-kind"]:checked').value;
   const id = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 32);
   $('account-error').textContent = '';
-  if (!id) { $('account-error').textContent = 'Use letters or numbers in the account name.'; return; }
+  if (!id) { $('account-error').textContent = t('account.error.name'); return; }
   if (!accountAdd?.registered && [...accountState.accounts, ...accountState.others].some((a) => a.id === id)) {
-    $('account-error').textContent = `An account named ${id} already exists.`;
+    $('account-error').textContent = t('account.error.exists', { id });
     return;
   }
   const run = accountAdd?.registered ? accountAdd : { kind, id, name, registered: false };
@@ -1474,7 +1511,7 @@ accountForm.onsubmit = async (event) => {
         try { pending = deck.accountCli(args, kind === 'gemini' ? `${$('account-key').value}\n` : null); }
         finally { $('account-key').value = ''; }
         const result = accountResult(await pending, true);
-        if (result.ok !== true || result.id !== id || result.kind !== kind || typeof result.loggedIn !== 'boolean') throw new Error('Could not add the account. Select Retry to try again.');
+        if (result.ok !== true || result.id !== id || result.kind !== kind || typeof result.loggedIn !== 'boolean') throw new Error(t('account.error.add'));
         run.registered = true;
         accountStep(0, 'done');
       }
@@ -1486,7 +1523,7 @@ accountForm.onsubmit = async (event) => {
       if (command && command.argv === null) accountStep(1, 'skipped');
       else {
         if (command && (!Array.isArray(command.argv) || !command.argv.length || !command.env || typeof command.env !== 'object')) {
-          throw new Error('Update frugal to add this kind of account.');
+          throw new Error(t('account.error.update'));
         }
         run.tab = crypto.randomUUID();
         const exited = new Promise((resolve) => { run.exit = resolve; });
@@ -1494,7 +1531,7 @@ accountForm.onsubmit = async (event) => {
         accountDialog.close();
         accountDialog.show();
         $('account-cancel').disabled = false;
-        const result = await openChat({ id: run.tab, cwd: `Sign in to ${name}`, name: `Sign in: ${name}`, login: name,
+        const result = await openChat({ id: run.tab, cwd: t('account.sign-in.folder', { name }), name: t('account.sign-in.title', { name }), login: name,
           accountSetup: true, loginCommand: command });
         if (accountAdd !== run) { await closeChat(run.tab, true); return; }
         if (result.error) throw new Error(result.error);
@@ -1502,20 +1539,20 @@ accountForm.onsubmit = async (event) => {
           const code = await exited;
           if (accountAdd !== run) return;
           const state = await deck.getAccounts();
-          if (code !== 0 || !state.accounts.some((a) => a.id === id && a.signedIn)) throw new Error(run.loginError || 'Sign-in did not finish. Select Retry to try again.');
+          if (code !== 0 || !state.accounts.some((a) => a.id === id && a.signedIn)) throw new Error(run.loginError || t('account.error.sign-in'));
           run.registered = true;
         } else {
           const deadline = Date.now() + 10 * 60 * 1000;
           while (true) {
             if (accountAdd !== run) return;
-            if (Date.now() >= deadline) throw new Error('Sign-in did not finish. Select Retry to try again.');
+            if (Date.now() >= deadline) throw new Error(t('account.error.sign-in'));
             const status = accountResult(await deck.accountCli(['status', id]), true);
             if (accountAdd !== run) return;
             if (status.id !== id || status.kind !== kind || typeof status.installed !== 'boolean' || typeof status.loggedIn !== 'boolean') {
-              throw new Error('Update frugal to add this kind of account.');
+              throw new Error(t('account.error.update'));
             }
             if (status.loggedIn) break;
-            if (run.exitCode != null && run.exitCode !== 0) throw new Error('Sign-in did not finish. Select Retry to try again.');
+            if (run.exitCode != null && run.exitCode !== 0) throw new Error(t('account.error.sign-in'));
             await new Promise((resolve) => setTimeout(resolve, 2000));
           }
         }
@@ -1532,8 +1569,8 @@ accountForm.onsubmit = async (event) => {
     accountStep(run.step, 'failed');
     $('account-error').textContent = error.message || String(error);
     $('account-cancel').disabled = false;
-    $('account-cancel').textContent = 'Close';
-    $('account-submit').textContent = 'Retry';
+    $('account-cancel').textContent = t('common.close');
+    $('account-submit').textContent = t('common.retry');
     accountFields();
     if (run.tab) { await closeChat(run.tab, true); run.tab = null; }
   }
@@ -1669,12 +1706,12 @@ function drawHandoff() {
   const note = $('handoff-note');
   note.hidden = !handoffNotes();
   if (document.activeElement !== note) note.value = handoff.note;
-  const size = `Context is ${compact.format(handoff.tokens)} tokens.`;
+  const size = tp('handoff.context', handoff.tokens, { count: compact.format(handoff.tokens) });
   const counting = handoff.timer || handoff.paused;
-  $('handoff-status').textContent = handoff.timer ? `${size} A new chat starts in ${Math.max(handoff.left, 0)} s.` : handoff.paused ? `${size} Countdown paused while you write.` : size;
+  $('handoff-status').textContent = handoff.timer ? tp('handoff.countdown', Math.max(handoff.left, 0), { size }) : handoff.paused ? t('handoff.paused', { size }) : size;
   const stop = $('handoff-stop');
-  stop.textContent = counting ? 'Cancel' : 'Dismiss';
-  stop.dataset.tip = counting ? 'Stop the countdown and keep this prompt' : 'Keep working in this chat';
+  stop.textContent = counting ? t('common.cancel') : t('undo.dismiss.label');
+  stop.dataset.tip = counting ? t('handoff.stop.tip') : t('handoff.dismiss.tip');
   $('handoff-save').hidden = !handoff.paused;
 }
 
@@ -1683,8 +1720,8 @@ async function continueHandoff(chat) {
   if (chat.handoff.starting) return;
   chat.handoff.starting = true;
   const { note, instant } = chat.handoff;
-  const prompt = note.trim() ? `${chat.handoff.prompt.trimEnd()}\nUser note: ${note.trim()}` : chat.handoff.prompt;
-  const result = await openChat({ id: crypto.randomUUID(), cwd: chat.cwd, name: 'New chat', handoff: { from: chat.id, accountId: chat.account, prompt } });
+  const prompt = note.trim() ? t('handoff.prompt-note', { prompt: chat.handoff.prompt.trimEnd(), note: note.trim() }) : chat.handoff.prompt;
+  const result = await openChat({ id: crypto.randomUUID(), cwd: chat.cwd, name: t('bar.new.label'), handoff: { from: chat.id, accountId: chat.account, prompt } });
   deck.debugLog('handoff', `${chat.id}: new session ${result.error ? `failed: ${result.error}` : 'started'}`);
   // A failed start keeps the prompt, so nothing typed into it is lost.
   if (!result.error) {
@@ -1695,7 +1732,7 @@ async function continueHandoff(chat) {
   render();
   if (!result.error && instant && localStorage.getItem('handoffInstantShown') !== 'true') {
     localStorage.setItem('handoffInstantShown', 'true');
-    if (await askConfirm('Handoff started at once', 'The handoff delay in Settings is 0 seconds, so new chats start as soon as a handoff is ready, with no countdown. This notice shows once.', 'Open settings')) openSettings('handoff');
+    if (await askConfirm(t('handoff.instant.title'), t('handoff.instant.text'), t('handoff.instant.settings'))) openSettings('handoff');
   }
 }
 
@@ -1796,9 +1833,9 @@ function askConfirm(title, message, ok) {
   });
 }
 
-const askBypass = () => askConfirm('Bypass permissions?', 'Claude will run every tool, including shell commands and file edits, without asking for permission.', 'Bypass permissions');
-const askAdmin = () => askConfirm('Run as administrator?', "Claude will have Windows administrator permissions and can change system configuration, services, programs, and any user's files. Those changes can leave the machine unstable or insecure. Windows asks for permission for each administrator chat.", 'Run as administrator');
-const askBoth = () => askConfirm('Administrator with bypass permissions?', 'Claude can make system-wide changes with no confirmation. A single error can damage Windows or your data irreversibly. You are asked again only after you turn bypass or administrator off in Settings.', 'Start anyway');
+const askBypass = () => askConfirm(t('dialog.bypass.title'), t('dialog.bypass.text'), t('badge.bypass.label'));
+const askAdmin = () => askConfirm(t('dialog.admin.title'), t('dialog.admin.text'), t('dialog.admin.action'));
+const askBoth = () => askConfirm(t('dialog.admin-bypass.title'), t('dialog.admin-bypass.text'), t('dialog.admin-bypass.action'));
 // Bypass and administrator together are confirmed once, across restarts, until either setting is turned off.
 // Declined, the chat starts without administrator rights.
 const BOTH_ACCEPTED = 'adminBypassAccepted';
@@ -1812,7 +1849,7 @@ const confirmAdmin = async (bypass, admin) => admin && (!bypass || await acceptB
 
 // Web links ask first; files open in their default app (main only opens ones that exist and do not run code).
 async function openLink(uri, cwd) {
-  if (/^https?:/i.test(uri) && !await askConfirm('Open this link?', uri, 'Open link')) return;
+  if (/^https?:/i.test(uri) && !await askConfirm(t('dialog.link.title'), uri, t('dialog.link.action'))) return;
   deck.openLink(uri, cwd);
 }
 // Replaces xterm's confirm() for OSC 8 links, which Claude Code also writes for file:// paths.
@@ -1837,7 +1874,7 @@ const chatAdmin = (chat, handoff) => adminOn() || (handoff ? Boolean(chats.get(h
 
 function askToClose(chat) {
   const dialog = $('close-dialog');
-  $('close-message').textContent = `Claude is still running in ${chat.name}. Closing this chat stops it.`;
+  $('close-message').textContent = t('dialog.close.message', { name: chat.name });
   $('close-skip').checked = false;
   dialog.returnValue = ''; // Esc and the backdrop leave the last value in place.
   dialog.showModal();
@@ -2106,8 +2143,8 @@ async function loadAccounts(refresh = false) {
   if (state) setAccounts(state);
   else {
     accountsError = refresh
-      ? 'Could not refresh account usage. Select Retry to try again.'
-      : 'Could not load accounts. Select Retry to try again.';
+      ? t('account.error.refresh')
+      : t('account.error.load');
     drawAccounts();
   }
 }
@@ -2344,16 +2381,16 @@ function configureGroupDrag(summary, group, key) {
 // sessions: how many a chat holds, shown only past one.
 function sessionTip(session, sessions) {
   const rows = [
-    ['Folder', session.missing ? `${session.cwd} (removed; opening the chat makes it again, empty)` : session.cwd],
-    ['Last active', resetExact.format(new Date(session.lastAt))],
-    session.startedAt && session.startedAt !== session.lastAt && ['Started', resetExact.format(new Date(session.startedAt))],
-    session.turns && ['Prompts', String(session.turns)],
-    sessions > 1 && ['Sessions', String(sessions)],
+    [t('session.folder'), session.missing ? t('session.folder-removed', { folder: session.cwd }) : session.cwd],
+    [t('session.last-active'), resetExact.format(new Date(session.lastAt))],
+    session.startedAt && session.startedAt !== session.lastAt && [t('session.started'), resetExact.format(new Date(session.startedAt))],
+    session.turns && [tp('session.prompts', session.turns), String(session.turns)],
+    sessions > 1 && [tp('session.sessions', sessions), String(sessions)],
   ].filter(Boolean);
-  return { title: session.title, rows, hint: 'Right-click to organize' };
+  return { title: session.title, rows, hint: t('session.organize.tip') };
 }
 
-const tipText = ({ title, rows, hint }) => [title, ...rows.map(([label, value]) => `${label}: ${value}`), hint].join('\n');
+const tipText = ({ title, rows, hint }) => [title, ...rows.map(([label, value]) => t('common.label-value', { label, value })), hint].join('\n');
 
 function sessionButton(session) {
   const button = document.createElement('button');
