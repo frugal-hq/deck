@@ -246,7 +246,7 @@ function spanText(ms) {
 
 function resetLabel(resetsAt) {
   const ms = resetsAt * 1000 - Date.now();
-  return ms < DAY_MS ? t('usage.reset-in', { duration: spanText(ms) }) : resetDay.format(resetsAt * 1000);
+  return t('usage.resets', { time: ms < DAY_MS ? t('usage.reset-in', { duration: spanText(ms) }) : resetDay.format(resetsAt * 1000) });
 }
 
 const limitTip = (label, limit) => (limit.resetsAt ? t('usage.reset-time', { label, time: resetExact.format(limit.resetsAt * 1000) }) : t('usage.no-reset', { label }));
@@ -262,6 +262,19 @@ function resetNode(tag, className, limit) {
   const element = node(tag, className, limit.resetsAt ? resetLabel(limit.resetsAt) : '');
   if (limit.resetsAt) element.dataset.reset = limit.resetsAt;
   return element;
+}
+
+// The `.empty` pattern for a panel's loading, empty and error states; an error passes retry to get a Retry button.
+function emptyState(text, retry) {
+  const box = node('div', 'empty');
+  box.append(node('p', '', text));
+  if (retry) {
+    const button = node('button', 'btn', t('common.retry'));
+    button.type = 'button';
+    button.onclick = retry;
+    box.append(button);
+  }
+  return box;
 }
 
 function usageMeter(label, limit) {
@@ -281,7 +294,7 @@ function askRename(account) {
 }
 
 function accountName(account, details) {
-  const button = node('button', 'account__name', account.name);
+  const button = node('button', 'btn is-linked account__name', account.name);
   button.type = 'button';
   button.dataset.tip = [account.email, ...details, t('account.rename.tip')].filter(Boolean).join('\n');
   button.onclick = () => askRename(account);
@@ -505,6 +518,7 @@ function accountMenu(account) {
       ? t('account.sign-out.main')
       : t('account.sign-out.text'),
     action: t('account.sign-out.action'),
+    danger: true,
     run: async () => report(await deck.logout(account.id)),
   }) });
   if (account.id !== 'main') items.push({ label: t('common.delete'), danger: true, run: () => ask({
@@ -1822,11 +1836,13 @@ const sendsExcerpts = () => localStorage.getItem('aiSearchExcerpts') === 'true';
 const setBypass = (on) => localStorage.setItem('bypassPermissions', on);
 const adminOn = () => localStorage.getItem('runAsAdmin') === 'true';
 // The Deck's own confirm(): native dialogs never show in this window.
-function askConfirm(title, message, ok) {
+function askConfirm(title, message, ok, danger = false) {
   const dialog = $('confirm-dialog');
   $('confirm-title').textContent = title;
   $('confirm-message').textContent = message;
   $('confirm-ok').textContent = ok;
+  $('confirm-ok').classList.toggle('btn--primary', !danger);
+  $('confirm-ok').classList.toggle('btn--danger', danger);
   dialog.returnValue = ''; // Esc and the backdrop leave the last value in place.
   dialog.showModal();
   return new Promise((resolve) => {
@@ -3806,7 +3822,7 @@ async function useEverywhere(row, button) {
 // Unlike its checkbox, which applies to this folder, group or workspace, removing reaches every folder and delegated work.
 async function removeMcp(row, button) {
   const text = row.deck ? t('mcp.remove.deck-text') : t('mcp.remove.account-text', { accounts: row.accounts.join(', ') });
-  if (!await askConfirm(t('organize.remove.title', { name: row.name }), text, t('common.remove'))) return;
+  if (!await askConfirm(t('organize.remove.title', { name: row.name }), text, t('common.remove'), true)) return;
   button.disabled = true;
   const result = await deck.mcpRemove(row.name, Boolean(row.deck), mcpScope).catch((error) => ({ error: String(error) }));
   const message = $('mcp-error');
@@ -3931,9 +3947,10 @@ function deckRow(name, config, checked, signedIn, needsAuth) {
 function drawMcp(result) {
   const list = $('mcp-list');
   if (result?.error) {
-    list.textContent = '';
-    $('mcp-error').textContent = result.error;
-    $('mcp-error').hidden = false;
+    list.replaceChildren(emptyState(result.error, () => {
+      list.replaceChildren(emptyState(t('common.loading')));
+      refreshMcp();
+    }));
     return;
   }
   mcpShown = result;
@@ -4028,7 +4045,7 @@ async function openMcpDialog(scope) {
   $('mcp-task').value = '';
   $('mcp-ask').value = '';
   syncMcpAsk();
-  $('mcp-list').replaceChildren(node('p', 'mcp__empty', t('common.loading')));
+  $('mcp-list').replaceChildren(emptyState(t('common.loading')));
   $('mcp-error').hidden = true;
   $('mcp-dialog').showModal();
   const known = mcpCache.get(mcpKey(scope));
@@ -4174,7 +4191,7 @@ function drawPlugins(result, states = result.states) {
     row.append(info, group);
     return row;
   }));
-  if (!result.plugins.length) $('plugins-list').append(node('p', 'mcp__empty', t('plugins.installed.empty')));
+  if (!result.plugins.length) $('plugins-list').append(emptyState(t('plugins.installed.empty')));
   $('plugins-save').disabled = false;
 }
 
@@ -4197,14 +4214,18 @@ async function openPluginsDialog() {
   $('plugins-error').hidden = true;
   $('plugins-request').value = '';
   $('plugins-task').value = '';
-  $('plugins-list').replaceChildren(node('p', 'mcp__empty', t('common.loading')));
   showSection($('plugins-dialog'), 'installed');
   $('plugins-dialog').showModal();
+  await loadPlugins(visit);
+}
+
+async function loadPlugins(visit = ++pluginsVisit) {
+  $('plugins-list').replaceChildren(emptyState(t('common.loading')));
   try {
     const result = await deck.pluginsList();
     if (visit === pluginsVisit) drawPlugins(result);
   } catch (error) {
-    if (visit === pluginsVisit) { $('plugins-error').textContent = String(error); $('plugins-error').hidden = false; }
+    if (visit === pluginsVisit) $('plugins-list').replaceChildren(emptyState(String(error), () => loadPlugins()));
   }
 }
 
@@ -4308,6 +4329,8 @@ $('clean-apply').onclick = async () => {
     .filter(({ select }) => select.value !== 'keep')
     .map(({ item, select }) => ({ kind: item.kind, name: item.name, action: select.value }));
   if (!picked.length) { $('clean-dialog').close(); return; }
+  const removing = picked.filter((item) => item.action === 'remove').length;
+  if (removing && !await askConfirm(tp('clean.remove.title', removing), t('clean.remove.text'), t('common.remove'), true)) return;
   const visit = cleanVisit;
   $('clean-apply').disabled = true;
   cleanStatus('');
@@ -4701,7 +4724,7 @@ async function installUpdate(source, button) {
     button?.removeAttribute('aria-busy');
   }
 }
-function updateRow(text, action, tip, run, detail) {
+function updateRow(text, action, tip, run, detail, primary = false) {
   const row = document.createElement('div');
   row.className = 'update__row';
   const label = document.createElement('span');
@@ -4712,7 +4735,7 @@ function updateRow(text, action, tip, run, detail) {
     label.append(line);
   }
   const button = document.createElement('button');
-  Object.assign(button, { type: 'button', className: 'btn btn--primary', textContent: action });
+  Object.assign(button, { type: 'button', className: primary && run ? 'btn btn--primary' : 'btn', textContent: action });
   button.dataset.tip = tip;
   button.onclick = () => run(button);
   button.disabled = !run;
@@ -4778,12 +4801,27 @@ async function openUpdates() {
   $('update-list').replaceChildren();
   $('update-status').textContent = t('update.checking');
   if (!$('update-dialog').open) $('update-dialog').showModal();
-  const { version, local, remote, error, buildFolder, frugal, frugalSource, frugalLatest } = await deck.checkUpdates();
+  let found;
+  try {
+    found = await deck.checkUpdates();
+  } catch (failure) {
+    $('update-status').textContent = t('update.check-error', { error: failure?.message ?? failure });
+    const retry = node('button', 'btn', t('common.retry'));
+    retry.type = 'button';
+    retry.onclick = openUpdates;
+    const actions = node('div', 'organize__actions');
+    actions.append(retry);
+    $('update-list').replaceChildren(actions);
+    return;
+  }
+  const { version, local, remote, error, buildFolder, frugal, frugalSource, frugalLatest } = found;
   const install = t('update.install-tip');
   const rows = [node('h3', 'update__heading', t('update.deck-version', { version }))];
   const fromBuilds = Boolean(buildFolder) && localStorage.getItem('deckUpdateSource') !== 'github';
-  if (fromBuilds) rows.push(local ? updateRow(t('update.local.build', { date: new Date(local.built).toLocaleString() }), t('common.install'), install, (button) => installUpdate(local.path, button)) : updateRow(t('update.local.no-build'), t('common.install'), t('update.nothing-new')));
-  else if (remote?.url) rows.push(updateRow(t('update.github.version', { version: remote.version }), t('common.install'), install, (button) => installUpdate(remote.url, button)));
+  // Only an install that is really available is the primary action, and only one per dialog: the Deck's first.
+  const deckNewer = fromBuilds ? Boolean(local) : Boolean(remote?.url);
+  if (fromBuilds) rows.push(local ? updateRow(t('update.local.build', { date: new Date(local.built).toLocaleString() }), t('common.install'), install, (button) => installUpdate(local.path, button), undefined, true) : updateRow(t('update.local.no-build'), t('common.install'), t('update.nothing-new')));
+  else if (remote?.url) rows.push(updateRow(t('update.github.version', { version: remote.version }), t('common.install'), install, (button) => installUpdate(remote.url, button), undefined, true));
   else if (remote) rows.push(updateRow(t('update.github.no-installer', { version: remote.version }), t('common.open'), t('update.github.open-tip'), () => deck.openLink(remote.page)));
   else rows.push(updateRow(error ? t('update.github.check-error') : t('update.current'), t('common.install'), error ? '' : t('update.nothing-new'), null, error));
   if (buildFolder) {
@@ -4801,7 +4839,7 @@ async function openUpdates() {
     const { version: latest, newer, dirty } = frugalLatest ?? {};
     const state = dirty ? t('update.plugin.dirty') : newer ? t('update.plugin.available', { version: latest }) : latest ? t('update.current') : t('update.plugin.unknown-version');
     const tip = dirty ? t('update.plugin.dirty-tip') : newer || !latest ? t('update.plugin.update-tip') : t('update.nothing-new');
-    rows.push(updateRow(state, t('update.plugin.update'), tip, !dirty && (newer || !latest) ? updateFrugal : null));
+    rows.push(updateRow(state, t('update.plugin.update'), tip, !dirty && (newer || !latest) ? updateFrugal : null, undefined, newer && !deckNewer));
     const fromFolder = frugalSource?.source === 'directory';
     const [kind, from] = fromFolder ? [t('update.source.folder'), frugalSource.path] : frugalSource?.repo ? ['GitHub', frugalSource.repo] : [t('update.source.other-kind'), frugalSource?.url ?? t('update.source.unknown')];
     const sourceTip = fromFolder ? t('update.source.plugin-github-tip') : t('update.source.folder-tip');
