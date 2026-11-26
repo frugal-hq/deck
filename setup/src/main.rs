@@ -9,6 +9,7 @@ mod i18n;
 use consolidation::*;
 use serde_json::{json, Value};
 use std::collections::HashSet;
+use std::io::Write;
 use std::os::windows::process::CommandExt;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
@@ -223,6 +224,15 @@ fn logged(command: &mut Command, timeout: Duration) -> Result<String, String> {
         .unwrap_or_else(|| i18n::t("account.error.command-exit", &[("code", &status.code().unwrap_or(1))])))
 }
 
+// Renames opencode.db and its -wal and -shm files that exist to <name>.bak-<stamp>; returns the database's new path.
+fn move_db_aside(dir: &Path, stamp: u64) -> std::io::Result<PathBuf> {
+    for name in ["opencode.db", "opencode.db-wal", "opencode.db-shm"] {
+        let path = dir.join(name);
+        if path.exists() { std::fs::rename(&path, dir.join(format!("{name}.bak-{stamp}")))?; }
+    }
+    Ok(dir.join(format!("opencode.db.bak-{stamp}")))
+}
+
 // Runs after the Deck and Import and clean, so frugal is in the store or the main account. Returns the account ids added.
 #[tauri::command]
 async fn install_opencode() -> Result<Value, String> {
@@ -239,7 +249,18 @@ async fn install_opencode() -> Result<Value, String> {
         }
         // npm's global folder is on PATH wherever npm is; the fallback is the default one.
         let opencode = find_cli("opencode").unwrap_or_else(|| PathBuf::from(std::env::var("APPDATA").unwrap_or_default()).join(r"npm\opencode.cmd"));
-        let listing = logged(Command::new(opencode).args(["models", "opencode"]), Duration::from_secs(120))?;
+        let listing = match logged(Command::new(&opencode).args(["models", "opencode"]), Duration::from_secs(120)) {
+            // A database from a newer OpenCode schema breaks every command; move it aside so OpenCode starts a fresh one.
+            Err(error) if error.contains("has no session table") => {
+                let stamp = std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).map_or(0, |d| d.as_secs());
+                let moved = move_db_aside(&home.join(r".local\share\opencode"), stamp).map_err(|e| e.to_string())?;
+                if let Ok(mut log) = std::fs::OpenOptions::new().create(true).append(true).open(folder().join("opencode.log")) {
+                    let _ = writeln!(log, "OpenCode database was moved aside to {}", moved.display());
+                }
+                logged(Command::new(&opencode).args(["models", "opencode"]), Duration::from_secs(120))?
+            }
+            result => result?,
+        };
         let mut added = Vec::new();
         for (id, model) in pick_free_models(&listing, &frugal_accounts(&home)) {
             logged(Command::new("python").arg("-u").arg(&script).args(["add", "opencode", &id, &model]), Duration::from_secs(120))?;
@@ -487,5 +508,18 @@ mod tests {
         let accounts = [json!({ "id": "oc-glm-5.3-flash", "model": "opencode/glm-5.3-flash-free" }), json!({ "id": "oc-beam" })];
         assert_eq!(pick_free_models(listing, &accounts), [("oc-qwen".to_owned(), "opencode/qwen:free".to_owned())]);
         assert_eq!(pick_free_models("glm-5.3-flash-free\nError: unexpected\n", &[]), [("oc-glm-5-3-flash".to_owned(), "opencode/glm-5.3-flash-free".to_owned())]);
+    }
+
+    #[test]
+    fn moves_db_aside() {
+        let dir = std::env::temp_dir().join(format!("frugal-setup-db-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(dir.join("opencode.db"), "db").unwrap();
+        std::fs::write(dir.join("opencode.db-wal"), "wal").unwrap();
+        assert_eq!(move_db_aside(&dir, 42).unwrap(), dir.join("opencode.db.bak-42"));
+        let mut names: Vec<_> = std::fs::read_dir(&dir).unwrap().map(|e| e.unwrap().file_name().into_string().unwrap()).collect();
+        names.sort();
+        assert_eq!(names, ["opencode.db-wal.bak-42", "opencode.db.bak-42"]);
+        std::fs::remove_dir_all(&dir).unwrap();
     }
 }
