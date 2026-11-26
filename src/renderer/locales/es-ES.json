@@ -1,0 +1,17 @@
+{
+  "account.empty": "Aún no hay cuentas. Selecciona Añadir cuenta para empezar.",
+  "account.title": "Añadir cuenta",
+  "badge.details.empty": "Muestra el modelo, esfuerzo, contexto y coste una vez que el chat envía una línea de estado",
+  "common.add": "Añadir",
+  "dialog.trust.warning": "Frugal Deck aceptará la verificación de confianza de Claude Code por ti en todas las carpetas que abras aquí. Claude Code podrá leer, editar y ejecutar archivos ahí, y la configuración y los hooks de una carpeta pueden ejecutar comandos en cuanto el chat empiece. Una carpeta que descargaste o no escribiste podría dañar tu ordenador o exponer tus archivos y credenciales.",
+  "info.cost": "Coste",
+  "mcp.add.submit.label": "Añadir a Deck",
+  "mcp.add.title": "Añadir servidor",
+  "settings.debug.record.warn": "Usa algo de CPU y disco extra mientras está activo. El registro contiene rutas de carpetas y el inicio de los prompts; se queda en este ordenador.",
+  "settings.handoff.note.label": "Añadir un cuadro de nota a los handoffs",
+  "settings.privacy.ai-excerpts.warn": "Partes de tus conversaciones salen de este ordenador.",
+  "usage.add-account.label": "Añadir cuenta…",
+  "voice.confirm.local.text": "El audio se queda en este ordenador. El primer dictado descarga whisper.cpp (8.9 MB) y el modelo que elijas. Los nombres y términos técnicos suelen salir mal, así que el texto llega al prompt para que lo edites y nunca se envía por sí solo. El dictado de Windows (Win+H) no necesita descarga.",
+  "voice.download.files": "El dictado local necesita whisper.cpp y el modelo {model}: {size}. Se descargan una vez y se quedan en este ordenador.",
+  "voice.download.model": "El dictado local necesita el modelo {model}: {size}. Se descargan una vez y se quedan en este ordenador."
+}
