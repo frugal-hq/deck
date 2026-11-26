@@ -110,15 +110,25 @@ fn config() -> Config {
 pub(crate) struct Limits {
     cpu_rate: u32,
     light: bool,
+    // D3DKMT_SCHEDULINGPRIORITYCLASS: 0 idle, 1 below normal, 2 normal.
+    gpu_class: u8,
 }
 
 impl Limits {
-    pub(crate) fn valid(self) -> bool { (1..=10_000).contains(&self.cpu_rate) }
+    pub(crate) fn valid(self) -> bool { (1..=10_000).contains(&self.cpu_rate) && self.gpu_class <= 2 }
+}
+
+fn gpu_class(gpu: i64) -> u8 {
+    match gpu {
+        ..=0 => 0,
+        1..=49 => 1,
+        _ => 2,
+    }
 }
 
 pub(crate) fn limits() -> Limits {
     let config = config();
-    Limits { cpu_rate: config.cpu_rate(platform::cores()), light: config.mode == Mode::Light }
+    Limits { cpu_rate: config.cpu_rate(platform::cores()), light: config.mode == Mode::Light, gpu_class: gpu_class(config.budget().gpu) }
 }
 
 fn refresh(host: &crate::elevated::Host) {
@@ -273,7 +283,7 @@ pub(crate) use platform::{apply_limits, Job};
 #[cfg(windows)]
 mod platform {
     use super::*;
-    use std::collections::HashMap;
+    use std::collections::{HashMap, HashSet};
     use std::ffi::c_void;
     use std::mem::size_of;
     use std::os::windows::io::{AsRawHandle, FromRawHandle, OwnedHandle};
@@ -392,11 +402,14 @@ mod platform {
     static ASSIGN_ERROR: Once = Once::new();
     static LIMIT_ERROR: Once = Once::new();
     static TERMINATE_ERROR: Once = Once::new();
+    static GPU_ERROR: Once = Once::new();
     static PARENT: OnceLock<Option<Parent>> = OnceLock::new();
 
     struct Parent {
         job: OwnedHandle,
         applied: Mutex<Option<Limits>>,
+        // (pid, class) pairs already set, so each process is set once per class.
+        gpu_set: Mutex<HashSet<(u32, u8)>>,
     }
 
     impl Parent {
@@ -421,6 +434,43 @@ mod platform {
             *applied = Some(limits);
             Ok(())
         }
+
+        // GPU scheduling priority is per process, so new chat processes are swept on every refresh.
+        fn sweep_gpu(&self, class: u8) {
+            let Ok(mut set) = self.gpu_set.lock() else { return };
+            let pids = match job_pids(raw(&self.job)) {
+                Ok(pids) => pids,
+                Err(error) => return log_once(&GPU_ERROR, "Could not list the parent job processes", &error),
+            };
+            set.retain(|&(pid, set_class)| set_class == class && pids.contains(&pid));
+            for pid in pids {
+                if set.contains(&(pid, class)) {
+                    continue;
+                }
+                match self.set_gpu_class(pid, class) {
+                    Ok(()) => { set.insert((pid, class)); }
+                    Err(error) => log_once(&GPU_ERROR, "Could not set the GPU scheduling priority", &error),
+                }
+            }
+        }
+
+        fn set_gpu_class(&self, pid: u32, class: u8) -> Result<(), String> {
+            use windows::Wdk::Graphics::Direct3D::{D3DKMTSetProcessSchedulingPriorityClass, D3DKMT_SCHEDULINGPRIORITYCLASS};
+            let process = unsafe { OpenProcess(PROCESS_SET_INFORMATION | PROCESS_QUERY_LIMITED_INFORMATION, false, pid) }
+                .map_err(|error| error.to_string())?;
+            let process = unsafe { OwnedHandle::from_raw_handle(process.0) };
+            // Recheck the opened object so PID reuse cannot lower an unrelated process.
+            let mut member = BOOL::default();
+            unsafe { IsProcessInJob(raw(&process), Some(raw(&self.job)), &mut member) }.map_err(|error| error.to_string())?;
+            if !member.as_bool() {
+                return Err(format!("process {pid} left the job"));
+            }
+            let status = unsafe { D3DKMTSetProcessSchedulingPriorityClass(raw(&process), D3DKMT_SCHEDULINGPRIORITYCLASS(class.into())) };
+            if status.0 < 0 {
+                return Err(format!("NTSTATUS 0x{:08x}", status.0));
+            }
+            Ok(())
+        }
     }
 
     pub(crate) fn apply_limits(limits: Limits) {
@@ -428,6 +478,7 @@ mod platform {
             if let Err(error) = parent.apply(limits) {
                 log_once(&LIMIT_ERROR, "Could not update process job limits", &error);
             }
+            parent.sweep_gpu(limits.gpu_class);
         }
     }
 
@@ -440,7 +491,7 @@ mod platform {
                     return None;
                 }
             };
-            Some(Parent { job, applied: Mutex::new(None) })
+            Some(Parent { job, applied: Mutex::new(None), gpu_set: Mutex::new(HashSet::new()) })
         }).as_ref()
     }
 
@@ -506,32 +557,7 @@ mod platform {
             self.terminate_processes()
         }
 
-        fn pids(&self) -> windows::core::Result<Vec<u32>> {
-            // The native header contains two DWORDs followed by a variable-length ULONG_PTR array.
-            let header = std::mem::offset_of!(JOBOBJECT_BASIC_PROCESS_ID_LIST, ProcessIdList) / size_of::<usize>();
-            let mut data = vec![0usize; header + 16];
-            loop {
-                let bytes = (data.len() * size_of::<usize>()) as u32;
-                let query = unsafe { QueryInformationJobObject(Some(raw(&self.handle)), JobObjectBasicProcessIdList,
-                    data.as_mut_ptr().cast(), bytes, None) };
-                let assigned = data[0] as u32 as usize;
-                // On 64-bit Windows the two little-endian DWORDs share the first word.
-                let count = if header == 1 { (data[0] as u64 >> 32) as usize } else { data[1] };
-                match query {
-                    Ok(()) if assigned == count && count <= data.len() - header => {
-                        return Ok(data[header..header + count].iter().filter_map(|&pid| u32::try_from(pid).ok()).filter(|&pid| pid != 0).collect());
-                    }
-                    Ok(()) => {}
-                    Err(error) if error.code() == ERROR_MORE_DATA.to_hresult() => {}
-                    Err(error) => return Err(error),
-                }
-                let words = data.len().saturating_mul(2).max(assigned.saturating_add(header));
-                if words > u32::MAX as usize / size_of::<usize>() || data.try_reserve_exact(words - data.len()).is_err() {
-                    return Err(windows::core::Error::from_hresult(ERROR_MORE_DATA.to_hresult()));
-                }
-                data.resize(words, 0);
-            }
-        }
+        fn pids(&self) -> windows::core::Result<Vec<u32>> { job_pids(raw(&self.handle)) }
 
         fn contains(&self, process: HANDLE) -> windows::core::Result<bool> {
             let mut member = BOOL::default();
@@ -620,6 +646,33 @@ mod platform {
                 totals["gpu_pct"] = json!(gpu_total);
             }
             Ok(json!({"processes": processes, "totals": totals}))
+        }
+    }
+
+    fn job_pids(job: HANDLE) -> windows::core::Result<Vec<u32>> {
+        // The native header contains two DWORDs followed by a variable-length ULONG_PTR array.
+        let header = std::mem::offset_of!(JOBOBJECT_BASIC_PROCESS_ID_LIST, ProcessIdList) / size_of::<usize>();
+        let mut data = vec![0usize; header + 16];
+        loop {
+            let bytes = (data.len() * size_of::<usize>()) as u32;
+            let query = unsafe { QueryInformationJobObject(Some(job), JobObjectBasicProcessIdList,
+                data.as_mut_ptr().cast(), bytes, None) };
+            let assigned = data[0] as u32 as usize;
+            // On 64-bit Windows the two little-endian DWORDs share the first word.
+            let count = if header == 1 { (data[0] as u64 >> 32) as usize } else { data[1] };
+            match query {
+                Ok(()) if assigned == count && count <= data.len() - header => {
+                    return Ok(data[header..header + count].iter().filter_map(|&pid| u32::try_from(pid).ok()).filter(|&pid| pid != 0).collect());
+                }
+                Ok(()) => {}
+                Err(error) if error.code() == ERROR_MORE_DATA.to_hresult() => {}
+                Err(error) => return Err(error),
+            }
+            let words = data.len().saturating_mul(2).max(assigned.saturating_add(header));
+            if words > u32::MAX as usize / size_of::<usize>() || data.try_reserve_exact(words - data.len()).is_err() {
+                return Err(windows::core::Error::from_hresult(ERROR_MORE_DATA.to_hresult()));
+            }
+            data.resize(words, 0);
         }
     }
 
@@ -803,6 +856,13 @@ mod tests {
             json!({"mode":"performance","cpu":87.5,"ram":75.0,"gpu":90,"parallel":0,"priority":"normal"}));
         assert!((performance.effective(16, 32 * GIB)["ram"].as_f64().unwrap() - 85.0).abs() < 1e-8);
         assert_eq!(performance.effective(4, GIB)["ram"], 0.0);
+    }
+
+    #[test]
+    fn gpu_percent_maps_to_scheduling_class() {
+        for (gpu, class) in [(0, 0), (1, 1), (49, 1), (50, 2), (100, 2)] {
+            assert_eq!(gpu_class(gpu), class, "{gpu}");
+        }
     }
 
     #[test]
