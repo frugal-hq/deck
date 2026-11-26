@@ -1,7 +1,4 @@
 {
-  "account.auth.google": "Google-account",
-  "account.auth.key": "API-sleutel",
-  "account.auth.label": "Inloggen met",
   "account.delegated-today.one": "{count} vandaag gedelegeerd",
   "account.delegated-today.other": "{count} vandaag gedelegeerd",
   "account.delete.action": "Account verwijderen",
@@ -18,6 +15,7 @@
   "account.error.sign-in": "Het inloggen is niet voltooid. Selecteer Opnieuw proberen.",
   "account.error.update": "Werk frugal bij om dit soort account toe te voegen.",
   "account.key-hint": "Google traint op verkeer van de gratis versie; frugal gebruikt gratis Gemini alleen als je training toestaat.",
+  "account.agy-hint": "Google kan trainen op verkeer van de gratis versie van Antigravity; frugal gebruikt een gratis Antigravity-account alleen als je training toestaat.",
   "account.key.label": "API-sleutel",
   "account.kind.label": "Soort account",
   "account.kind.opencode": "OpenCode",

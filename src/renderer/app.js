@@ -1523,21 +1523,20 @@ function accountStep(index, state) {
 
 function accountFields() {
   const kind = accountForm.querySelector('[name="account-kind"]:checked').value;
-  const auth = accountForm.querySelector('[name="account-auth"]:checked')?.value || 'google';
   const locked = Boolean(accountAdd?.busy || accountAdd?.registered);
+  const paid = kind === 'gemini' || kind === 'antigravity';
   for (const input of accountForm.querySelectorAll('input')) input.disabled = locked;
   $('account-model-field').hidden = kind !== 'opencode';
   $('account-model').disabled = locked || kind !== 'opencode';
   $('account-model').required = kind === 'opencode';
-  $('account-auth-field').hidden = kind !== 'gemini';
-  const keyAuth = kind === 'gemini' && auth === 'key';
-  $('account-key-field').hidden = !keyAuth;
-  $('account-paid-field').hidden = kind !== 'gemini';
+  $('account-key-field').hidden = kind !== 'gemini';
+  $('account-paid-field').hidden = !paid;
   $('account-key-hint').hidden = kind !== 'gemini';
-  $('account-key').disabled = locked || !keyAuth;
-  $('account-key').required = keyAuth && !accountAdd?.registered;
-  $('account-paid').disabled = locked || kind !== 'gemini';
-  if (!keyAuth) $('account-key').value = '';
+  $('account-agy-hint').hidden = kind !== 'antigravity';
+  $('account-key').disabled = locked || kind !== 'gemini';
+  $('account-key').required = kind === 'gemini' && !accountAdd?.registered;
+  $('account-paid').disabled = locked || !paid;
+  if (kind !== 'gemini') $('account-key').value = '';
   $('account-submit').disabled = Boolean(accountAdd?.busy);
 }
 
@@ -1648,12 +1647,10 @@ accountForm.onsubmit = async (event) => {
       } else {
         const args = ['add', kind, id];
         if (kind === 'opencode') args.push($('account-model').value.trim());
-        const auth = kind === 'gemini' ? (accountForm.querySelector('[name="account-auth"]:checked')?.value || 'google') : null;
-        if (kind === 'gemini' && auth === 'google') args.push('--google');
-        if (kind === 'gemini' && $('account-paid').checked) args.push('--paid');
+        if ((kind === 'gemini' || kind === 'antigravity') && $('account-paid').checked) args.push('--paid');
         // Clear the input immediately; the key lives only in this invocation's stdin.
         let pending;
-        try { pending = deck.accountCli(args, kind === 'gemini' && auth !== 'google' ? `${$('account-key').value}\n` : null); }
+        try { pending = deck.accountCli(args, kind === 'gemini' ? `${$('account-key').value}\n` : null); }
         finally { $('account-key').value = ''; }
         const result = accountResult(await pending, true);
         if (result.ok !== true || result.id !== id || result.kind !== kind || typeof result.loggedIn !== 'boolean') throw new Error(t('account.error.add'));

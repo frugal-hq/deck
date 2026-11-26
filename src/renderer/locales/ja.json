@@ -1,7 +1,4 @@
 {
-  "account.auth.google": "Google アカウント",
-  "account.auth.key": "API キー",
-  "account.auth.label": "サインイン方法",
   "account.delegated-today.other": "本日 {count} 件を委任",
   "account.delete.action": "アカウントを削除",
   "account.delete.text": "これにより {folder} がサインイン情報と設定ごと削除されます。チャットは先に Main へ移動します。Frugal からも離脱します。この操作は元に戻せません。",
@@ -17,6 +14,7 @@
   "account.error.sign-in": "サインインが完了しませんでした。再試行するには「再試行」を選択してください。",
   "account.error.update": "この種類のアカウントを追加するには frugal を更新してください。",
   "account.key-hint": "Google は無料枠のトラフィックで学習します。frugal は学習を許可した場合にのみ無料枠の Gemini を使用します。",
+  "account.agy-hint": "Google は Antigravity の無料プランのトラフィックで学習する場合があります。frugal は学習を許可した場合にのみ無料プランの Antigravity アカウントを使用します。",
   "account.key.label": "API キー",
   "account.kind.label": "アカウントの種類",
   "account.kind.opencode": "OpenCode",

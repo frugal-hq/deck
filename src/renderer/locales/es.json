@@ -1,7 +1,4 @@
 {
-  "account.auth.google": "Cuenta de Google",
-  "account.auth.key": "Clave API",
-  "account.auth.label": "Iniciar sesión con",
   "account.delegated-today.one": "{count} delegado hoy",
   "account.delegated-today.other": "{count} delegados hoy",
   "account.delete.action": "Eliminar cuenta",
@@ -18,6 +15,7 @@
   "account.error.sign-in": "El inicio de sesión no terminó. Selecciona Reintentar para intentarlo de nuevo.",
   "account.error.update": "Actualiza frugal para agregar este tipo de cuenta.",
   "account.key-hint": "Google entrena con el tráfico del nivel gratuito; frugal solo usa Gemini gratuito si lo permites.",
+  "account.agy-hint": "Google puede entrenar con el tráfico del plan gratuito de Antigravity; frugal solo usa una cuenta gratuita de Antigravity si lo permites.",
   "account.key.label": "Clave API",
   "account.kind.label": "Tipo de cuenta",
   "account.kind.opencode": "OpenCode",

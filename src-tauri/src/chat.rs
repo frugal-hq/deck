@@ -192,6 +192,10 @@ pub(crate) fn find_cli(name: &str) -> Option<PathBuf> {
     std::env::split_paths(&path).find_map(|dir| {
         let names = if cfg!(windows) { vec![format!("{name}.exe"), format!("{name}.cmd"), format!("{name}.bat")] } else { vec![name.to_owned()] };
         names.into_iter().map(|name| dir.join(name)).find(|path| path.is_file())
+    }).or_else(|| {
+        // The agy installer adds this folder to PATH, but a running Deck keeps the PATH it started with.
+        let agy = PathBuf::from(std::env::var_os("LOCALAPPDATA").filter(|_| name == "agy")?).join("agy").join("bin").join("agy.exe");
+        agy.is_file().then_some(agy)
     })
 }
 
@@ -635,9 +639,9 @@ pub fn accounts_login(app: AppHandle, chats: State<Chats>, accounts: State<Mutex
         return invalid();
     }
     if let Some(argv) = o.argv {
-        if !argv.first().is_some_and(|s| matches!(s.as_str(), "codex" | "grok" | "opencode" | "claude")) ||
-            argv.iter().any(|s| s.contains('\0')) || o.env.iter().any(|(key, value)|
-                !matches!(key.as_str(), "CLAUDE_CONFIG_DIR" | "CODEX_HOME" | "GROK_HOME" | "XDG_DATA_HOME" | "GEMINI_CLI_HOME") || value.contains('\0')) {
+        if !argv.first().is_some_and(|s| matches!(s.as_str(), "codex" | "grok" | "opencode" | "claude" | "agy")) ||
+            argv.iter().any(|s| s.contains('\0')) || o.env.iter().any(|(key, value)| !matches!(key.as_str(), "CLAUDE_CONFIG_DIR" | "CODEX_HOME" |
+                "GROK_HOME" | "XDG_DATA_HOME" | "USERPROFILE" | "HOME" | "AGY_CLI_FORCE_FILE_TOKEN_STORAGE") || value.contains('\0')) {
             return invalid();
         }
         let Some(exe) = find_cli(&argv[0]) else { return json!({"error": crate::i18n::t("error.not-found-in-path", &[("name", &argv[0])])}); };

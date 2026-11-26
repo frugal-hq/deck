@@ -1,7 +1,4 @@
 {
-  "account.auth.google": "Google-Konto",
-  "account.auth.key": "API-Schlüssel",
-  "account.auth.label": "Anmelden mit",
   "account.delegated-today.one": "{count} heute delegiert",
   "account.delegated-today.other": "{count} heute delegiert",
   "account.delete.action": "Konto löschen",
@@ -18,6 +15,7 @@
   "account.error.sign-in": "Die Anmeldung wurde nicht abgeschlossen. Wähle „Erneut versuchen“.",
   "account.error.update": "Aktualisiere frugal, um diese Art von Konto hinzuzufügen.",
   "account.key-hint": "Google trainiert mit Daten aus dem kostenlosen Tarif; frugal nutzt kostenloses Gemini nur, wenn du das Training erlaubst.",
+  "account.agy-hint": "Google kann mit Daten aus dem kostenlosen Antigravity-Tarif trainieren; frugal nutzt ein kostenloses Antigravity-Konto nur, wenn du das Training erlaubst.",
   "account.key.label": "API-Schlüssel",
   "account.kind.label": "Kontoart",
   "account.kind.opencode": "OpenCode",

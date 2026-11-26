@@ -1,7 +1,4 @@
 {
-  "account.auth.google": "Google hesabı",
-  "account.auth.key": "API anahtarı",
-  "account.auth.label": "Giriş yöntemi",
   "account.delegated-today.one": "{count} bugün delege edildi",
   "account.delegated-today.other": "{count} bugün delege edildi",
   "account.delete.action": "Hesabı sil",
@@ -18,6 +15,7 @@
   "account.error.sign-in": "Oturum açma tamamlanamadı. Yeniden denemek için Yeniden dene seçin.",
   "account.error.update": "Bu tür hesap eklemek için frugal'ı güncelleyin.",
   "account.key-hint": "Google ücretsiz katmanda eğitim kullanır; frugal ücretsiz Gemini'yi yalnızca eğitime izin verirseniz kullanır.",
+  "account.agy-hint": "Google, Antigravity ücretsiz planındaki trafiği eğitimde kullanabilir; frugal ücretsiz bir Antigravity hesabını yalnızca eğitime izin verirseniz kullanır.",
   "account.key.label": "API anahtarı",
   "account.kind.label": "Hesap türü",
   "account.kind.opencode": "OpenCode",

@@ -1,7 +1,4 @@
 {
-  "account.auth.google": "Account Google",
-  "account.auth.key": "Chiave API",
-  "account.auth.label": "Accedi con",
   "account.delegated-today.one": "{count} attività delegata oggi",
   "account.delegated-today.other": "{count} attività delegate oggi",
   "account.delete.action": "Elimina account",
@@ -18,6 +15,7 @@
   "account.error.sign-in": "L’accesso non è stato completato. Seleziona Riprova.",
   "account.error.update": "Aggiorna Frugal per aggiungere questo tipo di account.",
   "account.key-hint": "Google usa il traffico del piano gratuito per addestrare i suoi modelli. Frugal usa Gemini gratuito solo se consenti l’addestramento.",
+  "account.agy-hint": "Google può usare il traffico del piano gratuito di Antigravity per addestrare i suoi modelli. Frugal usa un account Antigravity gratuito solo se consenti l’addestramento.",
   "account.key.label": "Chiave API",
   "account.kind.label": "Tipo di account",
   "account.kind.opencode": "OpenCode",

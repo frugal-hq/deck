@@ -1,7 +1,4 @@
 {
-  "account.auth.google": "Compte Google",
-  "account.auth.key": "Clé API",
-  "account.auth.label": "Se connecter avec",
   "account.delegated-today.one": "{count} délégué aujourd'hui",
   "account.delegated-today.other": "{count} délégués aujourd'hui",
   "account.delete.action": "Supprimer le compte",
@@ -18,6 +15,7 @@
   "account.error.sign-in": "La connexion n'a pas abouti. Sélectionnez Réessayer.",
   "account.error.update": "Mettez à jour frugal pour ajouter ce type de compte.",
   "account.key-hint": "Google entraîne ses modèles sur le trafic gratuit ; frugal n'utilise Gemini gratuit que si vous autorisez l'entraînement.",
+  "account.agy-hint": "Google peut entraîner ses modèles sur le trafic gratuit d'Antigravity ; frugal n'utilise un compte Antigravity gratuit que si vous autorisez l'entraînement.",
   "account.key.label": "Clé API",
   "account.kind.label": "Type de compte",
   "account.kind.opencode": "OpenCode",

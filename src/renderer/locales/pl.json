@@ -1,7 +1,4 @@
 {
-  "account.auth.google": "Konto Google",
-  "account.auth.key": "Klucz API",
-  "account.auth.label": "Zaloguj się przez",
   "account.delegated-today.one": "Zlecono dziś {count} zadanie",
   "account.delegated-today.few": "Zlecono dziś {count} zadania",
   "account.delegated-today.many": "Zlecono dziś {count} zadań",
@@ -20,6 +17,7 @@
   "account.error.sign-in": "Logowanie nie zostało ukończone. Wybierz „Ponów próbę”.",
   "account.error.update": "Zaktualizuj Frugal, aby dodać konto tego typu.",
   "account.key-hint": "Google wykorzystuje ruch z bezpłatnego planu do trenowania modeli. Frugal używa bezpłatnego Gemini tylko wtedy, gdy zezwolisz na trenowanie.",
+  "account.agy-hint": "Google może wykorzystywać ruch z bezpłatnego planu Antigravity do trenowania modeli. Frugal używa bezpłatnego konta Antigravity tylko wtedy, gdy zezwolisz na trenowanie.",
   "account.key.label": "Klucz API",
   "account.kind.label": "Typ konta",
   "account.kind.opencode": "OpenCode",

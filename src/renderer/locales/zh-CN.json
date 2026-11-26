@@ -1,7 +1,4 @@
 {
-  "account.auth.google": "Google 账号",
-  "account.auth.key": "API 密钥",
-  "account.auth.label": "登录方式",
   "account.delegated-today.other": "今日已委派 {count} 个",
   "account.delete.action": "删除账户",
   "account.delete.text": "此操作将删除 {folder} 及其登录信息和设置。其聊天将先移至 Main。同时也会离开 Frugal。此操作无法撤销。",
@@ -17,6 +14,7 @@
   "account.error.sign-in": "登录未完成。选择“重试”再试一次。",
   "account.error.update": "更新 frugal 以添加此类账户。",
   "account.key-hint": "Google 会对免费套餐流量进行训练；frugal 仅在你允许训练时使用免费套餐 Gemini。",
+  "account.agy-hint": "Google 可能会对 Antigravity 免费套餐流量进行训练；frugal 仅在你允许训练时使用免费套餐 Antigravity 账号。",
   "account.key.label": "API 密钥",
   "account.kind.label": "账户类型",
   "account.kind.opencode": "OpenCode",

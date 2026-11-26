@@ -208,16 +208,14 @@
       <label><input type="radio" name="account-kind" value="grok">Grok</label>
       <label data-i18n="account.kind.opencode"><input type="radio" name="account-kind" value="opencode">OpenCode</label>
       <label><input type="radio" name="account-kind" value="gemini">Gemini</label>
-    </div>
-    <div id="account-auth-field" class="segmented" role="radiogroup" aria-label="Sign in with" data-i18n-aria-label="account.auth.label" hidden>
-      <label data-i18n="account.auth.google"><input type="radio" name="account-auth" value="google" checked>Google account</label>
-      <label data-i18n="account.auth.key"><input type="radio" name="account-auth" value="key">API key</label>
+      <label><input type="radio" name="account-kind" value="antigravity">Antigravity</label>
     </div>
     <label class="organize__field" data-i18n="account.name.label">Name<input id="account-name" required maxlength="40" pattern=".*\S.*" autocomplete="off" spellcheck="false"></label>
     <label id="account-model-field" class="organize__field" hidden data-i18n="account.model.label">Model<input id="account-model" placeholder="provider/model" autocomplete="off" spellcheck="false" disabled></label>
     <label id="account-key-field" class="organize__field" hidden data-i18n="account.key.label">API key<input id="account-key" type="password" maxlength="4096" autocomplete="off" spellcheck="false" disabled></label>
     <label id="account-paid-field" class="organize__check" hidden data-i18n="account.paid.label"><input id="account-paid" type="checkbox" disabled> Billing or a paid Google plan is on</label>
     <p id="account-key-hint" class="organize__text" hidden data-i18n="account.key-hint">Google trains on free-tier traffic; frugal only uses free-tier Gemini if you allow training.</p>
+    <p id="account-agy-hint" class="organize__text" hidden data-i18n="account.agy-hint">Google may train on free-plan Antigravity traffic; frugal only uses a free-plan Antigravity account if you allow training.</p>
     <ol id="account-steps" aria-label="Account setup steps" aria-live="polite" data-i18n-aria-label="account.steps.label">
       <li data-state="pending" data-i18n="account.steps.install">Install</li>
       <li data-state="pending" data-i18n="account.steps.sign-in">Sign in</li>
