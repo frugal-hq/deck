@@ -939,8 +939,13 @@ fn valid_cli_args(args: &[String], stdin: Option<&str>) -> bool {
             "claude" | "codex" | "grok" => args.len() == 3 && stdin.is_none(),
             "opencode" => args.len() == 4 && stdin.is_none() && args[3].split_once('/').is_some_and(|(p, m)|
                 !p.is_empty() && !m.is_empty() && !args[3].chars().any(|c| c.is_whitespace() || c.is_control())) && !args[3].starts_with('-'),
-            "gemini" => (args.len() == 3 || (args.len() == 4 && args[3] == "--paid")) && stdin.is_some_and(|s|
-                !s.trim().is_empty() && s.len() <= 4097 && !s.strip_suffix('\n').unwrap_or(s).contains(['\r', '\n', '\0'])),
+            "gemini" => {
+                let tail = &args[3..];
+                let google = tail.iter().any(|a| a == "--google");
+                tail.iter().all(|a| a == "--google" || a == "--paid") && (tail.len() < 2 || tail[0] != tail[1]) && tail.len() <= 2 && if google { stdin.is_none() } else {
+                    stdin.is_some_and(|s| !s.trim().is_empty() && s.len() <= 4097 && !s.strip_suffix('\n').unwrap_or(s).contains(['\r', '\n', '\0']))
+                }
+            }
             _ => false,
         },
         Some("status" | "login-command") => args.len() == 2 && valid_id(&args[1]) && stdin.is_none(),
@@ -1139,6 +1144,20 @@ pub fn mcp_set(app: AppHandle, accounts: State<Mutex<Accounts>>, scope: Value, n
 pub(crate) mod tests {
     use super::*;
     use std::io::Write;
+
+    #[test]
+    fn valid_cli_gemini_auth() {
+        let a = |tail: &[&str]| ["add", "gemini", "gg"].iter().chain(tail).map(|s| s.to_string()).collect::<Vec<_>>();
+        assert!(valid_cli_args(&a(&[]), Some("key\n")));
+        assert!(valid_cli_args(&a(&["--paid"]), Some("key\n")));
+        assert!(valid_cli_args(&a(&["--google"]), None));
+        assert!(valid_cli_args(&a(&["--google", "--paid"]), None));
+        assert!(valid_cli_args(&a(&["--paid", "--google"]), None));
+        assert!(!valid_cli_args(&a(&["--google"]), Some("key\n")));
+        assert!(!valid_cli_args(&a(&[]), None));
+        assert!(!valid_cli_args(&a(&["--google", "--google"]), None));
+        assert!(!valid_cli_args(&a(&["--other"]), None));
+    }
 
     pub(crate) struct TempDir(pub(crate) PathBuf);
     impl TempDir {

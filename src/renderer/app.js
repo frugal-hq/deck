@@ -1417,16 +1417,21 @@ function accountStep(index, state) {
 
 function accountFields() {
   const kind = accountForm.querySelector('[name="account-kind"]:checked').value;
+  const auth = accountForm.querySelector('[name="account-auth"]:checked')?.value || 'google';
   const locked = Boolean(accountAdd?.busy || accountAdd?.registered);
   for (const input of accountForm.querySelectorAll('input')) input.disabled = locked;
   $('account-model-field').hidden = kind !== 'opencode';
   $('account-model').disabled = locked || kind !== 'opencode';
   $('account-model').required = kind === 'opencode';
-  for (const id of ['account-key-field', 'account-paid-field', 'account-key-hint']) $(id).hidden = kind !== 'gemini';
-  $('account-key').disabled = locked || kind !== 'gemini';
-  $('account-key').required = kind === 'gemini' && !accountAdd?.registered;
+  $('account-auth-field').hidden = kind !== 'gemini';
+  const keyAuth = kind === 'gemini' && auth === 'key';
+  $('account-key-field').hidden = !keyAuth;
+  $('account-paid-field').hidden = kind !== 'gemini';
+  $('account-key-hint').hidden = kind !== 'gemini';
+  $('account-key').disabled = locked || !keyAuth;
+  $('account-key').required = keyAuth && !accountAdd?.registered;
   $('account-paid').disabled = locked || kind !== 'gemini';
-  if (kind !== 'gemini') $('account-key').value = '';
+  if (!keyAuth) $('account-key').value = '';
   $('account-submit').disabled = Boolean(accountAdd?.busy);
 }
 
@@ -1531,6 +1536,8 @@ accountForm.onsubmit = async (event) => {
       } else {
         const args = ['add', kind, id];
         if (kind === 'opencode') args.push($('account-model').value.trim());
+        const auth = kind === 'gemini' ? (accountForm.querySelector('[name="account-auth"]:checked')?.value || 'google') : null;
+        if (kind === 'gemini' && auth === 'google') args.push('--google');
         if (kind === 'gemini' && $('account-paid').checked) args.push('--paid');
         // Clear the input immediately; the key lives only in this invocation's stdin.
         let pending;
