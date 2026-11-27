@@ -50,6 +50,18 @@
   <symbol id="i-working" viewBox="0 0 16 16"><path class="level" d="M4 5.5v5"/><path class="level" d="M8 3v10"/><path class="level" d="M12 4.5v7"/></symbol>
   <symbol id="i-waiting" viewBox="0 0 16 16"><path d="M3.5 2.5h9a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2H7.5l-3.5 2.5v-2.5h-.5a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2z"/><path d="M6.6 5.4a1.45 1.45 0 1 1 2 1.35c-.35.15-.6.45-.6.85"/><path d="M8 9.35h.01" stroke-width="2"/></symbol>
   <symbol id="i-replied" viewBox="0 0 16 16"><path d="M3.5 2.5h9a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2H7.5l-3.5 2.5v-2.5h-.5a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2z"/><path d="m5.5 7 1.75 1.75L10.5 5.5"/></symbol>
+  <symbol id="i-check" viewBox="0 0 16 16"><path d="m3.5 8.5 3 3 6-7"/></symbol>
+  <symbol id="i-check-retry" viewBox="0 0 16 16"><path d="M13.5 8a5.5 5.5 0 1 1-1.6-3.9m1.6-1.6v2.5H11"/><path d="m5.75 8 1.5 1.5 3-3"/></symbol>
+  <symbol id="i-retry" viewBox="0 0 16 16"><path d="M13.5 8a5.5 5.5 0 1 1-1.6-3.9m1.6-1.6v2.5H11"/></symbol>
+  <symbol id="i-alert" viewBox="0 0 16 16"><path d="M7.13 2.5a1 1 0 0 1 1.74 0l5.2 9a1 1 0 0 1-.87 1.5H2.8a1 1 0 0 1-.87-1.5z"/><path d="M8 6.25v3"/><path d="M8 11.25h.01" stroke-width="2"/></symbol>
+  <symbol id="i-clock" viewBox="0 0 16 16"><circle cx="8" cy="8" r="5.75"/><path d="M8 4.75V8l2.25 1.5"/></symbol>
+  <symbol id="i-cancel" viewBox="0 0 16 16"><circle cx="8" cy="8" r="5.75"/><path d="m3.95 12.05 8.1-8.1"/></symbol>
+  <symbol id="i-moon" viewBox="0 0 16 16"><path d="M13.25 9.75A5.5 5.5 0 1 1 6.25 2.75a4.5 4.5 0 0 0 7 7z"/></symbol>
+  <symbol id="i-activity" viewBox="0 0 16 16"><path d="M1.75 8h2.75l1.75-4.5 3.5 9 1.75-4.5h2.75"/></symbol>
+  <symbol id="i-sparkle" viewBox="0 0 16 16"><path d="M8 2c.5 3.2 2.8 5.5 6 6-3.2.5-5.5 2.8-6 6-.5-3.2-2.8-5.5-6-6 3.2-.5 5.5-2.8 6-6z"/></symbol>
+  <symbol id="i-context" viewBox="0 0 16 16"><circle cx="8" cy="8" r="5.75"/><path d="M8 2.25V8h5.75"/></symbol>
+  <symbol id="i-hash" viewBox="0 0 16 16"><path d="M6.5 2.5 5.5 13.5m5-11-1 11M2.75 6h11m-11.5 4h11"/></symbol>
+  <symbol id="i-coin" viewBox="0 0 16 16"><circle cx="8" cy="8" r="5.75"/><path d="M9.75 5.75H7.4a1.15 1.15 0 0 0 0 2.3h1.2a1.15 1.15 0 0 1 0 2.3H6.25M8 4.5v1.25m0 4.5v1.25"/></symbol>
   <symbol id="i-attach" viewBox="0 0 16 16"><path d="m13 7.5-5.2 5.2a3 3 0 0 1-4.3-4.3l5.6-5.6a2 2 0 0 1 2.8 2.8L6.3 11.2a1 1 0 0 1-1.4-1.4l5-5"/></symbol>
   <symbol id="i-mic" viewBox="0 0 16 16"><rect x="5.75" y="1.75" width="4.5" height="8" rx="2.25"/><path d="M3.5 7.5a4.5 4.5 0 0 0 9 0M8 12v2.25"/></symbol>
   <symbol id="i-mic-off" viewBox="0 0 16 16"><rect x="5.75" y="1.75" width="4.5" height="8" rx="2.25"/><path d="M3.5 7.5a4.5 4.5 0 0 0 9 0M8 12v2.25M2.5 2.5l11 11"/></symbol>
@@ -110,27 +122,24 @@
   </section>
 </main>
 <aside id="info-panel" class="info-panel" aria-label="Chat details" hidden data-i18n-aria-label="info.title">
-  <section aria-labelledby="info-heading">
-    <h2 id="info-heading" data-i18n="task.chat"><svg class="icon" aria-hidden="true"><use href="#i-chat"/></svg>Chat</h2>
+  <details id="info-chat" open>
+    <summary data-i18n="task.chat"><svg class="icon" aria-hidden="true"><use href="#i-chat"/></svg>Chat<svg class="icon disclosure" aria-hidden="true"><use href="#i-chevron"/></svg></summary>
     <dl id="info-details"></dl>
-  </section>
-  <section id="info-subagents" aria-labelledby="info-subagents-heading" hidden>
-    <h2 id="info-subagents-heading" data-i18n="menu.tasks"><svg class="icon" aria-hidden="true"><use href="#i-tasks"/></svg>Tasks</h2>
+  </details>
+  <details id="info-subagents" open hidden>
+    <summary data-i18n="menu.tasks"><svg class="icon" aria-hidden="true"><use href="#i-tasks"/></svg>Tasks<svg class="icon disclosure" aria-hidden="true"><use href="#i-chevron"/></svg></summary>
     <div id="info-tasks-list"></div>
     <button id="info-tasks-more" class="btn is-linked" type="button" aria-controls="info-tasks-list" aria-expanded="false" hidden></button>
-  </section>
-  <section id="info-commands" aria-labelledby="info-commands-heading" hidden>
-    <h2 id="info-commands-heading" data-i18n="info.commands.label"><svg class="icon" aria-hidden="true"><use href="#i-terminal"/></svg>Commands</h2>
+  </details>
+  <details id="info-commands" open hidden>
+    <summary data-i18n="info.commands.label"><svg class="icon" aria-hidden="true"><use href="#i-terminal"/></svg>Commands<svg class="icon disclosure" aria-hidden="true"><use href="#i-chevron"/></svg></summary>
     <div id="info-commands-list"></div>
     <button id="info-commands-more" class="btn is-linked" type="button" aria-controls="info-commands-list" aria-expanded="false" hidden></button>
-  </section>
+  </details>
   <details id="info-procs">
     <summary data-i18n="info.procs.label"><svg class="icon" aria-hidden="true"><use href="#i-cpu"/></svg>Processes<svg class="icon disclosure" aria-hidden="true"><use href="#i-chevron"/></svg></summary>
-    <div class="info-panel__subhead">
-      <h3 id="info-procs-resources" data-i18n="info.procs.resources">Resources</h3>
-      <button id="info-procs-end" class="btn btn--icon is-linked" type="button" disabled aria-label="End background processes…" data-i18n-aria-label="info.procs.background.action"><svg class="icon" aria-hidden="true"><use href="#i-trash"/></svg></button>
-    </div>
-    <div id="info-procs-count" class="info-panel__usage" aria-labelledby="info-procs-resources" role="group"></div>
+    <button id="info-procs-end" class="btn btn--icon is-linked info-panel__end" type="button" disabled aria-label="End background processes…" data-i18n-aria-label="info.procs.background.action"><svg class="icon" aria-hidden="true"><use href="#i-trash"/></svg></button>
+    <dl id="info-procs-count"></dl>
     <p id="info-procs-status" class="sort__status" role="status" hidden></p>
     <div id="info-procs-list"></div>
   </details>

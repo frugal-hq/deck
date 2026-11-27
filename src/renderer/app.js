@@ -1259,27 +1259,31 @@ function drawInfo(chat) {
   const tokens = chat.inputTokens != null || chat.outputTokens != null ? t('info.tokens.in-out', { input: compact.format(chat.inputTokens ?? 0), output: compact.format(chat.outputTokens ?? 0) }) : '';
   const title = chat.title?.replace(/^[^\p{L}\p{N}\s] /u, ''); // Without the spinner mark (isBusyTitle).
   const rows = [
-    [t('info.task'), [chat.name, title !== chat.name && title].filter(Boolean).join('\n')],
-    [t('info.state'), STATE_LABEL[chat.state](chat)],
-    [t('info.session'), chat.id],
-    [t('clean.col.account'), account?.name ?? chat.account],
-    [t('account.model.label'), chat.model],
-    [t('sort.effort.label'), chat.effort],
-    [t('info.elapsed'), elapsed(chat), 'info-elapsed'],
-    [t('usage.context.label'), context],
-    [t('info.tokens'), tokens],
-    [t('info.cost'), chat.cost > 0 ? t('common.cost-usd', { amount: chat.cost.toFixed(2) }) : ''],  // Claude Code may report 0 for a chat it did not price
+    ['topic', t('info.task'), [chat.name, title !== chat.name && title].filter(Boolean).join('\n')],
+    ['activity', t('info.state'), STATE_LABEL[chat.state](chat)],
+    ['terminal', t('info.session'), chat.id],
+    ['user', t('clean.col.account'), account?.name ?? chat.account],
+    ['sparkle', t('account.model.label'), chat.model],
+    ['gauge', t('sort.effort.label'), chat.effort],
+    ['clock', t('info.elapsed'), elapsed(chat), 'info-elapsed'],
+    ['context', t('usage.context.label'), context],
+    ['hash', t('info.tokens'), tokens],
+    ['coin', t('info.cost'), chat.cost > 0 ? t('common.cost-usd', { amount: chat.cost.toFixed(2) }) : ''],  // Claude Code may report 0 for a chat it did not price
   ];
-  $('info-details').replaceChildren(...rows.filter(([, value]) => value != null && value !== '').map(([label, value, id]) => {
-    const row = node('div', 'info-panel__row');
-    const detail = node('dd', '', value);
-    if (id) detail.id = id;
-    row.append(node('dt', '', label), detail);
-    return row;
-  }));
+  $('info-details').replaceChildren(...rows.filter(([, , value]) => value != null && value !== '').map((row) => infoRow(...row)));
+}
+// A key-value row of the details panel: icon and label at the start, value at the end.
+function infoRow(name, label, value, id) {
+  const row = node('div', 'info-panel__row');
+  const term = node('dt', '', label);
+  term.prepend(icon(name));
+  const detail = node('dd', '', value);
+  if (id) detail.id = id;
+  row.append(term, detail);
+  return row;
 }
 
-const TASK_STATUS = { running: t('chat.state.running'), done: t('info.done.label'), failed: t('info.failed.label'), cancelled: t('info.cancelled.label'), 'not delegated': t('task.not-delegated') };
+const TASK_STATUS = { running: t('chat.state.running'), retrying: t('info.status.retrying'), done: t('info.done.label'), failed: t('info.failed.label'), changed: t('info.status.changed'), timeout: t('info.status.timeout'), cancelled: t('info.cancelled.label'), interrupted: t('info.status.interrupted'), background: t('info.status.background'), 'not delegated': t('task.not-delegated') };
 
 // Accounts go by the name the usage panel shows; a run job with no account ran its command here, with no model.
 const accountLabel = (id) => [...accountState.accounts, ...accountState.others].find((account) => account.id === id)?.name ?? id.replace(/^oc-/, '');
@@ -1295,9 +1299,27 @@ const isFailed = (task) => task.status === 'failed' || task.status === 'not dele
 const checkFailed = (task) => task.status === 'failed' && task.kind === 'edit' && task.cause === 'brief';
 const taskStatus = (task) => (checkFailed(task) ? t('task.check-failed') : TASK_STATUS[task.status] ?? task.status);
 const TASK_CAUSES = ['account', 'env', 'brief', 'code', 'frugal'];
-const taskState = (task) => (task.running ? 'running' : isFailed(task) ? 'failed' : task.status === 'cancelled' ? 'cancelled' : 'done');
-const TASK_MARK = { failed: 'x', cancelled: 'more', done: 'replied' };
-const TASK_RANK = { running: 0, failed: 1, cancelled: 2, done: 2 };
+const timedOut = (text) => /timed out/i.test(text ?? '');
+// Earlier failed tries make a running task retrying and a finished one done after retries; a failure that left changes in the tree is its own state.
+function taskState(task) {
+  const retries = task.failures?.length;
+  if (task.running) return retries ? 'retrying' : 'running';
+  if (task.status === 'cancelled') return 'cancelled';
+  if (!isFailed(task)) return retries ? 'retried' : 'done';
+  if (checkFailed(task) || /after changing/.test(task.result ?? '')) return 'changed';
+  return timedOut(task.result) || timedOut(task.failures?.at(-1)?.reason) ? 'timeout' : 'failed';
+}
+const stateLabel = (state, task) => (state === 'retried' ? tp('info.status.retried', task.failures.length) : TASK_STATUS[state]);
+const STATUS_MARK = { done: 'check', retried: 'check-retry', changed: 'alert', timeout: 'clock', failed: 'x', cancelled: 'cancel', interrupted: 'cancel', retrying: 'retry', background: 'moon' };
+const TASK_RANK = { running: 0, retrying: 0, failed: 1, changed: 1, timeout: 1, cancelled: 2, done: 2, retried: 2 };
+function statusMark(state, label) {
+  const mark = node('span', `info-panel__status is-${state}`);
+  mark.append(state === 'running' ? statusIcon('working') : icon(STATUS_MARK[state]));
+  mark.setAttribute('role', 'img');
+  mark.setAttribute('aria-label', label);
+  mark.dataset.tip = label;
+  return mark;
+}
 
 function taskCauseChip(cause) {
   return TASK_CAUSES.includes(cause) ? node('span', 'tag tag--cause', failureLabels.causes[cause]) : null;
@@ -1305,10 +1327,10 @@ function taskCauseChip(cause) {
 
 // Every failed try, from frugal 0.28.6 on; a job with no end logged was marked failed after 35 minutes.
 function whyFailed(task) {
-  if (!isFailed(task)) return '';
   const tries = task.failures ?? [];
+  if (!isFailed(task) && !tries.length) return '';
   if (!tries.length) return task.result ? '' : t('task.no-end');
-  const details = node('span', '', checkFailed(task) ? t('task.why-check-failed') : t('task.why-failed'));
+  const details = node('span', '', !isFailed(task) ? t('task.why-retried') : checkFailed(task) ? t('task.why-check-failed') : t('task.why-failed'));
   for (const f of tries) {
     details.append('\n- ');
     const cause = taskCauseChip(f.cause);
@@ -1328,12 +1350,7 @@ function taskRow(task) {
   const row = node('button', `row row--interactive info-panel__task${local ? ' is-local' : ''}`);
   row.type = 'button';
   const state = taskState(task);
-  const mark = node('span', `info-panel__status is-${state}`);
-  mark.append(state === 'running' ? statusIcon('working') : icon(TASK_MARK[state]));
-  mark.setAttribute('role', 'img');
-  mark.setAttribute('aria-label', TASK_STATUS[state]);
-  mark.dataset.tip = TASK_STATUS[state];
-  row.append(mark);
+  row.append(statusMark(state, stateLabel(state, task)));
   const account = taskAccount(task);
   if (local) row.append(node('span', 'tag tag--cause', t('info.local.label')));
   else if (account) row.append(node('span', 'row__meta row__meta--path', account));
@@ -1400,18 +1417,17 @@ function commandRow(command) {
   // A button only so the details tooltip is reachable by keyboard; it has no click action.
   const row = node('button', 'row row--interactive info-panel__task');
   row.type = 'button';
-  const state = command.status === 'running' ? 'running' : command.status === 'failed' ? 'failed' : 'done';
-  const mark = node('span', `info-panel__status is-${state}`);
-  mark.append(state === 'running' ? statusIcon('working') : icon(TASK_MARK[state]));
-  mark.setAttribute('role', 'img');
-  mark.setAttribute('aria-label', TASK_STATUS[state]);
+  const state = ['running', 'failed', 'timeout', 'interrupted', 'background'].includes(command.status) ? command.status : 'done';
+  const status = state === 'failed' && command.exit != null ? t('info.status.exit', { code: command.exit }) : TASK_STATUS[state];
+  const mark = statusMark(state, status);
   const at = Date.parse(command.at);
   const time = Number.isNaN(at) ? '' : new Date(at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   row.append(mark, node('span', 'row__name', command.description || commandTitle(command.command)), node('span', 'row__meta', time));
   const label = (name, value) => (value ? t('common.label-value', { label: name, value }) : '');
   row.dataset.tip = [
     label(t('task.command'), command.command),
-    label(t('clean.col.status'), TASK_STATUS[state]),
+    label(t('clean.col.status'), status),
+    command.detail,
     label(t('mcp.add.type.label'), command.shell),
     label(t('task.when'), time && new Date(at).toLocaleString()),
   ].filter(Boolean).join('\n');
@@ -1460,13 +1476,10 @@ function drawProcs(chat, { processes, totals }) {
   end.dataset.tip = background.length ? t('info.procs.background.action') : t('info.procs.background.none');
   end.onclick = () => endBackground(chat, background);
   const list = $('info-procs-list');
-  const usage = [['menu', tp('info.procs.count', processes.length)], ['gauge', t('info.procs.cpu', { percent: Math.round(totals.cpu_pct) })],
-    ['memory', sizeText(totals.ram_bytes, 1024)], ...(totals.gpu_pct != null ? [['gpu', t('info.procs.gpu', { percent: Math.round(totals.gpu_pct) })]] : [])];
-  $('info-procs-count').replaceChildren(...usage.map(([name, text]) => {
-    const item = node('span');
-    item.append(icon(name), text);
-    return item;
-  }));
+  const percent = (value) => t('common.percent', { percent: Math.round(value) });
+  const usage = [['menu', t('info.procs.label'), String(processes.length)], ['gauge', t('info.procs.cpu.label'), percent(totals.cpu_pct)],
+    ['memory', t('info.procs.ram.label'), sizeText(totals.ram_bytes, 1024)], ...(totals.gpu_pct != null ? [['gpu', t('info.procs.gpu.label'), percent(totals.gpu_pct)]] : [])];
+  $('info-procs-count').replaceChildren(...usage.map((row) => infoRow(...row)));
   const focused = document.activeElement?.closest('[data-process]')?.dataset.process;
   const rows = processes.sort((a, b) => b.ram_bytes - a.ram_bytes).map((proc) => procRow(chat, proc));
   list.replaceChildren(...(rows.length ? rows : [emptyState(t('info.procs.empty'))]));
@@ -1539,6 +1552,19 @@ $('info-procs').ontoggle = () => {
   const chat = chats.get(infoChatId);
   if (chat) refreshProcs(chat, infoGeneration);
 };
+// The details sections the user left open or closed, kept across restarts.
+const INFO_SECTIONS = ['info-chat', 'info-subagents', 'info-commands', 'info-procs'];
+try {
+  const saved = JSON.parse(localStorage.getItem('infoSections')) ?? {};
+  for (const id of INFO_SECTIONS) if (typeof saved[id] === 'boolean') $(id).open = saved[id];
+} catch { /* Storage blocked or the saved value is broken: keep the defaults. */ }
+for (const id of INFO_SECTIONS) {
+  $(id).addEventListener('toggle', () => {
+    try {
+      localStorage.setItem('infoSections', JSON.stringify(Object.fromEntries(INFO_SECTIONS.map((section) => [section, $(section).open]))));
+    } catch { /* Storage blocked: the state lasts this run only. */ }
+  });
+}
 
 function syncInfoPanel() {
   const chat = chats.get(activeId);
