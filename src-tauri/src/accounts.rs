@@ -441,6 +441,10 @@ impl Accounts {
             write_json(&file, &data)
         }); // An unreadable accounts.json is left alone.
     }
+    fn has_caps(&self) -> bool {
+        let s = self.load();
+        s["caps"].as_object().is_some_and(|caps| caps.keys().any(|id| { let c = account_caps(id, &s); cap_of(&c["fiveHour"]) < 100.0 || cap_of(&c["sevenDay"]) < 100.0 }))
+    }
     pub fn apply_codex_caps(&self) {
         for e in self.frugal_accounts().iter().filter(|e| e["kind"] == "codex") { self.apply_account_caps(string(&e["id"]), &Value::Null, now()); }
     }
@@ -1053,15 +1057,23 @@ static REFRESHING: Mutex<()> = Mutex::new(());
 
 #[tauri::command]
 pub async fn accounts_refresh(app: AppHandle) {
-    let _ = tauri::async_runtime::spawn_blocking(move || {
-        let Some(claude) = crate::chat::find_claude() else { return; };
-        let Ok(_running) = REFRESHING.try_lock() else { return; };
-        let open = app.state::<crate::chat::Chats>().open_accounts();
-        let accounts = app.state::<Mutex<Accounts>>();
-        if Accounts::refresh_readings(&accounts, &claude, &crate::chat::clean_env(), &open, None).unwrap_or(false) {
-            let _ = publish(&app, &mut accounts.lock().unwrap());
-        }
-    }).await;
+    let _ = tauri::async_runtime::spawn_blocking(move || refresh(&app, false)).await;
+}
+fn refresh(app: &AppHandle, always_publish: bool) {
+    let Some(claude) = crate::chat::find_claude() else { return; };
+    let Ok(_running) = REFRESHING.try_lock() else { return; };
+    let open = app.state::<crate::chat::Chats>().open_accounts();
+    let accounts = app.state::<Mutex<Accounts>>();
+    if Accounts::refresh_readings(&accounts, &claude, &crate::chat::clean_env(), &open, None).unwrap_or(false) || always_publish {
+        let _ = publish(app, &mut accounts.lock().unwrap());
+    }
+}
+// Caps are enforced only through exhausted_until, so capped delegates need fresh readings without the Usage screen open.
+pub fn watch_caps(app: AppHandle) {
+    thread::spawn(move || loop {
+        thread::sleep(Duration::from_millis(FRESH_MS as u64));
+        if app.state::<Mutex<Accounts>>().lock().unwrap().has_caps() { refresh(&app, true); }
+    });
 }
 
 fn find_account(accounts: &Mutex<Accounts>, id: &str) -> Option<Value> { accounts.lock().unwrap().claude_accounts().into_iter().find(|a| a["id"] == id) }

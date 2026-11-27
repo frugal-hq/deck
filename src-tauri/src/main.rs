@@ -103,6 +103,7 @@ fn main() {
             // Also covers accounts added to the Frugal pool outside the Deck.
             let _ = accounts.apply_keep_transcripts();
             app.manage(Mutex::new(accounts));
+            accounts::watch_caps(app.handle().clone());
             let bounds_file = app.path().app_data_dir()?.join("window.json");
             // Missing or malformed file: the defaults. A rect no longer on any display keeps its size but is recentered.
             let saved = std::fs::read_to_string(&bounds_file).ok().and_then(|text| serde_json::from_str::<Bounds>(&text).ok()).filter(|b| b.width >= 400 && b.height >= 300);
