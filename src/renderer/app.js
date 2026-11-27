@@ -5881,6 +5881,8 @@ async function loadSources() {
   pickOption($('record-monitor'), saved.monitor);
   pickOption($('record-window'), saved.hwnd);
   pickOption($('record-mic-device'), saved.micDevice);
+  pickOption($('record-mic-gain'), saved.micGain ?? 1);
+  pickOption($('record-system-gain'), saved.systemGain ?? 1);
   pickOption($('record-height'), saved.height ?? 1080);
   pickOption($('record-fps'), saved.fps ?? 30);
   $('record-mic').checked = saved.mic === true;
@@ -5903,8 +5905,8 @@ function drawRecordForm() {
   $('record-area-row').hidden = kind !== 'region';
   $('record-area').disabled = !$('record-monitor').options.length;
   $('record-area-size').textContent = recordArea ? t('recorder.area.size', { width: recordArea.width, height: recordArea.height }) : t('recorder.area.none');
-  $('record-mic-device').disabled = !$('record-mic').checked;
-  $('record-app').disabled = !$('record-system').checked;
+  $('record-mic-device').disabled = $('record-mic-gain').disabled = !$('record-mic').checked;
+  $('record-app').disabled = $('record-system-gain').disabled = !$('record-system').checked;
   const game = $('record-game').checked;
   const fps = $('record-fps');
   const clicks = $('record-clicks');
@@ -5942,8 +5944,10 @@ $('record-start').onclick = async () => {
     kind,
     mic: $('record-mic').checked,
     micDevice: $('record-mic-device').value || null,
+    micGain: Number($('record-mic-gain').value),
     system: $('record-system').checked,
     app: app ? Number(app) : null,
+    systemGain: Number($('record-system-gain').value),
     fps: Number($('record-fps').value),
     height: Number($('record-height').value),
     clicks: $('record-clicks').checked,

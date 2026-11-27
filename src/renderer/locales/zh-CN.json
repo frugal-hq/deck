@@ -1234,6 +1234,8 @@
   "recorder.quality.heavy": "60 fps 的 4K 需要较快的显卡。",
   "recorder.audio.app.label": "系统声音来自",
   "recorder.audio.app.all": "所有应用",
+  "recorder.mic-volume": "麦克风音量",
+  "recorder.system-volume": "电脑声音音量",
   "recorder.clicks": "显示点击和拖动",
   "recorder.clicks.hint": "点击带圆环，拖动带框，画进视频。",
   "recorder.zoom": "跟随指针",

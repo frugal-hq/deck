@@ -1284,6 +1284,8 @@
   "recorder.quality.heavy": "4K bij 60 fps heeft een snelle videokaart nodig.",
   "recorder.audio.app.label": "Systeemgeluid van",
   "recorder.audio.app.all": "Alle apps",
+  "recorder.mic-volume": "Microfoonvolume",
+  "recorder.system-volume": "Volume computergeluid",
   "recorder.clicks": "Klikken en slepen tonen",
   "recorder.clicks.hint": "Klikken krijgen een ring en slepen een kader, in de video getekend.",
   "recorder.zoom": "Aanwijzer volgen",

@@ -1384,6 +1384,8 @@
   "recorder.quality.heavy": "Для 4K при 60 fps потрібна швидка відеокарта.",
   "recorder.audio.app.label": "Звук системи з",
   "recorder.audio.app.all": "Усі застосунки",
+  "recorder.mic-volume": "Гучність мікрофона",
+  "recorder.system-volume": "Гучність звуку комп’ютера",
   "recorder.clicks": "Показувати натискання й перетягування",
   "recorder.clicks.hint": "Натискання отримують кільце, а перетягування рамку, намальовані у відео.",
   "recorder.zoom": "Стежити за вказівником",

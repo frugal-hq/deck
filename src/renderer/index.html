@@ -949,10 +949,12 @@
         <span id="record-audio-label" class="recorder__label" data-i18n="recorder.audio.label">Sound</span>
         <label class="organize__check" data-i18n="recorder.audio.mic"><input id="record-mic" type="checkbox"> Microphone</label>
         <div class="organize__field"><select id="record-mic-device" disabled aria-label="Microphone" data-i18n-aria-label="recorder.audio.mic"></select></div>
+        <label class="organize__field" data-i18n="recorder.mic-volume">Mic volume<select id="record-mic-gain" disabled><option value="1">100%</option><option value="1.5">150%</option><option value="2">200%</option><option value="2.5">250%</option><option value="3">300%</option></select></label>
         <label class="organize__check" data-i18n="recorder.audio.system"><input id="record-system" type="checkbox"> System sound</label>
         <label class="organize__field" data-i18n="recorder.audio.app.label">System sound from<select id="record-app" disabled>
           <option value="" data-i18n="recorder.audio.app.all">All apps</option>
         </select></label>
+        <label class="organize__field" data-i18n="recorder.system-volume">Computer sound volume<select id="record-system-gain" disabled><option value="1">100%</option><option value="1.5">150%</option><option value="2">200%</option><option value="2.5">250%</option><option value="3">300%</option></select></label>
       </div>
       <div class="organize__pair">
         <label class="organize__field" data-i18n="recorder.quality.label">Quality<select id="record-height"><option value="720">720p</option><option value="1080" selected>1080p</option><option value="1440" data-i18n="recorder.quality.2k">1440p (2K)</option><option value="2160" data-i18n="recorder.quality.4k">2160p (4K)</option></select></label>

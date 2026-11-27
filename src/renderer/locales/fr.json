@@ -1284,6 +1284,8 @@
   "recorder.quality.heavy": "La 4K à 60 fps nécessite une carte graphique rapide.",
   "recorder.audio.app.label": "Son du système de",
   "recorder.audio.app.all": "Toutes les applis",
+  "recorder.mic-volume": "Volume du micro",
+  "recorder.system-volume": "Volume du son de l’ordinateur",
   "recorder.clicks": "Afficher les clics et les glissements",
   "recorder.clicks.hint": "Les clics ont un anneau et les glissements un cadre, dessinés dans la vidéo.",
   "recorder.zoom": "Suivre le pointeur",

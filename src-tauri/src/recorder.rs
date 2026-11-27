@@ -248,6 +248,8 @@ struct Options {
     zoom: bool,
     game: bool,
     app: Option<u32>,
+    mic_gain: f32,
+    system_gain: f32,
 }
 
 fn parse_options(options: &Value, monitors: &[(u32, u32)], window_exists: impl Fn(isize) -> bool) -> Result<Options> {
@@ -261,6 +263,11 @@ fn parse_options(options: &Value, monitors: &[(u32, u32)], window_exists: impl F
         Value::Null => None,
         pid => Some(pid.as_u64().filter(|&p| p > 0).and_then(|p| u32::try_from(p).ok()).ok_or_else(invalid)?),
     };
+    let gain = |key: &str| match &options[key] {
+        Value::Null => Ok(1.0),
+        value => value.as_f64().filter(|g| [1.0, 1.5, 2.0, 2.5, 3.0].contains(g)).map(|g| g as f32).ok_or_else(invalid),
+    };
+    let (mic_gain, system_gain) = (gain("micGain")?, gain("systemGain")?);
     let mic_device = match &options["micDevice"] {
         Value::Null => None,
         Value::String(id) if !id.is_empty() => Some(id.clone()),
@@ -289,7 +296,7 @@ fn parse_options(options: &Value, monitors: &[(u32, u32)], window_exists: impl F
         _ => return Err(invalid()),
     };
     let fps = if game { 60 } else { fps };
-    Ok(Options { source, mic, mic_device, system, fps, height, clicks: clicks && !game, zoom: zoom && !game, game, app: app.filter(|_| system) })
+    Ok(Options { source, mic, mic_device, system, fps, height, clicks: clicks && !game, zoom: zoom && !game, game, app: app.filter(|_| system), mic_gain, system_gain })
 }
 
 // GPU mipmaps halve the size per level: the smallest level k at or under the height limit, as (k, width, height), all even.
@@ -754,10 +761,11 @@ fn mix(shared: &Arc<Shared>, sources: Vec<(bool, f32, Queue)>, mut mic_wav: Opti
             let excess = queue.len().saturating_sub((n + RATE as usize / 5) * 2);
             queue.drain(..excess);
             let take = queue.len().min(n * 2);
-            let samples: Vec<f32> = queue.drain(..take).collect();
+            let samples: Vec<f32> = queue.drain(..take).map(|s| s * gain).collect();
             for (m, s) in mixed.iter_mut().zip(&samples) { *m += s; }
-            if *is_mic { mic = samples; }
+            if let Some(wav) = if *is_mic { mic_wav.as_mut() } else { system_wav.as_mut() } { wav.push(&samples, n); }
         }
+        // frugal: hard clip on boost; a soft limiter is the upgrade.
         let bytes: Vec<u8> = mixed.iter().flat_map(|s| ((s.clamp(-1.0, 1.0) * 32767.0) as i16).to_le_bytes()).collect();
         if let Some(encoder) = shared.encoder.lock().unwrap().as_mut() {
             if let Err(error) = encoder.send_audio_buffer(&bytes, 0) {
@@ -819,10 +827,10 @@ fn launch(app: AppHandle, options: &Options, monitors: &[Monitor], folder: &Path
     if !options.game { let shared = shared.clone(); threads.push(thread::spawn(move || watch_clicks(&shared))); }
     if options.mic || options.system {
         let mut sources = Vec::new();
-        for (on, is_mic) in [(options.mic, true), (options.system, false)] {
+        for (on, is_mic, gain) in [(options.mic, true, options.mic_gain), (options.system, false, options.system_gain)] {
             if !on { continue; }
             let queue = Queue::default();
-            sources.push((is_mic, queue.clone()));
+            sources.push((is_mic, gain, queue.clone()));
             let (shared, device, app) = (shared.clone(), options.mic_device.clone().filter(|_| is_mic), options.app.filter(|_| !is_mic));
             threads.push(thread::spawn(move || record_audio(&shared, &queue, device, !is_mic, app)));
         }
@@ -1123,7 +1131,7 @@ mod tests {
         let ok = |options: Value| parse_options(&options, &monitors, |hwnd| hwnd == 42);
         let base = json!({"kind": "monitor", "monitor": 1, "mic": true, "micDevice": null, "system": false, "fps": 60, "height": 1080});
         assert_eq!(ok(base.clone()).unwrap(), Options { source: Source::Monitor(1), mic: true, mic_device: None, system: false, fps: 60, height: 1080,
-            clicks: false, zoom: false, game: false, app: None });
+            clicks: false, zoom: false, game: false, app: None, mic_gain: 1.0, system_gain: 1.0 });
         let with = |key: &str, value: Value| { let mut o = base.clone(); o[key] = value; ok(o) };
         assert_eq!(with("micDevice", json!("{0.0.1}")).unwrap().mic_device.as_deref(), Some("{0.0.1}"));
         for height in [720, 1440, 2160] { assert_eq!(with("height", json!(height)).unwrap().height, height); }
@@ -1190,6 +1198,19 @@ mod tests {
         assert_eq!(events[0], ClickEvent { ms: 5, button: "left", x: 200, y: 125, up_ms: 35, up_x: 300, up_y: 125, origin: (100, 50) });
         assert_eq!((events[1].ms, events[1].button, events[1].up_ms), (585, "right", 585));
         assert_eq!(serde_json::to_value(&events[0]).unwrap(), json!({"ms": 5, "button": "left", "x": 200, "y": 125, "up_ms": 35, "up_x": 300, "up_y": 125}));
+    }
+
+    #[test]
+    fn gains_parsed() {
+        let base = json!({"kind": "monitor", "monitor": 0, "mic": true, "system": true, "fps": 30, "height": 1080});
+        let with = |key: &str, value: Value| { let mut o = base.clone(); o[key] = value; parse_options(&o, &[(1920, 1080)], |_| false) };
+        let plain = parse_options(&base, &[(1920, 1080)], |_| false).unwrap();
+        assert_eq!((plain.mic_gain, plain.system_gain), (1.0, 1.0));
+        assert_eq!(with("micGain", json!(2.5)).unwrap().mic_gain, 2.5);
+        assert_eq!(with("systemGain", json!(3)).unwrap().system_gain, 3.0);
+        for (key, value) in [("micGain", json!(4.0)), ("systemGain", json!(4.0)), ("micGain", json!(0.5)), ("systemGain", json!("2"))] {
+            assert_eq!(with(key, value).unwrap_err(), "Invalid request.", "{key}");
+        }
     }
 
     #[test]

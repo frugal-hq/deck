@@ -1284,6 +1284,8 @@
   "recorder.quality.heavy": "4K at 60 fps needs a fast graphics card.",
   "recorder.audio.app.label": "System sound from",
   "recorder.audio.app.all": "All apps",
+  "recorder.mic-volume": "Mic volume",
+  "recorder.system-volume": "Computer sound volume",
   "recorder.clicks": "Show clicks and drags",
   "recorder.clicks.hint": "Clicks get a ring and drags a frame, drawn into the video.",
   "recorder.zoom": "Follow the pointer",

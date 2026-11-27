@@ -1384,6 +1384,8 @@
   "recorder.quality.heavy": "Для 4K при 60 fps нужна быстрая видеокарта.",
   "recorder.audio.app.label": "Звук системы из",
   "recorder.audio.app.all": "Все приложения",
+  "recorder.mic-volume": "Громкость микрофона",
+  "recorder.system-volume": "Громкость звука компьютера",
   "recorder.clicks": "Показывать щелчки и перетаскивания",
   "recorder.clicks.hint": "Щелчки получают кольцо, а перетаскивания рамку, нарисованные в видео.",
   "recorder.zoom": "Следовать за указателем",

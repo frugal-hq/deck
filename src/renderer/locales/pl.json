@@ -1384,6 +1384,8 @@
   "recorder.quality.heavy": "4K przy 60 fps wymaga szybkiej karty graficznej.",
   "recorder.audio.app.label": "Dźwięk systemowy z",
   "recorder.audio.app.all": "Wszystkie aplikacje",
+  "recorder.mic-volume": "Głośność mikrofonu",
+  "recorder.system-volume": "Głośność dźwięku komputera",
   "recorder.clicks": "Pokazuj kliknięcia i przeciągnięcia",
   "recorder.clicks.hint": "Kliknięcia dostają pierścień, a przeciągnięcia ramkę, rysowane na wideo.",
   "recorder.zoom": "Podążaj za wskaźnikiem",

@@ -1284,6 +1284,8 @@
   "recorder.quality.heavy": "60 fps'de 4K hızlı bir ekran kartı gerektirir.",
   "recorder.audio.app.label": "Sistem sesi şuradan",
   "recorder.audio.app.all": "Tüm uygulamalar",
+  "recorder.mic-volume": "Mikrofon ses düzeyi",
+  "recorder.system-volume": "Bilgisayar sesi düzeyi",
   "recorder.clicks": "Tıklamaları ve sürüklemeleri göster",
   "recorder.clicks.hint": "Tıklamalar bir halka, sürüklemeler bir çerçeve alır; videoya çizilir.",
   "recorder.zoom": "İmleci izle",

@@ -1284,6 +1284,8 @@
   "recorder.quality.heavy": "4K a 60 fps precisa de uma placa de vídeo rápida.",
   "recorder.audio.app.label": "Som do sistema de",
   "recorder.audio.app.all": "Todos os apps",
+  "recorder.mic-volume": "Volume do microfone",
+  "recorder.system-volume": "Volume do som do computador",
   "recorder.clicks": "Mostrar cliques e arrastes",
   "recorder.clicks.hint": "Cliques ganham um anel e arrastes uma moldura, desenhados no vídeo.",
   "recorder.zoom": "Seguir o ponteiro",

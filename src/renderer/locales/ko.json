@@ -1234,6 +1234,8 @@
   "recorder.quality.heavy": "60 fps의 4K에는 빠른 그래픽 카드가 필요합니다.",
   "recorder.audio.app.label": "시스템 소리 출처",
   "recorder.audio.app.all": "모든 앱",
+  "recorder.mic-volume": "마이크 볼륨",
+  "recorder.system-volume": "컴퓨터 소리 볼륨",
   "recorder.clicks": "클릭과 드래그 표시",
   "recorder.clicks.hint": "클릭에는 고리, 드래그에는 테두리가 생기고 동영상에 그려집니다.",
   "recorder.zoom": "포인터 따라가기",

@@ -1234,6 +1234,8 @@
   "recorder.quality.heavy": "60 fps の 4K には高速なグラフィックカードが必要です。",
   "recorder.audio.app.label": "システムサウンドの取得元",
   "recorder.audio.app.all": "すべてのアプリ",
+  "recorder.mic-volume": "マイクの音量",
+  "recorder.system-volume": "コンピューターの音量",
   "recorder.clicks": "クリックとドラッグを表示",
   "recorder.clicks.hint": "クリックにはリング、ドラッグには枠が付き、ビデオに描き込まれます。",
   "recorder.zoom": "ポインターに追従",
