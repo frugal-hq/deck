@@ -3,7 +3,7 @@
 use serde_json::{json, Map, Value};
 use std::collections::{HashMap, HashSet};
 use std::fs;
-use std::io::{BufRead, BufReader, Write};
+use std::io::{BufRead, BufReader, Read, Seek, SeekFrom, Write};
 use std::path::{Path, PathBuf};
 use std::sync::{LazyLock, Mutex};
 use std::time::{SystemTime, UNIX_EPOCH};
@@ -25,6 +25,15 @@ struct Cache {
 }
 
 static CACHE: LazyLock<Mutex<Cache>> = LazyLock::new(Mutex::default);
+
+#[derive(Default)]
+struct Commands {
+    offset: u64,
+    items: Vec<Value>,
+    by_id: HashMap<String, usize>,
+}
+
+static COMMANDS: LazyLock<Mutex<HashMap<PathBuf, Commands>>> = LazyLock::new(Mutex::default);
 
 fn ms(time: SystemTime) -> f64 {
     time.duration_since(UNIX_EPOCH).unwrap_or_default().as_secs_f64() * 1000.0
@@ -73,6 +82,111 @@ pub async fn chat_subagents(app: AppHandle, id: String, cwd: String) -> Vec<Valu
     })
     .await
     .unwrap_or_default()
+}
+
+// Bash and PowerShell calls of the chat's own transcript, oldest first, for the Commands section; a subagent's stay in its own file.
+#[tauri::command]
+pub async fn chat_commands(app: AppHandle, id: String, cwd: String) -> Vec<Value> {
+    tauri::async_runtime::spawn_blocking(move || {
+        if !crate::chat::is_uuid(&id) || !Path::new(&cwd).has_root() {
+            return Vec::new();
+        }
+        let session = app.state::<crate::index::Index>().session(&id).filter(|s| s["cwd"] == cwd.as_str());
+        let Some(file) = session.as_ref().and_then(|s| s["file"].as_str()) else {
+            return Vec::new();
+        };
+        let path = PathBuf::from(file);
+        let mut commands = COMMANDS.lock().unwrap();
+        read_commands(commands.entry(path.clone()).or_default(), &path)
+    })
+    .await
+    .unwrap_or_default()
+}
+
+fn read_commands(cache: &mut Commands, file: &Path) -> Vec<Value> {
+    let Ok(mut f) = fs::File::open(file) else {
+        return Vec::new();
+    };
+    let Ok(meta) = f.metadata() else {
+        return Vec::new();
+    };
+    if meta.len() < cache.offset {
+        cache.offset = 0;
+        cache.items.clear();
+        cache.by_id.clear();
+    }
+    if f.seek(SeekFrom::Start(cache.offset)).is_err() {
+        return Vec::new();
+    }
+    let mut buf = Vec::new();
+    if f.read_to_end(&mut buf).is_err() {
+        return Vec::new();
+    }
+    if let Some(last_nl) = buf.iter().rposition(|&b| b == b'\n') {
+        let valid = &buf[..=last_nl];
+        cache.offset += (last_nl + 1) as u64;
+        for line in valid.split(|&b| b == b'\n') {
+            let line = if line.ends_with(b"\r") { &line[..line.len() - 1] } else { line };
+            if line.is_empty() {
+                continue;
+            }
+            let Ok(record) = serde_json::from_slice::<Value>(line) else {
+                continue;
+            };
+            if record["isSidechain"] == true {
+                continue;
+            }
+            if record["type"] == "assistant" {
+                if let Some(content) = record["message"]["content"].as_array() {
+                    for item in content {
+                        if item["type"] == "tool_use" {
+                            let shell = item["name"].as_str().unwrap_or_default();
+                            if shell == "Bash" || shell == "PowerShell" {
+                                let input = &item["input"];
+                                if let Some(command) = input["command"].as_str() {
+                                    let description = if input["description"].is_string() {
+                                        input["description"].clone()
+                                    } else {
+                                        Value::Null
+                                    };
+                                    let id = item["id"].as_str().unwrap_or_default();
+                                    let cmd = json!({
+                                        "id": item["id"],
+                                        "command": command,
+                                        "description": description,
+                                        "shell": item["name"],
+                                        "at": record["timestamp"],
+                                        "background": input["run_in_background"] == true,
+                                        "status": "running"
+                                    });
+                                    let idx = cache.items.len();
+                                    cache.items.push(cmd);
+                                    if !id.is_empty() {
+                                        cache.by_id.insert(id.to_owned(), idx);
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            } else if record["type"] == "user" {
+                if let Some(content) = record["message"]["content"].as_array().or_else(|| record["content"].as_array()) {
+                    for item in content {
+                        if item["type"] == "tool_result" {
+                            if let Some(tool_use_id) = item["tool_use_id"].as_str() {
+                                if let Some(&idx) = cache.by_id.get(tool_use_id) {
+                                    let status = if item["is_error"] == true { "failed" } else { "done" };
+                                    cache.items[idx]["status"] = json!(status);
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    let start = cache.items.len().saturating_sub(200);
+    cache.items[start..].to_vec()
 }
 
 fn collect(cache: &mut Cache, id: &str, cwd: &str, folders: &[PathBuf], jobs_file: &Path, tasks_file: &Path) -> Vec<Value> {
@@ -318,5 +432,60 @@ mod tests {
         let run = job_task(&json!({"id": "r", "kind": "run", "level": "light", "tokens": 9, "status": "done", "start": 10.0, "end": 72.4, "result": "frugal: check `cargo test` exited 0, passed:
 ok"}), 0.0);
         assert_eq!((&run["check"], &run["seconds"], &run["kind"], &run["level"], &run["tokens"]), (&json!("cargo test"), &json!(62), &json!("run"), &json!("light"), &json!(9)));
+    }
+
+    #[test]
+    fn parses_transcript_commands_incrementally() {
+        let stamp = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_nanos();
+        let file = std::env::temp_dir().join(format!("deck-commands-{}-{stamp}.jsonl", std::process::id()));
+        fs::write(&file, [
+            r#"{"type":"assistant","timestamp":"2026-11-26T20:00:00Z","message":{"content":[{"type":"tool_use","id":"b1","name":"Bash","input":{"command":"echo ok","description":"test"}}]}}"#,
+            r#"{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"b1","content":"ok"}]}}"#,
+            r#"{"type":"assistant","timestamp":"2026-11-26T20:01:00Z","message":{"content":[{"type":"tool_use","id":"p1","name":"PowerShell","input":{"command":"Get-Process"}}]}}"#,
+            r#"{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"p1","is_error":true,"content":"err"}]}}"#,
+            r#"{"type":"assistant","timestamp":"2026-11-26T20:02:00Z","message":{"content":[{"type":"tool_use","id":"b2","name":"Bash","input":{"command":"sleep 10","run_in_background":true}}]}}"#,
+            r#"{"isSidechain":true,"type":"assistant","timestamp":"2026-11-26T20:03:00Z","message":{"content":[{"type":"tool_use","id":"b_side","name":"Bash","input":{"command":"echo side"}}]}}"#,
+            r#"{"type":"assistant","timestamp":"2026-11-26T20:04:00Z","message":{"content":[{"type":"tool_use","id":"r1","name":"Read","input":{"path":"src/main.rs"}}]}}"#,
+            "",
+        ].join("\n")).unwrap();
+
+        let mut cache = Commands::default();
+        let cmds = read_commands(&mut cache, &file);
+
+        let ids: Vec<_> = cmds.iter().map(|c| c["id"].as_str().unwrap()).collect();
+        assert_eq!(ids, ["b1", "p1", "b2"]);
+        assert!(!ids.contains(&"b_side"));
+        assert!(!ids.contains(&"r1"));
+
+        assert_eq!(cmds[0]["status"], "done");
+        assert_eq!(cmds[0]["shell"], "Bash");
+        assert_eq!(cmds[0]["command"], "echo ok");
+        assert_eq!(cmds[0]["description"], "test");
+        assert_eq!(cmds[0]["background"], false);
+
+        assert_eq!(cmds[1]["status"], "failed");
+        assert_eq!(cmds[1]["shell"], "PowerShell");
+        assert_eq!(cmds[1]["command"], "Get-Process");
+        assert_eq!(cmds[1]["description"], Value::Null);
+
+        assert_eq!(cmds[2]["status"], "running");
+        assert_eq!(cmds[2]["shell"], "Bash");
+        assert_eq!(cmds[2]["command"], "sleep 10");
+        assert_eq!(cmds[2]["background"], true);
+
+        let mut f = fs::OpenOptions::new().append(true).open(&file).unwrap();
+        f.write_all(b"{\"type\":\"assistant\",\"timestamp\":\"2026-11-26T20:05:00Z\",\"message\":{\"content\":[{\"type\":\"tool_use\",\"id\":\"b3\",\"name\":\"Bash\",\"input\":{\"command\":\"cargo test\"}}]}}\n").unwrap();
+        drop(f);
+
+        let cmds2 = read_commands(&mut cache, &file);
+        let ids2: Vec<_> = cmds2.iter().map(|c| c["id"].as_str().unwrap()).collect();
+        assert_eq!(ids2, ["b1", "p1", "b2", "b3"]);
+        assert_eq!(cmds2[0]["status"], "done");
+        assert_eq!(cmds2[1]["status"], "failed");
+        assert_eq!(cmds2[2]["status"], "running");
+        assert_eq!(cmds2[3]["status"], "running");
+        assert_eq!(cmds2[3]["command"], "cargo test");
+
+        let _ = fs::remove_file(file);
     }
 }

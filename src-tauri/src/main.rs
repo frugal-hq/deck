@@ -298,6 +298,7 @@ fn main() {
             procs::perf_profile,
             chat::chat_recorded_sessions,
             tasks::chat_subagents,
+            tasks::chat_commands,
             tasks::tasks_all,
             mcp::mcp_list,
             mcp::mcp_add,

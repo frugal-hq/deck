@@ -125,6 +125,7 @@
     onTopicsProgress: (callback) => on('topics:progress', callback),
     start: (options) => invoke('chat:start', { options, output: output(options.id) }),
     subagents: (id, cwd) => invoke('chat:subagents', { id, cwd }),
+    commands: (id, cwd) => invoke('chat:commands', { id, cwd }),
     processes: (id) => invoke('chat:processes', { id }),
     processKill: (id, pid, startedMs) => invoke('chat:process-kill', { id, pid, startedMs }),
     perfGet: () => invoke('perf:get'),
