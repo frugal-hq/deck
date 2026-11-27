@@ -47,6 +47,7 @@ struct Session {
     started: u64,
     kind: &'static str,
     mic: bool,
+    system: bool,
     shared: Arc<Shared>,
     // None while the session is being stopped.
     parts: Option<Parts>,
@@ -694,19 +695,61 @@ fn record_audio(shared: &Shared, queue: &Queue, device: Option<String>, loopback
     if let Err(error) = result { crate::debug_log!("recorder", "Audio capture failed: {error}"); }
 }
 
+// A 16 kHz mono WAV from 48 kHz stereo: pairs averaged, one sample per 3 kept; the header goes in at the end.
+struct Wav {
+    name: &'static str,
+    out: Option<BufWriter<File>>,
+    bytes: u32,
+    sum: f32,
+    count: u32,
+}
+
+impl Wav {
+    fn create(folder: &Path, name: &'static str) -> Result<Self> {
+        let mut out = BufWriter::new(File::create(folder.join(name)).map_err(text)?);
+        out.write_all(&wav_header(0)).map_err(text)?;
+        Ok(Self { name, out: Some(out), bytes: 0, sum: 0.0, count: 0 })
+    }
+
+    // Padded with silence to n stereo frames.
+    fn push(&mut self, stereo: &[f32], n: usize) {
+        let Some(out) = self.out.as_mut() else { return };
+        let mut written = Ok(());
+        for i in 0..n {
+            let pair = stereo.get(i * 2..i * 2 + 2).unwrap_or(&[0.0, 0.0]);
+            self.sum += (pair[0] + pair[1]) / 2.0;
+            self.count += 1;
+            if self.count == 3 {
+                written = written.and_then(|_| out.write_all(&(((self.sum / 3.0).clamp(-1.0, 1.0) * 32767.0) as i16).to_le_bytes()));
+                self.bytes += 2;
+                (self.sum, self.count) = (0.0, 0);
+            }
+        }
+        if let Err(error) = written { crate::debug_log!("recorder", "{} failed: {error}", self.name); self.out = None; }
+    }
+
+    fn finish(self) {
+        let Some(out) = self.out else { return };
+        let result = out.into_inner().map_err(text).and_then(|mut file| {
+            file.seek(SeekFrom::Start(0)).and_then(|_| file.write_all(&wav_header(self.bytes))).map_err(text)
+        });
+        if let Err(error) = result { crate::debug_log!("recorder", "{} failed: {error}", self.name); }
+    }
+}
+
 // The encoder's audio clock counts samples, so it gets exactly the wall clock's worth, silence included.
-fn mix(shared: &Arc<Shared>, sources: Vec<(bool, Queue)>, mut wav: Option<BufWriter<File>>) {
-    let (mut sent, mut wav_bytes, mut mono, mut count) = (0u64, 0u32, 0.0f32, 0);
+fn mix(shared: &Arc<Shared>, sources: Vec<(bool, f32, Queue)>, mut mic_wav: Option<Wav>, mut system_wav: Option<Wav>) {
+    let mut sent = 0u64;
     while !shared.stop.load(Ordering::Relaxed) {
         thread::sleep(Duration::from_millis(10));
         let Some(start) = shared.video_start.get() else {
-            for (_, queue) in &sources { queue.lock().unwrap().clear(); }
+            for (_, _, queue) in &sources { queue.lock().unwrap().clear(); }
             continue;
         };
         let n = (start.elapsed().as_micros() as u64 * RATE / 1_000_000).saturating_sub(sent) as usize;
         if n == 0 { continue; }
-        let (mut mixed, mut mic) = (vec![0.0f32; n * 2], Vec::new());
-        for (is_mic, queue) in &sources {
+        let mut mixed = vec![0.0f32; n * 2];
+        for (is_mic, gain, queue) in &sources {
             let mut queue = queue.lock().unwrap();
             let excess = queue.len().saturating_sub((n + RATE as usize / 5) * 2);
             queue.drain(..excess);
@@ -723,28 +766,9 @@ fn mix(shared: &Arc<Shared>, sources: Vec<(bool, Queue)>, mut wav: Option<BufWri
                 break;
             }
         }
-        if let Some(out) = wav.as_mut() {
-            mic.resize(n * 2, 0.0);
-            let mut written = Ok(());
-            for pair in mic.chunks_exact(2) {
-                mono += (pair[0] + pair[1]) / 2.0;
-                count += 1;
-                if count == 3 {
-                    written = written.and_then(|_| out.write_all(&(((mono / 3.0).clamp(-1.0, 1.0) * 32767.0) as i16).to_le_bytes()));
-                    wav_bytes += 2;
-                    (mono, count) = (0.0, 0);
-                }
-            }
-            if let Err(error) = written { crate::debug_log!("recorder", "mic.wav failed: {error}"); wav = None; }
-        }
         sent += n as u64;
     }
-    if let Some(out) = wav {
-        let result = out.into_inner().map_err(text).and_then(|mut file| {
-            file.seek(SeekFrom::Start(0)).and_then(|_| file.write_all(&wav_header(wav_bytes))).map_err(text)
-        });
-        if let Err(error) = result { crate::debug_log!("recorder", "mic.wav failed: {error}"); }
-    }
+    mic_wav.into_iter().chain(system_wav).for_each(Wav::finish);
 }
 
 fn write_frames(jobs: mpsc::Receiver<Job>, thumb: PathBuf) {
@@ -777,11 +801,8 @@ fn launch(app: AppHandle, options: &Options, monitors: &[Monitor], folder: &Path
             // About 0.125 bits per pixel: 1080p30 at 7.8 Mbps instead of the crate's fixed 15.
             .bitrate((tw * th * options.fps / 8).max(1_000_000) * if options.game { 2 } else { 1 }),
         AudioSettingsBuilder::default().disabled(!options.mic && !options.system), ContainerSettingsBuilder::default(), folder.join("recording.mp4")).map_err(text)?;
-    let wav = if options.mic {
-        let mut out = BufWriter::new(File::create(folder.join("mic.wav")).map_err(text)?);
-        out.write_all(&wav_header(0)).map_err(text)?;
-        Some(out)
-    } else { None };
+    let mic_wav = if options.mic { Some(Wav::create(folder, "mic.wav")?) } else { None };
+    let system_wav = if options.system { Some(Wav::create(folder, "system.wav")?) } else { None };
     let (send, receive) = mpsc::channel();
     let thumb = folder.join("thumb.png");
     let writer = thread::spawn(move || write_frames(receive, thumb));
@@ -806,7 +827,7 @@ fn launch(app: AppHandle, options: &Options, monitors: &[Monitor], folder: &Path
             threads.push(thread::spawn(move || record_audio(&shared, &queue, device, !is_mic, app)));
         }
         let shared = shared.clone();
-        threads.push(thread::spawn(move || mix(&shared, sources, wav)));
+        threads.push(thread::spawn(move || mix(&shared, sources, mic_wav, system_wav)));
     }
     let zoom = options.zoom.then(|| Zoom { z: 1.0, center: (tw as f32 / 2.0, th as f32 / 2.0), last: None, copy: Vec::new() });
     let recorder = Recorder { shared: shared.clone(), crop, size, levels, target: (tw, th), gpu: None, buffer: Vec::new(), keys: Keys::default(),
@@ -855,23 +876,25 @@ fn start(app: AppHandle, options: &Value) -> Result<Value> {
     }
     let started = now_ms();
     let (shared, parts) = launch(app.clone(), &options, &monitors, &folder, size, crop).inspect_err(|_| { let _ = fs::remove_dir_all(&folder); })?;
-    *session = Some(Session { id, started, kind, mic: options.mic, shared, parts: Some(parts) });
+    *session = Some(Session { id, started, kind, mic: options.mic, system: options.system, shared, parts: Some(parts) });
     let _ = app.emit("recorder:state", [json!({"recording": true, "started": started})]);
     Ok(json!({"ok": true}))
 }
 
 // None when there is nothing to stop; `only` limits it to that session.
 fn stop(only: Option<&Arc<Shared>>) -> Option<Result<Value>> {
-    let (parts, shared, started, kind, mic) = {
+    let (parts, shared, started, kind, mic, system) = {
         let mut session = SESSION.lock().unwrap();
         let s = session.as_mut().filter(|s| s.parts.is_some() && only.is_none_or(|o| Arc::ptr_eq(o, &s.shared)))?;
-        (s.parts.take().unwrap(), s.shared.clone(), s.started, s.kind, s.mic)
+        (s.parts.take().unwrap(), s.shared.clone(), s.started, s.kind, s.mic, s.system)
     };
     let result = (|| {
         if let Err(error) = parts.control.stop() { crate::debug_log!("recorder", "Capture ended with: {error}"); }
         shared.stop.store(true, Ordering::Relaxed);
         parts.threads.into_iter().for_each(|t| { let _ = t.join(); });
         let duration = shared.video_start.get().map_or(0, |s| s.elapsed().as_millis() as u64);
+        // Epoch ms of the first frame, which video and key frame times count from.
+        let video_start = shared.video_start.get().map_or(started, |s| now_ms().saturating_sub(s.elapsed().as_millis() as u64));
         let encoded = shared.encoder.lock().unwrap().take().map_or(Ok(()), |e| e.finish().map_err(text));
         drop(shared.writer.lock().unwrap().take());
         let _ = parts.writer.join();
@@ -882,7 +905,7 @@ fn stop(only: Option<&Arc<Shared>>) -> Option<Result<Value>> {
             let clicks = click_events(&shared.pointer.lock().unwrap().events, start, shared.levels);
             fs::write(shared.folder.join("clicks.json"), serde_json::to_vec(&clicks).map_err(text)?).map_err(text)?;
         }
-        fs::write(shared.folder.join("meta.json"), json!({"started": started, "duration": duration, "kind": kind, "hasMic": mic}).to_string()).map_err(text)?;
+        fs::write(shared.folder.join("meta.json"), json!({"started": started, "videoStart": video_start, "duration": duration, "kind": kind, "hasMic": mic, "hasSystem": system}).to_string()).map_err(text)?;
         encoded?;
         item(&shared.folder).ok_or_else(|| t("error.recorder-not-found"))
     })();
@@ -897,7 +920,8 @@ fn item(folder: &Path) -> Option<Value> {
     let frames = fs::read(folder.join("frames.json")).ok().and_then(|b| serde_json::from_slice::<Vec<Value>>(&b).ok()).map_or(0, |f| f.len());
     let thumbnail = fs::read(folder.join("thumb.png")).ok().map(|png| format!("data:image/png;base64,{}", base64::engine::general_purpose::STANDARD.encode(png)));
     Some(json!({"id": folder.file_name()?.to_str()?, "video": video, "folder": folder, "started": meta["started"], "duration": meta["duration"],
-        "size": size, "thumbnail": thumbnail, "frames": frames, "hasMic": meta["hasMic"].as_bool().unwrap_or(false)}))
+        "size": size, "thumbnail": thumbnail, "frames": frames, "hasMic": meta["hasMic"].as_bool().unwrap_or(false),
+        "hasSystem": meta["hasSystem"].as_bool().unwrap_or(false)}))
 }
 
 fn for_chat(app: &AppHandle, id: &str, model: Option<String>, language: Option<String>) -> Result<Value> {
