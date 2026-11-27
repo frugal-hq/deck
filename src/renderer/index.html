@@ -78,9 +78,12 @@
   <span class="mark" data-tauri-drag-region><svg class="mark__logo" aria-hidden="true"><use href="#i-logo"/></svg>Frugal Deck</span>
   <nav id="tabs" class="tabs" data-tauri-drag-region aria-label="Open chats" data-i18n-aria-label="bar.tabs.label"></nav>
   <div class="bar__actions">
-    <button id="new" class="btn btn--bar btn--icon" type="button" aria-label="New chat" data-tip="Start a new chat in the default folder" data-i18n-aria-label="bar.new.label" data-i18n-tip="bar.new.tip"><svg class="icon" aria-hidden="true"><use href="#i-plus"/></svg></button>
+    <div class="bar-split">
+      <button id="new" class="btn btn--bar btn--icon" type="button" aria-label="New chat" data-tip="Start a new chat in the default folder" data-i18n-aria-label="bar.new.label" data-i18n-tip="bar.new.tip"><svg class="icon" aria-hidden="true"><use href="#i-plus"/></svg></button>
+      <button id="new-more" class="btn btn--bar btn--icon bar-split__more" type="button" aria-label="New chat options" aria-haspopup="menu" aria-expanded="false" data-tip="New chat options" data-i18n-aria-label="bar.new.more" data-i18n-tip="bar.new.more"><svg class="icon" aria-hidden="true"><use href="#i-chevron"/></svg></button>
+    </div>
     <button id="update-badge" class="btn btn--bar btn--icon" type="button" aria-label="Update available" data-tip="Update available" data-i18n-aria-label="bar.update.label" data-i18n-tip="bar.update.label" hidden><svg class="icon" aria-hidden="true"><use href="#i-update"/></svg></button>
-    <button id="app-menu" class="btn btn--bar btn--icon" type="button" aria-label="Menu" aria-haspopup="menu" data-tip="Accounts, settings and a chat in another folder" data-i18n-aria-label="bar.menu.label" data-i18n-tip="bar.menu.tip"><svg class="icon" aria-hidden="true"><use href="#i-menu"/></svg></button>
+    <button id="settings-open" class="btn btn--bar btn--icon" type="button" aria-label="Settings" data-tip="Settings" data-i18n-aria-label="settings.title" data-i18n-tip="settings.title"><svg class="icon" aria-hidden="true"><use href="#i-settings"/></svg></button>
   </div>
   <div class="window-controls" role="group" aria-label="Window" data-i18n-aria-label="bar.window.label">
     <button class="window-control" type="button" data-window-action="minimize" aria-label="Minimize" data-tip="Minimize the window" data-i18n-aria-label="bar.minimize.label" data-i18n-tip="bar.minimize.tip"><svg class="icon" aria-hidden="true"><use href="#i-window-minimize"/></svg></button>

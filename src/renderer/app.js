@@ -1933,8 +1933,9 @@ deck.onEdit((id, text) => {
   promptPanel(chat, text);
 });
 
-function startChat(cwd, group) {
-  if (cwd) openChat({ id: crypto.randomUUID(), cwd, name: t('bar.new.label'), resume: false, group });
+// A workspace is saved on the chat's session once the index lists it (renderSessions).
+function startChat(cwd, group, space) {
+  if (cwd) openChat({ id: crypto.randomUUID(), cwd, name: t('bar.new.label'), resume: false, group, space });
 }
 
 function resumeSession(session) {
@@ -2284,7 +2285,7 @@ const termOptions = () => ({
   },
 });
 
-async function openChat({ id, cwd, name, resume, group, login, accountId, handoff, loginCommand, accountSetup }) {
+async function openChat({ id, cwd, name, resume, group, space, login, accountId, handoff, loginCommand, accountSetup }) {
   const el = document.createElement('div');
   el.className = 'term';
   stage.append(el);
@@ -2293,7 +2294,7 @@ async function openChat({ id, cwd, name, resume, group, login, accountId, handof
   term.loadAddon(fit);
   term.open(el);
 
-  const chat = { id, cwd, name, el, term, fit, login, accountSetup, state: 'starting', trustUntil: null, status: null, busy: false, inputAt: 0 };
+  const chat = { id, cwd, name, el, term, fit, login, accountSetup, state: 'starting', trustUntil: null, status: null, busy: false, inputAt: 0, pendingSpace: space };
   chats.set(id, chat);
   activate(id);
   chat.cols = term.cols;
@@ -2318,7 +2319,7 @@ async function openChat({ id, cwd, name, resume, group, login, accountId, handof
   chat.adminOn = !login && await confirmAdmin(chat.bypassOn, chatAdmin(chat, handoff));
   const result = await (login ? deck.login({ ...size, name: login, accountId, ...loginCommand })
     : handoff ? deck.continueIn({ ...size, ...handoff, bypass: chat.bypassOn, admin: chat.adminOn })
-    : deck.start({ ...size, cwd, resume, group, bypass: chat.bypassOn, admin: chat.adminOn, frugal: !resume && startsWithFrugal() }));
+    : deck.start({ ...size, cwd, resume, group, space: chat.pendingSpace, bypass: chat.bypassOn, admin: chat.adminOn, frugal: !resume && startsWithFrugal() }));
   if (result.error) {
     chat.state = 'error';
     chat.error = result.error;
@@ -3228,9 +3229,12 @@ function renameOpenKey(from, to) {
   if (openGroups.delete(from)) openGroups.add(to);
 }
 
+// The folder of a workspace's most recent chat, nested workspaces included.
+const spaceFolder = (name) => currentIndex?.sessions.filter((s) => withinSpace(s.space ?? currentIndex.workspaces?.[chatsById.get(s.chatId)?.topic] ?? currentIndex.workspaces?.[s.cwd], name, currentIndex))
+  .sort((a, b) => new Date(b.lastAt) - new Date(a.lastAt))[0]?.cwd;
+
 function workspaceMenu(name) {
-  // Listed from the folder of one of its chats, nested workspaces included.
-  const folder = currentIndex.sessions.find((s) => withinSpace(s.space ?? currentIndex.workspaces?.[chatsById.get(s.chatId)?.topic] ?? currentIndex.workspaces?.[s.cwd], name, currentIndex))?.cwd;
+  const folder = spaceFolder(name);
   if (folder) fetchMcp({ workspace: name, folder }, 30_000);
   return [
     ...(folder ? [{ label: t('mcp.title'), icon: 'plug', run: () => openMcpDialog({ workspace: name, folder }) }] : []),
@@ -3412,6 +3416,12 @@ let groupNames = [];
 
 function renderSessions(index) {
   currentIndex = index;
+  for (const chat of chats.values()) {
+    const session = chat.pendingSpace && index.sessions.find((s) => s.id === chat.id);
+    if (!session) continue;
+    deck.organize(session.id, { pinned: Boolean(session.pinned), space: chat.pendingSpace, tags: session.tags ?? [] });
+    delete chat.pendingSpace;
+  }
   if (!index.indexing && !index.error && localStorage.getItem('externalImported') === null) {
     localStorage.setItem('externalImported', 'true');
     const ids = index.sessions.filter((s) => !s.deck).map((s) => s.id);
@@ -3765,6 +3775,10 @@ $('archived').onclick = async () => {
 };
 
 const menu = $('menu');
+let menuSource;
+menu.addEventListener('beforetoggle', (event) => {
+  if (event.newState === 'closed' && menuSource?.hasAttribute('aria-expanded')) menuSource.ariaExpanded = 'false';
+});
 settingsDialog.addEventListener('close', () => {
   if (settingsDialog.contains(menu)) menu.hidePopover();
 });
@@ -3792,6 +3806,8 @@ function openMenu(x, y, items, source) {
     return item;
   }));
   menu.showPopover({ source });
+  menuSource = source;
+  if (source?.hasAttribute('aria-expanded')) source.ariaExpanded = 'true';
   menu.style.left = `${Math.min(x, innerWidth - menu.offsetWidth - 8)}px`;
   menu.style.top = `${Math.min(y, innerHeight - menu.offsetHeight - 8)}px`;
   menu.firstChild.focus();
@@ -6164,17 +6180,21 @@ $('new').onclick = startInSessions;
 $('update-badge').onclick = () => openSettings('updates');
 $('start').onclick = startInSessions;
 $('pick').onclick = startInPicked;
-// Deck-wide actions; the ones for the open chat sit in the readout.
-$('app-menu').onclick = () => {
-  const { right, bottom } = $('app-menu').getBoundingClientRect();
+$('settings-open').onclick = () => openSettings();
+const newMore = $('new-more');
+newMore.onclick = () => {
+  if (newMore.ariaExpanded === 'true') return menu.hidePopover();
+  const { right, bottom } = newMore.getBoundingClientRect();
+  const spaces = spaceNames.map((name) => ({
+    label: t('sidebar.new-chat', { label: name }),
+    icon: 'workspace',
+    run: async () => startChat(spaceFolder(name) ?? await deck.defaultFolder(), undefined, name),
+  }));
   openMenu(right, bottom + 4, [
+    { label: t('bar.new.label'), run: startInSessions, icon: 'plus' },
     { label: t('menu.new-in-folder'), run: startInPicked, icon: 'folder' },
-    { label: t('settings.accounts.title'), run: () => openSettings('accounts'), icon: 'user' },
-    { label: t('menu.tasks'), run: openTasks, icon: 'tasks' },
-    { label: t('settings.title'), run: () => openSettings(), icon: 'settings' },
-    { label: t('mcp.title'), run: () => openMcpDialog({ global: true }), icon: 'plug' },
-    { label: t('plugins.title'), run: openPluginsDialog, icon: 'puzzle' },
-  ], $('app-menu'));
+    ...(spaces.length ? [{ separator: true }, ...spaces] : []),
+  ], newMore);
 };
 let tasksLoad = 0;
 // Every delegate job, from any chat: how many each account took today and in all, newest first.

@@ -110,6 +110,8 @@ pub struct StartOptions {
     #[serde(default)]
     group: Value,
     #[serde(default)]
+    space: Value,
+    #[serde(default)]
     bypass: Value,
     #[serde(default)]
     admin: Value,
@@ -399,7 +401,7 @@ fn chat_plugin_dirs(accounts: &Accounts, account: &Value, states: &Value, picked
 
 // main.js launchChat. The place is the session whose chat sets the group and workspace, the source chat's for a handoff.
 #[allow(clippy::too_many_arguments)]
-fn launch(app: &AppHandle, id: &str, place: &str, folder: PathBuf, size: (u16, u16), resume: bool, group: &Value, account: &Value, prompt: Option<&str>, bypass: bool, admin: bool, output: Channel<Value>) -> Value {
+fn launch(app: &AppHandle, id: &str, place: &str, folder: PathBuf, size: (u16, u16), resume: bool, group: &Value, space: &Value, account: &Value, prompt: Option<&str>, bypass: bool, admin: bool, output: Channel<Value>) -> Value {
     let Some(claude) = find_claude() else {
         return json!({ "error": no_claude() });
     };
@@ -427,7 +429,9 @@ fn launch(app: &AppHandle, id: &str, place: &str, folder: PathBuf, size: (u16, u
             }
             accounts::share_transcript(&file, dir)?;
         }
-        let (chat_topic, space) = index.chat_place(place);
+        // A new chat started in a workspace has no session yet to carry it.
+        let (chat_topic, saved) = index.chat_place(place);
+        let space = if saved.is_null() { space.clone() } else { saved };
         let topic = group.or(chat_topic.as_deref());
         let workspaces = index.workspaces_of(&space, topic, &folder.to_string_lossy());
         let picked = crate::plugins::auto_picks(app, &folder, topic, workspaces.first().map(String::as_str), prompt, resume);
@@ -591,7 +595,7 @@ fn start(app: &AppHandle, options: StartOptions, output: Channel<Value>) -> Valu
         let ids = Value::Array(ids);
         index.run(move |db, _| crate::index::save_archived(db, &ids, false));
     }
-    let mut started = launch(app, &options.id, &options.id, folder, (options.cols, options.rows), resume, &options.group, &account, prompt, options.bypass == true, options.admin == true, output);
+    let mut started = launch(app, &options.id, &options.id, folder, (options.cols, options.rows), resume, &options.group, &options.space, &account, prompt, options.bypass == true, options.admin == true, output);
     if started["ok"] == true {
         started["frugal"] = json!(frugal);
     }
@@ -615,7 +619,7 @@ fn continue_chat(app: &AppHandle, o: ContinueOptions, output: Channel<Value>) ->
         (folder, account, is_uuid(&o.id), chats.is_live(&o.id), text.is_empty(), text.starts_with('-'), is_size(o.cols), is_size(o.rows)) else {
         return invalid();
     };
-    launch(app, &o.id, &o.from, folder, (o.cols, o.rows), false, &Value::Null, &account, Some(text), o.bypass == true, o.admin == true, output)
+    launch(app, &o.id, &o.from, folder, (o.cols, o.rows), false, &Value::Null, &Value::Null, &account, Some(text), o.bypass == true, o.admin == true, output)
 }
 
 // Waits for the old claude.exe to exit, so it runs off the main thread.
@@ -671,7 +675,7 @@ fn switch_account(app: &AppHandle, o: SwitchOptions, output: Channel<Value>) -> 
     drop(chat);
     let _ = app.emit("chat:restarting", [&o.id]);
     let folder = session["cwd"].as_str().map(PathBuf::from).unwrap_or_default();
-    let mut started = launch(app, &o.id, &o.id, folder, (o.cols, o.rows), true, &Value::Null, &account, None, bypass, admin, output);
+    let mut started = launch(app, &o.id, &o.id, folder, (o.cols, o.rows), true, &Value::Null, &Value::Null, &account, None, bypass, admin, output);
     if started["error"].is_string() {
         started["stopped"] = json!(true);
     }

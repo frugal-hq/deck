@@ -606,6 +606,11 @@ button.row--interactive:active:not(:disabled) { filter: brightness(0.92); scale:
 .btn--icon { justify-content: center; width: var(--size-control); padding: 0; }
 .btn--bar { min-height: var(--size-control-sm); gap: var(--space-2xs); padding-inline: var(--space-xs); font-size: var(--text-xs); }
 .btn--bar.btn--icon { width: var(--size-control-sm); padding: 0; }
+/* The new chat button and its arrow for the other places to start one, joined like the dock's mic. */
+.bar-split { display: flex; gap: 1px; }
+.bar-split > .btn:first-child { border-start-end-radius: 0; border-end-end-radius: 0; }
+.bar-split > .bar-split__more { width: var(--size-control-xs); border-start-start-radius: 0; border-end-start-radius: 0; }
+.bar-split__more .icon { width: var(--icon-sm); height: var(--icon-sm); rotate: 90deg; }
 .btn.is-linked { background: none; box-shadow: none; color: var(--color-muted); }
 .btn.is-linked:hover:not(:disabled) { background: var(--color-highlight); color: var(--color-ink); filter: none; }
 .empty__actions { display: flex; align-items: center; gap: var(--space-xs); }
