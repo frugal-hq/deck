@@ -176,7 +176,7 @@ function render() {
     chat.tab ??= $('tabs').appendChild(tabElement(chat));
     const [open, close] = chat.tab.children;
     open.querySelector('.tab__label').textContent = chat.name;
-    open.dataset.tip = [chat.pinned ? chat.name : null, chat.cwd, STATUS_LABEL[chat.status]].filter(Boolean).join('\n');
+    open.dataset.tip = [chat.name, [chat.cwd, STATUS_LABEL[chat.status]].filter(Boolean).join(' \u00b7 ')].join('\n');
     open.setAttribute('aria-label', chat.name);
     if (chat.id === activeId) open.setAttribute('aria-current', 'true');
     else open.removeAttribute('aria-current');

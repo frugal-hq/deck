@@ -83,8 +83,9 @@ body:has(.info-panel:not([hidden])) { grid-template-columns: var(--sidebar-width
 
 .tab {
   display: flex;
-  flex: 0 1 auto;
-  min-width: 7rem;
+  flex: 1 1 0;
+  min-width: 5rem;
+  max-width: var(--tab-width);
   align-items: stretch;
   height: var(--size-row);
   border-radius: var(--radius-pill);
@@ -112,8 +113,8 @@ body:has(.info-panel:not([hidden])) { grid-template-columns: var(--sidebar-width
   display: flex;
   align-items: center;
   gap: var(--space-xs);
+  flex: 1;
   min-width: 0;
-  max-width: 28ch;
   padding-inline: var(--space-sm) var(--space-2xs);
 }
 
