@@ -217,7 +217,19 @@
     </div>
   </form>
 </dialog>
-<dialog id="workspace-dialog" class="organize" closedby="any" aria-labelledby="workspace-title">
+<dialog id="limits-dialog" class="organize" closedby="any" aria-labelledby="limits-title" aria-describedby="limits-text">
+  <form id="limits-form" method="dialog">
+    <h2 id="limits-title" class="dialog__title"></h2>
+    <p id="limits-text" class="organize__text" data-i18n="account.limits.hint">Frugal stops delegating to this account when its usage reaches a limit.</p>
+    <div id="limits-caps" class="limits__caps"></div>
+    <p id="limits-error" class="sort__status" data-failed="true" role="alert"></p>
+    <div class="organize__actions">
+      <button id="limits-cancel" class="btn" type="button" data-i18n="common.cancel">Cancel</button>
+      <button id="limits-save" class="btn btn--primary" type="submit" data-i18n="common.save">Save</button>
+    </div>
+  </form>
+</dialog>
+<dialog id="workspace-dialog"class="organize" closedby="any" aria-labelledby="workspace-title">
   <form id="workspace-form" method="dialog">
     <h2 id="workspace-title" class="dialog__title"></h2>
     <label class="organize__field" data-i18n="dialog.workspace.name.label">Workspace<input id="workspace-name" placeholder="No workspace" autocomplete="off" spellcheck="false" data-i18n-placeholder="organize.workspace.placeholder"></label>
@@ -425,31 +437,16 @@
         </div>
       </section>
       <section class="settings__section" data-section="accounts" hidden>
-        <section class="accounts accounts--boxed" aria-labelledby="settings-claude-title">
-          <h3 id="settings-claude-title" class="settings__title" data-i18n="settings.accounts.claude">Claude</h3>
-          <div id="settings-accounts-state" class="empty" hidden>
-            <p role="status"></p>
-            <button class="btn" type="button" hidden data-i18n="common.retry">Retry</button>
-          </div>
-          <div id="settings-accounts" class="accounts"></div>
-        </section>
-        <section aria-labelledby="settings-delegates-title">
-          <h3 id="settings-delegates-title" class="settings__title" data-i18n="usage.delegates.label">Delegates</h3>
-          <div id="settings-delegates-empty" class="empty" hidden>
-            <p data-i18n="settings.accounts.no-delegates">No delegates yet. Select Add account to get started.</p>
-          </div>
-          <div id="settings-delegates" class="others"></div>
-          <details id="settings-opencode" hidden>
-            <summary class="row row--interactive">
-              <svg class="icon" aria-hidden="true"><use href="#i-chevron"/></svg>
-              <span class="row__main" data-i18n="account.kind.opencode">OpenCode</span>
-              <span id="settings-opencode-models" class="row__meta"></span>
-              <span id="settings-opencode-status" class="row__meta"></span>
-            </summary>
-            <div id="settings-opencode-delegates" class="others"></div>
-          </details>
-        </section>
-        <button id="account-add" class="btn" type="button" data-tip="Install and sign in to an account" data-i18n-tip="usage.add-account.tip" data-i18n="usage.add-account.label">Add account…</button>
+        <h3 class="settings__title" data-i18n="settings.accounts.title">Accounts</h3>
+        <div id="settings-accounts-state" class="empty" hidden>
+          <p role="status"></p>
+          <button class="btn" type="button" hidden data-i18n="common.retry">Retry</button>
+        </div>
+        <div id="settings-accounts" class="account-kinds"></div>
+        <div class="accounts__actions">
+          <button id="account-add" class="btn" type="button" data-tip="Install and sign in to an account" data-i18n-tip="usage.add-account.tip" data-i18n="usage.add-account.label">Add account…</button>
+          <p id="accounts-status" class="sort__status" role="status" hidden></p>
+        </div>
         <div class="settings__row" data-tip="Delegated work then spends another account's limits, not the one already in use" data-i18n-tip="settings.accounts.roles.tip">
           <label class="organize__check" data-i18n="settings.accounts.roles.label"><input id="settings-roles" type="checkbox"> Never delegate to the account a chat runs on</label>
           <p class="settings__hint" data-i18n="settings.accounts.roles.hint">Applies to chats started after the change.</p>
@@ -459,6 +456,19 @@
           <p class="settings__hint" data-i18n="settings.accounts.keep-transcripts.hint">Sets cleanupPeriodDays to 3650 in every Claude account, so Claude Code stops deleting transcripts idle for 30 days. Off removes only that value.</p>
           <p id="transcripts-status" class="sort__status" role="status" hidden></p>
         </div>
+        <section class="order" aria-labelledby="settings-order-title">
+          <h3 id="settings-order-title" class="settings__title" data-i18n="settings.accounts.order.title">Delegation order</h3>
+          <div class="segmented order__mode" role="radiogroup" aria-labelledby="settings-order-title">
+            <label data-i18n="settings.accounts.order.recommended"><input type="radio" name="order-mode" value="recommended" disabled>Recommended</label>
+            <label data-i18n="settings.accounts.order.custom"><input type="radio" name="order-mode" value="custom" disabled>Custom</label>
+          </div>
+          <p id="settings-order-hint" class="settings__hint" hidden></p>
+          <div id="settings-order-state" class="empty" hidden>
+            <p role="status"></p>
+            <button class="btn" type="button" hidden data-i18n="common.retry">Retry</button>
+          </div>
+          <ol id="settings-order" class="order__list"></ol>
+        </section>
       </section>
       <section class="settings__section" data-section="voice" hidden>
         <h3 class="settings__title" data-i18n="settings.voice.title">Voice</h3>

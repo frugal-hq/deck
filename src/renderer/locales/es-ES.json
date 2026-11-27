@@ -1,5 +1,6 @@
 {
   "account.empty": "Aún no hay cuentas de Claude. Selecciona Añadir cuenta para empezar.",
+  "account.remove.text": "Frugal deja de delegarle tareas. Su carpeta de inicio de sesión se conserva, así que al volver a añadirla vuelve a iniciar sesión.",
   "account.title": "Añadir cuenta",
   "badge.details.empty": "Muestra el modelo, esfuerzo, contexto y coste una vez que el chat envía una línea de estado",
   "common.add": "Añadir",
@@ -10,6 +11,7 @@
   "info.cost": "Coste",
   "mcp.add.submit.label": "Añadir a Deck",
   "mcp.add.title": "Añadir servidor",
+  "settings.accounts.add-kind": "Añadir cuenta de {kind}",
   "settings.debug.record.warn": "Usa algo de CPU y disco extra mientras está activo. El registro contiene rutas de carpetas y el inicio de los prompts; se queda en este ordenador.",
   "settings.handoff.note.label": "Añadir un cuadro de nota a los handoffs",
   "settings.privacy.ai-excerpts.warn": "Partes de tus conversaciones salen de este ordenador.",

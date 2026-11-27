@@ -519,16 +519,32 @@ async function confirmAccountAction(title, message, action, run) {
   if (confirmed) report(await run());
 }
 
-function accountMenu(account) {
+// Free OpenCode models and Gemini's API key have no sign-in.
+const delegateSignsIn = (account) => account.kind !== 'gemini' && !(account.kind === 'opencode' && /[-:]free$/.test(account.model ?? ''));
+
+// Claude accounts sign in, sign out and delete their config folder; delegates sign in again when logged out and are removed from frugal.
+function accountMenu(account, opener) {
   const items = [{ label: t('account.rename.menu'), run: () => askRename(account) }];
-  if (!account.signedIn) items.push({ label: t('account.steps.sign-in'), run: () => signIn(account) });
-  else items.push({ label: t('account.sign-out.action'), run: () => confirmAccountAction(
+  if ('kind' in account) {
+    if (!account.signedIn && delegateSignsIn(account)) items.push({ label: t('account.steps.sign-in'), run: () => signInDelegate(account) });
+    if (account.capsApply === 'ok') items.push({ label: t('account.limits.menu'), run: () => askLimits(account, opener) });
+    items.push({ separator: true }, { label: t('account.remove.action'), danger: true, run: () => confirmAccountAction(
+      t('account.remove.title', { name: account.name }),
+      t('account.remove.text'),
+      t('account.remove.action'),
+      () => removeDelegate(account),
+    ) });
+    return items;
+  }
+  if (account.signedIn === false) items.push({ label: t('account.steps.sign-in'), run: () => signIn(account) });
+  else if (account.signedIn) items.push({ label: t('account.sign-out.action'), run: () => confirmAccountAction(
     t('account.sign-out.title', { name: account.name }),
     t(account.id === 'main' ? 'account.sign-out.main' : 'account.sign-out.text'),
     t('account.sign-out.action'),
     () => deck.logout(account.id),
   ) });
-  if (account.id !== 'main') items.push({ label: t('common.delete'), danger: true, run: () => confirmAccountAction(
+  if (account.capsApply === 'ok') items.push({ label: t('account.limits.menu'), run: () => askLimits(account, opener) });
+  if (account.configDir && account.id !== 'main') items.push({ separator: true }, { label: t('account.delete.action'), danger: true, run: () => confirmAccountAction(
     t('account.delete.title', { name: account.name }),
     t('account.delete.text', { folder: account.configDir }),
     t('account.delete.action'),
@@ -539,11 +555,12 @@ function accountMenu(account) {
 
 // The menu opens from the more button or a right-click anywhere on the account, over the panel, which stays open.
 function withMenu(target, account) {
-  const button = moreButton(account.name, () => accountMenu(account));
+  const button = moreButton(account.name, () => accountMenu(account, button));
   button.classList.replace('group__new', 'account__more');
+  button.dataset.account = account.id;
   target.oncontextmenu = (event) => {
     event.preventDefault();
-    openMenu(event.clientX, event.clientY, accountMenu(account), target);
+    openMenu(event.clientX, event.clientY, accountMenu(account, button), target);
   };
   return button;
 }
@@ -555,7 +572,10 @@ function loginLines(account) {
   return lines;
 }
 
-const accountLimits = (account) => [[t('usage.five-hour'), liveLimit(account.limits?.fiveHour)], [t('usage.weekly'), liveLimit(account.limits?.sevenDay)]];
+const accountLimits = (account) => [
+  [t('usage.five-hour'), liveLimit(account.limits?.fiveHour), t('account.meter.five-hour')],
+  [t('usage.weekly'), liveLimit(account.limits?.sevenDay), t('account.meter.weekly')],
+];
 
 // One limit as a label, its reset and percent on a line, with a full-width bar under them.
 function limitRow(label, limit) {
@@ -567,39 +587,81 @@ function limitRow(label, limit) {
   return row;
 }
 
+// One limit inside an account row: a short label, a bar and the percent; the full label and the reset are in its tooltip.
+function limitMeter(label, limit, short) {
+  const box = node('span', 'meter', short);
+  box.dataset.tip = limitTip(label, limit);
+  const used = node('span', 'measured', t('common.percent', { percent: Math.round(limit.pct) }));
+  used.classList.toggle('is-warn', limit.pct >= WARN_PCT);
+  box.append(usageMeter(label, limit), used);
+  return box;
+}
+
+// The slider and the number mirror each other; the Limits dialog saves the number.
 function capControl(account, field, label) {
   const value = account.caps?.[field] ?? 100;
   const row = node('label', 'cap');
   const slider = Object.assign(node('input'), { type: 'range', min: 0, max: 100, step: 5, value });
   slider.setAttribute('aria-label', label);
-  const number = Object.assign(node('input'), { type: 'number', min: 0, max: 100, step: 5, value });
+  const number = Object.assign(node('input'), { type: 'number', min: 0, max: 100, step: 5, value, name: field, required: true });
   number.setAttribute('aria-label', label);
   slider.oninput = () => { number.value = slider.value; };
   number.oninput = () => { slider.value = number.value; };
-  slider.onchange = () => { number.value = slider.value; deck.setAccountCap(account.id, field, slider.value); };
-  number.onchange = () => { slider.value = number.value; deck.setAccountCap(account.id, field, number.value); };
   row.append(node('span', 'cap__label', label), slider, number);
   return row;
 }
 
-// Kept across redraws: the panel redraws on every status line.
-const openCaps = new Set();
+const limitsDialog = $('limits-dialog');
+let limitsFor = null;
 
-// The delegate limits fold into one line, so they do not crowd the panel; an account they cannot apply to has none.
-function capsBlock(account) {
-  if (account.capsApply !== 'ok') return [];
-  const box = node('details', 'caps');
-  box.open = openCaps.has(account.id);
-  box.ontoggle = () => (box.open ? openCaps.add(account.id) : openCaps.delete(account.id));
-  const value = t('usage.caps-summary', { fiveHour: account.caps.fiveHour, weekly: account.caps.sevenDay });
-  const summary = node('summary', 'caps__summary');
-  summary.append(node('span', '', t('usage.delegate-limits')), node('span', 'caps__value', value));
-  box.append(summary, capControl(account, 'fiveHour', t('usage.max-five-hour')), capControl(account, 'sevenDay', t('usage.max-weekly')));
-  return [box];
+function askLimits(account, opener) {
+  limitsFor = { account, opener, reopen: $('usage').matches(':popover-open') };
+  $('limits-title').textContent = t('account.limits.title', { name: account.name });
+  $('limits-error').textContent = '';
+  $('limits-caps').replaceChildren(capControl(account, 'fiveHour', t('usage.max-five-hour')), capControl(account, 'sevenDay', t('usage.max-weekly')));
+  limitsDialog.showModal();
+}
+
+$('limits-form').onsubmit = async (event) => {
+  event.preventDefault();
+  const { account } = limitsFor;
+  const { fiveHour, sevenDay } = event.target.elements;
+  const caps = { fiveHour: Number(fiveHour.value), sevenDay: Number(sevenDay.value) };
+  const save = $('limits-save');
+  save.disabled = true;
+  save.setAttribute('aria-busy', 'true');
+  try {
+    for (const [field, value] of Object.entries(caps)) await deck.setAccountCap(account.id, field, value);
+    limitsDialog.close();
+    const text = t('account.limits.saved', { name: account.name });
+    if (settingsDialog.open) showStatus('accounts-status', text);
+    else showUndo(text, () => { for (const field of Object.keys(caps)) deck.setAccountCap(account.id, field, account.caps?.[field] ?? 100); });
+  } catch (error) {
+    $('limits-error').textContent = t('account.limits.error', { error });
+  } finally {
+    save.disabled = false;
+    save.removeAttribute('aria-busy');
+  }
+};
+$('limits-cancel').onclick = () => limitsDialog.close();
+// The panel redraws on every status line, so focus goes back to the same account's More button if the first one is gone.
+limitsDialog.addEventListener('close', () => {
+  const { account, opener, reopen } = limitsFor;
+  if (reopen && !$('usage').matches(':popover-open')) $('usage').showPopover();
+  const panel = settingsDialog.open ? $('settings-accounts') : $('usage');
+  (opener.isConnected ? opener : panel.querySelector(`.account__more[data-account="${CSS.escape(account.id)}"]`))?.focus();
+});
+
+function useButton(account) {
+  const button = node('button', 'btn', t('account.use'));
+  button.type = 'button';
+  button.dataset.tip = switchable(account).length ? t('account.use.restart-tip') : t('account.use.new-tip');
+  button.onclick = () => useAccount(account);
+  return button;
 }
 
 // frugal: blocks are redrawn on every status line, so keyboard focus on Use is lost when a reading arrives.
-function accountBlock(account, featured, caps = false) {
+function accountBlock(account, featured) {
   const block = node('section', 'account');
   const head = node('div', 'row');
   const main = node('div', 'row__main');
@@ -607,13 +669,7 @@ function accountBlock(account, featured, caps = false) {
   const age = account.limits?.at ? t('account.read-ago', { duration: spanText(Date.now() - account.limits.at) }) : '';
   main.append(accountName(account, [account.configDir, featured ? '' : age]));
   if (account.id === accountState.primary) controls.append(node('span', 'tag tag--primary', t('account.primary')));
-  if (account.signedIn && (!featured || switchable(account).length)) {
-    const button = node('button', 'btn', t('account.use'));
-    button.type = 'button';
-    button.dataset.tip = switchable(account).length ? t('account.use.restart-tip') : t('account.use.new-tip');
-    button.onclick = () => useAccount(account);
-    controls.append(button);
-  }
+  if (account.signedIn && (!featured || switchable(account).length)) controls.append(useButton(account));
   controls.append(withMenu(block, account));
   head.append(main, controls);
   block.append(head, ...loginLines(account));
@@ -625,8 +681,6 @@ function accountBlock(account, featured, caps = false) {
       : t('account.no-reading.signed-out');
     block.append(node('p', 'empty account__detail', message));
   }
-  if (caps && account.usedToday) block.append(node('span', 'account__detail', tp('account.delegated-today', account.usedToday)));
-  if (caps) block.append(...capsBlock(account));
   return block;
 }
 
@@ -638,7 +692,7 @@ function delegateSummary(delegates) {
     : benched.length ? tp('usage.at-limit-count', benched.length, { ready }) : ready;
 }
 
-function delegateRow(other) {
+function delegateState(other) {
   let state = t('account.steps.ready');
   if (other.exhaustedUntil) {
     const until = other.exhaustedUntil * 1000;
@@ -647,20 +701,74 @@ function delegateRow(other) {
       ? failureLabels[reason](benchTime.format(until))
       : t('usage.until', { time: resetDay.format(until) });
   }
-  const limits = accountLimits(other).filter(([, limit]) => limit).map(([label, limit]) => limitRow(label, limit));
-  return [
-    accountName(other, [[other.kind, other.model].filter(Boolean).join(': ')]),
-    node('span', '', other.usedToday ? tp('usage.used-today', other.usedToday, { state }) : state),
-    ...limits,
-    ...capsBlock(other),
-  ];
+  return other.usedToday ? tp('usage.used-today', other.usedToday, { state }) : state;
+}
+
+// The muted line under a Claude account: no sign-in, a shared sign-in, today's delegated work, or a missing reading.
+function claudeNotes(account) {
+  const notes = account.signedIn ? [] : [t('account.signed-out')];
+  if (account.sameLogin.length) notes.push(node('span', 'is-warn', t('account.same-sign-in', { names: account.sameLogin.join(', ') })));
+  if (account.usedToday) notes.push(tp('account.delegated-today', account.usedToday));
+  if (!accountLimits(account).some(([, limit]) => limit) && !accountsLoading && !accountsError) {
+    notes.push(t(account.signedIn ? 'account.no-reading.signed-in' : 'account.no-reading.signed-out'));
+  }
+  return notes;
+}
+
+// Settings shows one row per account: its name, a muted line on its state, its live limits and its actions.
+function accountRow(account, claude, featured) {
+  const row = node('div', 'row account-row');
+  const main = node('div', 'row__main');
+  const controls = node('div', 'row__controls');
+  const age = account.limits?.at ? t('account.read-ago', { duration: spanText(Date.now() - account.limits.at) }) : '';
+  main.append(accountName(account, [claude ? account.configDir : account.model, age]));
+  const notes = claude ? claudeNotes(account) : account.signedIn ? [delegateState(account)] : [t('account.signed-out')];
+  if (notes.length) {
+    const meta = node('span', 'row__meta');
+    meta.append(...notes.flatMap((note, index) => (index ? [' · ', note] : [note])));
+    main.append(meta);
+  }
+  for (const [label, limit, short] of accountLimits(account)) if (limit) controls.append(limitMeter(label, limit, short));
+  if (account.id === accountState.primary) controls.append(node('span', 'tag tag--primary', t('account.primary')));
+  if (claude && account.signedIn && (!featured || switchable(account).length)) controls.append(useButton(account));
+  controls.append(withMenu(row, account));
+  row.append(main, controls);
+  return row;
+}
+
+// Settings lists accounts by kind in this order; the keys match the kind radios in the Add account dialog.
+const ACCOUNT_KINDS = new Map([['claude', 'Claude'], ['codex', 'Codex'], ['grok', 'Grok'], ['antigravity', 'Antigravity'], ['gemini', 'Gemini'], ['opencode', t('account.kind.opencode')]]);
+const kindName = (kind) => ACCOUNT_KINDS.get(kind) ?? kind;
+
+function kindSection(kind, rows) {
+  const section = node('section', 'account-kind');
+  const head = node('div', 'account-kind__head');
+  const title = node('h4', 'account-kind__title', kindName(kind));
+  title.id = `settings-kind-${kind}`;
+  section.setAttribute('aria-labelledby', title.id);
+  head.append(title);
+  if (ACCOUNT_KINDS.has(kind)) {
+    const label = t('settings.accounts.add-kind', { kind: kindName(kind) });
+    const add = node('button', 'btn btn--icon');
+    add.type = 'button';
+    add.dataset.tip = label;
+    add.setAttribute('aria-label', label);
+    add.append(icon('plus'));
+    add.onclick = () => addAccount(kind);
+    head.append(add);
+  }
+  section.append(head, ...rows);
+  return section;
+}
+
+function drawState(panel, status, failed) {
+  panel.querySelector('[role="status"]').textContent = status;
+  panel.hidden = !status;
+  panel.querySelector('button').hidden = !failed;
 }
 
 function drawAccountStatus(panel, empty) {
-  const status = accountsLoading ? t('account.loading') : accountsError || empty;
-  panel.querySelector('[role="status"]').textContent = status;
-  panel.hidden = !status;
-  panel.querySelector('button').hidden = !accountsError;
+  drawState(panel, accountsLoading ? t('account.loading') : accountsError || empty, Boolean(accountsError));
 }
 
 function drawAccounts() {
@@ -676,16 +784,89 @@ function drawAccounts() {
   if (!settingsDialog.open || $('settings-accounts').closest('.settings__section').hidden) return;
   drawAccountStatus($('settings-accounts-state'), accounts.length ? '' : t('account.empty'));
   const ordered = main ? [main, ...accounts.filter((account) => account !== main)] : accounts;
-  $('settings-accounts').replaceChildren(...ordered.map((account) => accountBlock(account, account === main, true)));
-
-  const openCode = others.filter((other) => other.kind === 'opencode');
-  $('settings-delegates-empty').hidden = Boolean(accountsLoading || accountsError || others.length);
-  $('settings-delegates').replaceChildren(...others.filter((other) => other.kind !== 'opencode').flatMap(delegateRow));
-  $('settings-opencode').hidden = !openCode.length;
-  $('settings-opencode-models').textContent = tp('usage.model-count', openCode.length);
-  $('settings-opencode-status').textContent = delegateSummary(openCode);
-  $('settings-opencode-delegates').replaceChildren(...openCode.flatMap(delegateRow));
+  const kinds = new Set([...ACCOUNT_KINDS.keys(), ...others.map((other) => other.kind)]);
+  $('settings-accounts').replaceChildren(...[...kinds].flatMap((kind) => {
+    const list = kind === 'claude' ? ordered : others.filter((other) => other.kind === kind);
+    return list.length ? [kindSection(kind, list.map((account) => accountRow(account, kind === 'claude', account === main)))] : [];
+  }));
 }
+
+// The delegation order loads with the Accounts section; a move or a mode change saves at once, then reloads it.
+const delegationOrder = { list: null, error: '' };
+
+async function loadOrder() {
+  if (!delegationOrder.list || delegationOrder.error) {
+    delegationOrder.error = '';
+    drawOrder();
+  }
+  try { delegationOrder.list = await deck.accountsOrder(); } catch (error) { delegationOrder.error = String(error); }
+  drawOrder();
+}
+
+async function setOrder(mode, ids) {
+  try { await deck.setAccountsOrder(mode, ids); } catch (error) {
+    delegationOrder.error = String(error);
+    return drawOrder();
+  }
+  loadOrder();
+}
+
+function moveOrder(index, step) {
+  const list = [...delegationOrder.list];
+  [list[index], list[index + step]] = [list[index + step], list[index]];
+  delegationOrder.list = list;
+  drawOrder();
+  setOrder('custom', list.map((entry) => entry.id));
+}
+
+function orderRow(entry, index, count, custom) {
+  const name = accountLabel(entry.id);
+  const row = node('li', 'row');
+  const main = node('span', 'row__main');
+  main.append(node('span', 'row__name', name));
+  const stats = entry.tries
+    ? t('settings.accounts.order.stats', { ok: entry.ok, tries: entry.tries, rate: Math.round((entry.rate ?? 0) * 100) })
+    : t('settings.accounts.order.no-tasks');
+  row.append(node('span', 'order__pos', String(index + 1)), main, node('span', 'row__meta', kindName(entry.kind)), node('span', 'row__meta', stats));
+  if (!custom) return row;
+  const controls = node('span', 'row__controls');
+  for (const [step, dir] of [[-1, 'up'], [1, 'down']]) {
+    const label = t(`settings.accounts.order.move-${dir}`, { name });
+    const button = node('button', `btn btn--icon order__${dir}`);
+    button.type = 'button';
+    button.dataset.move = `${entry.id}:${dir}`;
+    button.dataset.tip = label;
+    button.setAttribute('aria-label', label);
+    button.append(icon('chevron'));
+    button.disabled = index + step < 0 || index + step >= count;
+    button.onclick = () => moveOrder(index, step);
+    controls.append(button);
+  }
+  row.append(controls);
+  return row;
+}
+
+// A redraw keeps keyboard focus on the same move button, or its sibling once the row reaches an end.
+function drawOrder() {
+  const { list, error } = delegationOrder;
+  const mode = list?.[0]?.mode === 'custom' ? 'custom' : 'recommended';
+  drawState($('settings-order-state'), error || (!list ? t('common.loading') : list.length ? '' : t('settings.accounts.order.empty')), Boolean(error));
+  for (const radio of document.getElementsByName('order-mode')) {
+    radio.checked = radio.value === mode;
+    radio.disabled = Boolean(error) || !list?.length;
+  }
+  $('settings-order-hint').textContent = t(`settings.accounts.order.${mode}-hint`);
+  $('settings-order-hint').hidden = Boolean(error) || !list?.length;
+  const box = $('settings-order');
+  const focused = box.contains(document.activeElement) ? document.activeElement.dataset.move : null;
+  box.replaceChildren(...(error || !list ? [] : list.map((entry, index) => orderRow(entry, index, list.length, mode === 'custom'))));
+  if (!focused) return;
+  const button = box.querySelector(`[data-move="${CSS.escape(focused)}"]`);
+  (button?.disabled ? button.parentElement.querySelector('button:not(:disabled)') : button)?.focus();
+}
+
+for (const radio of document.getElementsByName('order-mode')) radio.onchange = () => setOrder(radio.value, delegationOrder.list.map((entry) => entry.id));
+$('settings-order-state').querySelector('button').onclick = loadOrder;
 
 // Open chats on another account; login chats keep theirs.
 const restartable = () => [...chats.values()].filter((chat) => !chat.login && chat.account && chat.state === 'running');
@@ -1583,11 +1764,12 @@ function accountFields() {
   $('account-submit').disabled = Boolean(accountAdd?.busy);
 }
 
-function addAccount() {
+function addAccount(kind = 'claude') {
   $('usage').hidePopover();
   if (!accountDialog.open) {
     accountAdd = null;
     accountForm.reset();
+    accountForm.querySelector(`[name="account-kind"][value="${kind}"]`).checked = true;
     $('account-log').textContent = '';
     $('account-error').textContent = '';
     $('account-submit').textContent = t('common.add');
@@ -1642,7 +1824,7 @@ function cancelAccountAdd() {
 accountForm.onchange = accountFields;
 accountDialog.oncancel = (event) => { event.preventDefault(); cancelAccountAdd(); };
 $('account-cancel').onclick = cancelAccountAdd;
-$('account-add').onclick = addAccount;
+$('account-add').onclick = () => addAccount();
 deck.onAccountCliLine((line) => {
   if (!accountAdd?.busy) return;
   const log = $('account-log');
@@ -1670,7 +1852,12 @@ accountForm.onsubmit = async (event) => {
     $('account-error').textContent = t('account.error.exists', { id });
     return;
   }
-  const run = accountAdd?.registered ? accountAdd : { kind, id, name, registered: false };
+  runAccountAdd(accountAdd?.registered ? accountAdd : { kind, id, name, registered: false });
+};
+
+// Registers the account unless it already is, signs it in, then reloads the accounts. Add account and a delegate's Sign in both run it.
+async function runAccountAdd(run) {
+  const { kind, id, name } = run;
   accountAdd = run;
   run.busy = true;
   run.step = 0;
@@ -1763,7 +1950,24 @@ accountForm.onsubmit = async (event) => {
     accountFields();
     if (run.tab) { await closeChat(run.tab, true); run.tab = null; }
   }
-};
+}
+
+// A signed-out delegate signs in again through the Add account dialog, already past its add step.
+function signInDelegate(account) {
+  if (accountDialog.open) return;
+  addAccount(account.kind);
+  $('account-name').value = account.name;
+  accountStep(0, 'done');
+  runAccountAdd({ kind: account.kind, id: account.id, name: account.name, registered: true });
+}
+
+async function removeDelegate(account) {
+  let result;
+  try { result = await deck.accountCli(['remove', account.id]); } catch (error) { return { error: String(error) }; }
+  if (result.code !== 0) return { error: result.last || t('account.error.command-exit', { code: result.code }) };
+  setAccounts(await deck.getAccounts());
+  loadOrder();
+}
 
 // xterm reports a selection only on mouseup, so output during a drag would see it as stale and clear it.
 let mouseHeld = false;
@@ -3269,7 +3473,8 @@ function openMenu(x, y, items, source) {
   // A menu inside a modal must be its descendant to receive focus and clicks.
   const parent = source?.closest('dialog') ?? document.body;
   if (menu.parentElement !== parent) parent.append(menu);
-  menu.replaceChildren(...items.map(({ label, run, danger, checked, icon: glyph }) => {
+  menu.replaceChildren(...items.map(({ label, run, danger, checked, icon: glyph, separator }) => {
+    if (separator) return Object.assign(node('div', 'menu__separator'), { role: 'separator' });
     const item = document.createElement('button');
     item.type = 'button';
     item.className = 'menu__item';
@@ -3293,7 +3498,7 @@ function openMenu(x, y, items, source) {
 menu.onkeydown = (event) => {
   if (event.key !== 'ArrowDown' && event.key !== 'ArrowUp') return;
   event.preventDefault();
-  const items = [...menu.children];
+  const items = [...menu.querySelectorAll('.menu__item')];
   items[(items.indexOf(document.activeElement) + (event.key === 'ArrowDown' ? 1 : items.length - 1)) % items.length].focus();
 };
 
@@ -3651,7 +3856,10 @@ for (const dialog of document.querySelectorAll('dialog.settings')) {
 }
 function showSettingsSection(name) {
   name = showSection(settingsDialog, name);
-  if (name === 'accounts' && settingsDialog.open) loadAccounts(true);
+  if (name === 'accounts' && settingsDialog.open) {
+    loadAccounts(true);
+    loadOrder();
+  }
   if (name === 'debug') debugConsole.scrollTop = debugConsole.scrollHeight;
   if (name === 'updates' && !updatesBusy) loadUpdates();
   if (name === 'performance' && !perfTimer && !perfWrite) loadPerf();
@@ -3894,7 +4102,10 @@ async function openSettings(section = localStorage.getItem('settingsSection')) {
   showDebugLines(await deck.debugLines());
   if (!settingsDialog.open) {
     settingsDialog.showModal();
-    if (section === 'accounts') loadAccounts(true);
+    if (section === 'accounts') {
+      loadAccounts(true);
+      loadOrder();
+    }
   }
   debugConsole.scrollTop = debugConsole.scrollHeight;
   loadActivity();

@@ -399,6 +399,7 @@ impl Accounts {
             json!({"id": id, "name": coalesce(&s["labels"][id], json!(id.strip_prefix("oc-").unwrap_or(id))),
                 "kind": if e["kind"].is_null() { "".to_owned() } else { js_string(&e["kind"]) },
                 "model": if e["model"].is_string() { e["model"].clone() } else { Value::Null },
+                "signedIn": e["needs_login"] != true,
                 "exhaustedUntil": if number(&e["exhausted_until"]) > at / 1000.0 { e["exhausted_until"].clone() } else { Value::Null },
                 "benchReason": e["bench_reason"].clone(),
                 "usedToday": if e["day"] == local_day(at) && e["used"].is_number() { e["used"].clone() } else { json!(0) },
@@ -963,7 +964,7 @@ fn valid_cli_args(args: &[String], stdin: Option<&str>) -> bool {
             "antigravity" => matches!(&args[3..], [] | [_]) && args[3..].iter().all(|a| a == "--paid") && stdin.is_none(),
             _ => false,
         },
-        Some("status" | "login-command") => args.len() == 2 && valid_id(&args[1]) && stdin.is_none(),
+        Some("status" | "login-command" | "remove") => args.len() == 2 && valid_id(&args[1]) && stdin.is_none(),
         _ => false,
     };
     valid && args.iter().all(|s| !s.contains('\0'))
@@ -978,8 +979,12 @@ fn frugal_script(app: &AppHandle) -> Result<PathBuf> {
 #[tauri::command]
 pub async fn accounts_order(app: AppHandle) -> std::result::Result<Value, String> {
     tauri::async_runtime::spawn_blocking(move || { (|| -> Result<Value> {
+        let script = frugal_script(&app)?;
+        if !fs::read_to_string(&script)?.contains("ranking") {
+            return Err(crate::i18n::t("error.update-frugal-for-order", &[]).into());
+        }
         let mut command = Command::new("python");
-        command.arg("-u").arg(frugal_script(&app)?).arg("ranking");
+        command.arg("-u").arg(script).arg("ranking");
         let list: Value = serde_json::from_slice(&run(&mut command, Duration::from_secs(30))?)?;
         if !list.is_array() { return Err(crate::i18n::t("error.invalid-request", &[]).into()); }
         Ok(list)
@@ -1208,6 +1213,16 @@ pub(crate) mod tests {
         assert!(!valid_cli_args(&a(&["--paid", "--paid"]), None));
         assert!(!valid_cli_args(&a(&["--google"]), None));
         assert!(!valid_cli_args(&a(&["--other"]), None));
+    }
+
+    #[test]
+    fn valid_cli_remove() {
+        let a = |args: &[&str]| args.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+        assert!(valid_cli_args(&a(&["remove", "ag"]), None));
+        assert!(!valid_cli_args(&a(&["remove", "ag"]), Some("key\n")));
+        assert!(!valid_cli_args(&a(&["remove"]), None));
+        assert!(!valid_cli_args(&a(&["remove", "ag", "x"]), None));
+        assert!(!valid_cli_args(&a(&["remove", "../x"]), None));
     }
 
     pub(crate) struct TempDir(pub(crate) PathBuf);
@@ -1492,7 +1507,7 @@ pub(crate) mod tests {
             {"id": "other", "kind": "claude", "config_dir": dir.0.join(".claude-other")},
             {"id": "off", "kind": "claude", "enabled": false, "config_dir": dir.0.join(".claude-off")},
             {"id": "oc-api", "kind": "grok", "model": "model", "used": 3, "day": local_day(at), "exhausted_until": at / 1000.0 + 60.0},
-            {"id": "oc-codex", "kind": "codex", "used": 9, "day": "old"},
+            {"id": "oc-codex", "kind": "codex", "used": 9, "day": "old", "needs_login": true},
             {"id": "disabled", "kind": "grok", "enabled": false}
         ]})).unwrap();
         assert_eq!(a.claude_accounts().iter().map(|v| string(&v["id"])).collect::<Vec<_>>(), ["main", "work", "other"]);
@@ -1512,6 +1527,7 @@ pub(crate) mod tests {
         assert_eq!(snapshot["others"][0]["capsApply"], "no-reading");
         assert_eq!(snapshot["others"][1]["usedToday"], 0);
         assert_eq!(snapshot["others"][1]["limits"], Value::Null);
+        assert_eq!((&snapshot["others"][0]["signedIn"], &snapshot["others"][1]["signedIn"]), (&json!(true), &json!(false)));
         write_json(&work.join(".claude.json"), &json!({"oauthAccount": {"emailAddress": "new@example.com"}})).unwrap();
         assert_eq!(a.snapshot(at)["accounts"][1]["email"], "Same@Example.com");
         a.clear_emails();
