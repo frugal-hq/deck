@@ -1144,6 +1144,7 @@
   "account.unsupported": "非対応：削除してください",
   "account.api-paid.label": "課金を有効化済み（有料枠）",
   "account.api-paid.hint": "Google は無料枠の API トラフィックで学習します。frugal は学習を許可した場合のみ無料枠のキーを使います。",
+  "account.training-blocked": "ブロック中: データで学習される可能性があります",
   "error.update-frugal-for-training": "モデル学習を設定するには frugal プラグインを更新してください。",
   "settings.accounts.training.title": "モデル学習",
   "settings.accounts.training.tip": "無料プランや無料モデルは、あなたのデータで対価を得ている場合があります",

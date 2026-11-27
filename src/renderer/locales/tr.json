@@ -1192,6 +1192,7 @@
   "account.unsupported": "Desteklenmiyor: kaldırın",
   "account.api-paid.label": "Faturalandırma açık (ücretli katman)",
   "account.api-paid.hint": "Google, ücretsiz katman API trafiğiyle eğitim yapar; frugal ücretsiz bir anahtarı yalnızca eğitime izin verirseniz kullanır.",
+  "account.training-blocked": "Engellendi: verilerin üzerinde eğitim yapabilir",
   "error.update-frugal-for-training": "Model eğitimini ayarlamak için frugal eklentisini güncelleyin.",
   "settings.accounts.training.title": "Model eğitimi",
   "settings.accounts.training.tip": "Ücretsiz planlar ve modeller bedelini verilerinizle alabilir",

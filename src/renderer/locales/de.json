@@ -1192,6 +1192,7 @@
   "account.unsupported": "Nicht unterstützt: entfernen",
   "account.api-paid.label": "Abrechnung aktiv (kostenpflichtige Stufe)",
   "account.api-paid.hint": "Google trainiert mit API-Traffic der kostenlosen Stufe; frugal nutzt einen kostenlosen Schlüssel nur, wenn du Training erlaubst.",
+  "account.training-blocked": "Blockiert: darf mit deinen Daten trainieren",
   "error.update-frugal-for-training": "Aktualisiere das frugal-Plugin, um das Modelltraining festzulegen.",
   "settings.accounts.training.title": "Modelltraining",
   "settings.accounts.training.tip": "Kostenlose Pläne und Modelle bezahlen sich womöglich mit deinen Daten",

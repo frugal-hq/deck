@@ -1192,6 +1192,7 @@
   "account.unsupported": "Non pris en charge : retirez-le",
   "account.api-paid.label": "Facturation activée (niveau payant)",
   "account.api-paid.hint": "Google entraîne ses modèles sur le trafic API du niveau gratuit ; frugal n'utilise une clé gratuite que si vous autorisez l'entraînement.",
+  "account.training-blocked": "Bloqué : peut s’entraîner sur vos données",
   "error.update-frugal-for-training": "Mettez à jour le plugin frugal pour régler l'entraînement des modèles.",
   "settings.accounts.training.title": "Entraînement des modèles",
   "settings.accounts.training.tip": "Les offres et modèles gratuits peuvent se payer avec vos données",

@@ -1144,6 +1144,7 @@
   "account.unsupported": "지원되지 않음: 제거하세요",
   "account.api-paid.label": "결제 사용 중(유료 등급)",
   "account.api-paid.hint": "Google은 무료 등급 API 트래픽으로 학습합니다. frugal은 학습을 허용한 경우에만 무료 등급 키를 사용합니다.",
+  "account.training-blocked": "차단됨: 내 데이터로 학습할 수 있음",
   "error.update-frugal-for-training": "모델 학습을 설정하려면 frugal 플러그인을 업데이트하세요.",
   "settings.accounts.training.title": "모델 학습",
   "settings.accounts.training.tip": "무료 요금제와 무료 모델은 데이터로 비용을 대신할 수 있습니다",

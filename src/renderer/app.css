@@ -476,6 +476,7 @@ meter::-webkit-meter-even-less-good-value { background: var(--color-bad); border
 #account-dialog[open]:not(:modal) { position: fixed; inset: auto var(--space-md) var(--space-md) auto; max-height: 90vh; margin: 0; z-index: var(--z-base); }
 #account-steps { display: flex; justify-content: space-between; gap: var(--space-xs); margin: 0; padding: 0; list-style: none; color: var(--color-muted); font-size: var(--text-sm); }
 #account-steps li { display: flex; align-items: center; gap: var(--space-2xs); }
+#account-steps li[hidden] { display: none; }
 #account-steps [data-state="running"] { color: var(--color-accent); }
 #account-steps [data-state="done"] { color: var(--color-ok); }
 #account-steps [data-state="failed"] { color: var(--color-bad); }

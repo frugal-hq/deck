@@ -1192,6 +1192,7 @@
   "account.unsupported": "Non supportato: rimuovilo",
   "account.api-paid.label": "Fatturazione attiva (livello a pagamento)",
   "account.api-paid.hint": "Google addestra i modelli sul traffico API del livello gratuito; frugal usa una chiave gratuita solo se consenti l'addestramento.",
+  "account.training-blocked": "Bloccato: può addestrarsi sui tuoi dati",
   "error.update-frugal-for-training": "Aggiorna il plugin frugal per impostare l'addestramento dei modelli.",
   "settings.accounts.training.title": "Addestramento dei modelli",
   "settings.accounts.training.tip": "Piani e modelli gratuiti possono ripagarsi con i tuoi dati",

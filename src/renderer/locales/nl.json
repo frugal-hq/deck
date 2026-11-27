@@ -1192,6 +1192,7 @@
   "account.unsupported": "Niet ondersteund: verwijder het",
   "account.api-paid.label": "Facturering aan (betaalde laag)",
   "account.api-paid.hint": "Google traint op API-verkeer van de gratis laag; frugal gebruikt een gratis sleutel alleen als je training toestaat.",
+  "account.training-blocked": "Geblokkeerd: kan op je gegevens trainen",
   "error.update-frugal-for-training": "Werk de frugal-plugin bij om modeltraining in te stellen.",
   "settings.accounts.training.title": "Modeltraining",
   "settings.accounts.training.tip": "Gratis abonnementen en modellen betalen zich mogelijk terug met je gegevens",

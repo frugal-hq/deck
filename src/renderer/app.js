@@ -789,7 +789,7 @@ function accountRow(account, claude, featured) {
   main.append(accountName(account, [claude ? account.configDir : account.model, age]));
   // Kinds frugal no longer runs (Gemini before its move to API keys) can only be removed.
   const notes = claude ? claudeNotes(account) : !ACCOUNT_KINDS.has(account.kind) ? [t('account.unsupported')]
-    : account.signedIn ? [delegateState(account)] : [t('account.signed-out')];
+    : account.signedIn ? [trainingBlocked(account) ? node('span', 'is-warn', t('account.training-blocked')) : delegateState(account)] : [t('account.signed-out')];
   if (account.kind === 'api' && account.model) notes.unshift(account.model);
   if (notes.length) {
     const meta = node('span', 'row__meta');
@@ -950,6 +950,12 @@ const training = { state: null, error: '', applyError: '', busy: false, someView
 // "Allow only on selected" with nothing checked is stored as off; someView keeps the list on screen.
 const trainingMode = () => (training.state?.mode === 'off' && training.someView ? 'some' : training.state?.mode ?? 'off');
 
+// A candidate the current mode does not allow is skipped by frugal, so its row must not say Ready.
+function trainingBlocked(account) {
+  const { mode, allowed = [], candidates = [] } = training.state ?? {};
+  return candidates.some((candidate) => candidate.id === account.id) && (mode === 'off' || (mode === 'some' && !allowed.includes(account.id)));
+}
+
 async function loadTraining() {
   training.error = '';
   if (!training.state) drawTraining();
@@ -962,6 +968,7 @@ async function loadTraining() {
     training.error = t('settings.accounts.training.error.load', { error: error?.message ?? String(error) });
   }
   drawTraining();
+  drawAccounts();
 }
 
 function trainingRow(candidate, allowed) {
@@ -1907,6 +1914,7 @@ function accountFields() {
   $('account-model-field').hidden = kind !== 'opencode';
   $('account-model').disabled = locked || kind !== 'opencode';
   $('account-model').required = kind === 'opencode';
+  $('account-steps').children[1].hidden = !delegateSignsIn({ kind, model: $('account-model').value });
   $('account-paid-field').hidden = kind !== 'antigravity';
   $('account-agy-hint').hidden = kind !== 'antigravity';
   $('account-paid').disabled = locked || kind !== 'antigravity';
@@ -1968,7 +1976,13 @@ const modelLabel = (model) => (model.input == null || model.output == null ? mod
 
 function fillModels() {
   const provider = accountProviders?.list?.find((entry) => entry.id === $('account-provider').value);
-  $('account-api-model').replaceChildren(...(provider?.models ?? []).map((model) => Object.assign(node('option', '', modelLabel(model)), { value: model.id })));
+  const models = provider?.models ?? [];
+  const select = $('account-api-model');
+  // The user's pick survives a redraw of the same provider; otherwise the first model (newest) is preselected.
+  const keep = select.dataset.provider === provider?.id && models.some((model) => model.id === select.value) ? select.value : models[0]?.id ?? '';
+  select.replaceChildren(...models.map((model) => Object.assign(node('option', '', modelLabel(model)), { value: model.id })));
+  select.value = keep;
+  select.dataset.provider = provider?.id ?? '';
   apiPaidField();
 }
 

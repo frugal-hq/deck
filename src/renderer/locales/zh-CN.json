@@ -1144,6 +1144,7 @@
   "account.unsupported": "不受支持：请移除",
   "account.api-paid.label": "已开通结算（付费层级）",
   "account.api-paid.hint": "Google 会使用免费层级的 API 流量训练模型；只有在你允许训练时，frugal 才会使用免费层级的密钥。",
+  "account.training-blocked": "已阻止：可能使用你的数据训练",
   "error.update-frugal-for-training": "请更新 frugal 插件以设置模型训练。",
   "settings.accounts.training.title": "模型训练",
   "settings.accounts.training.tip": "免费套餐和免费模型可能以你的数据作为代价",

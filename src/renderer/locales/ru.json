@@ -1288,6 +1288,7 @@
   "account.unsupported": "Не поддерживается: удалите",
   "account.api-paid.label": "Оплата включена (платный уровень)",
   "account.api-paid.hint": "Google обучает модели на трафике API бесплатного уровня; frugal использует бесплатный ключ, только если вы разрешите обучение.",
+  "account.training-blocked": "Заблокировано: может обучаться на ваших данных",
   "error.update-frugal-for-training": "Обновите плагин frugal, чтобы настроить обучение моделей.",
   "settings.accounts.training.title": "Обучение моделей",
   "settings.accounts.training.tip": "Бесплатные тарифы и модели могут окупаться за счёт ваших данных",

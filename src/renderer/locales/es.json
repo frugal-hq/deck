@@ -1192,6 +1192,7 @@
   "account.unsupported": "No compatible: quítala",
   "account.api-paid.label": "Facturación activa (nivel de pago)",
   "account.api-paid.hint": "Google entrena con el tráfico de la API del nivel gratuito; frugal solo usa una clave gratuita si permites el entrenamiento.",
+  "account.training-blocked": "Bloqueada: puede entrenar con tus datos",
   "error.update-frugal-for-training": "Actualiza el plugin frugal para configurar el entrenamiento de modelos.",
   "settings.accounts.training.title": "Entrenamiento de modelos",
   "settings.accounts.training.tip": "Los planes y modelos gratuitos pueden pagarse con tus datos",

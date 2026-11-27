@@ -1288,6 +1288,7 @@
   "account.unsupported": "Nieobsługiwane: usuń je",
   "account.api-paid.label": "Płatności włączone (płatny poziom)",
   "account.api-paid.hint": "Google trenuje na ruchu API z darmowego poziomu; frugal używa darmowego klucza tylko, jeśli zezwolisz na trenowanie.",
+  "account.training-blocked": "Zablokowane: może trenować na Twoich danych",
   "error.update-frugal-for-training": "Zaktualizuj wtyczkę frugal, aby ustawić trenowanie modeli.",
   "settings.accounts.training.title": "Trenowanie modeli",
   "settings.accounts.training.tip": "Darmowe plany i modele mogą być opłacane twoimi danymi",

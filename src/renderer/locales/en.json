@@ -1192,6 +1192,7 @@
   "account.unsupported": "Unsupported: remove it",
   "account.api-paid.label": "Billing on (paid tier)",
   "account.api-paid.hint": "Google trains on free-tier API traffic; frugal only uses a free-tier key if you allow training.",
+  "account.training-blocked": "Blocked: may train on your data",
   "error.update-frugal-for-training": "Update the frugal plugin to set model training.",
   "settings.accounts.training.title": "Model training",
   "settings.accounts.training.tip": "Free plans and free models may pay for themselves with your data",
