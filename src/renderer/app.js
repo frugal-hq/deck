@@ -5711,8 +5711,9 @@ async function openTasks() {
 $('tasks-retry').onclick = openTasks;
 let updateCheck;
 let updatesBusy = false;
-function checkUpdates() {
-  return updateCheck ??= deck.checkUpdates().then((found) => {
+// Force skips the 10 minutes the backend reuses GitHub's answers for.
+function checkUpdates(force = false) {
+  return updateCheck ??= deck.checkUpdates(force).then((found) => {
     $('update-badge').hidden = !(found?.local || found?.remote || found?.frugalLatest?.newer);
     return found;
   }, (error) => {
@@ -5797,7 +5798,7 @@ async function loadUpdates() {
   try {
     // An update can finish while a background check still holds the previous version.
     if (updatesBusy) await updateCheck?.catch(() => {});
-    found = await checkUpdates();
+    found = await checkUpdates(true);
   } catch (error) {
     failure = error?.message ?? error;
   }
@@ -5919,15 +5920,10 @@ async function updateFrugal(button) {
     lockUpdates(button, false);
   }
 }
+// Builds and plugin releases land while the Deck stays open: check each minute and on focus; the backend caches GitHub's answers.
 pollUpdates();
-setInterval(pollUpdates, 6 * 60 * 60 * 1000);
-// Builds and plugin releases land while the Deck stays open; recheck on focus, throttled for GitHub's rate limit.
-let lastFocusPoll = Date.now();
-window.addEventListener('focus', () => {
-  if (Date.now() - lastFocusPoll < 15 * 60 * 1000) return;
-  lastFocusPoll = Date.now();
-  pollUpdates();
-});
+setInterval(pollUpdates, 60 * 1000);
+window.addEventListener('focus', pollUpdates);
 render();
 for (const button of document.querySelectorAll('[data-window-action]')) {
   button.onclick = () => deck.windowAction(button.dataset.windowAction);

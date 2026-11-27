@@ -7,7 +7,7 @@ use std::os::windows::process::CommandExt;
 use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use std::sync::Mutex;
-use std::time::{Duration, UNIX_EPOCH};
+use std::time::{Duration, Instant, UNIX_EPOCH};
 use tauri::{AppHandle, Manager, WebviewWindow};
 use crate::accounts::{self, Accounts};
 use tauri_plugin_dialog::DialogExt;
@@ -18,6 +18,10 @@ const DOWNLOADS: &str = "https://github.com/frugal-hq/deck/releases/download/";
 const SUFFIX: &str = "_x64-setup.exe";
 const NO_WINDOW: u32 = 0x0800_0000;
 const FRUGAL_REPO: &str = "frugal-hq/frugal";
+// GitHub allows 60 unauthenticated requests an hour and the badge checks each minute, so its answers are reused for 10 minutes.
+const REMOTE_TTL: Duration = Duration::from_secs(600);
+type Remote = (Result<Option<Value>, String>, Value);
+static REMOTE: Mutex<Option<(Instant, Value, Remote)>> = Mutex::new(None);
 
 // Windows ships curl.exe, so no HTTP client is compiled in.
 fn curl() -> Command {
@@ -117,13 +121,27 @@ fn claude_plugin(app: &AppHandle) -> Result<(PathBuf, impl Fn(&[&str]) -> Result
 }
 
 #[tauri::command]
-pub async fn update_check(app: AppHandle) -> Value {
+pub async fn update_check(app: AppHandle, force: Option<bool>) -> Value {
     tauri::async_runtime::spawn_blocking(move || {
-        let remote = latest_release();
         let store = app.state::<Mutex<Accounts>>().lock().unwrap().store_dir();
         let frugal = accounts::frugal_install(&store)["version"].clone();
         let source = frugal_source(&store);
-        let latest = frugal.as_str().map_or(Value::Null, |installed| frugal_latest(&source, installed));
+        let check = || frugal.as_str().map_or(Value::Null, |installed| frugal_latest(&source, installed));
+        // A folder source is read locally each time, so its uncommitted changes show at once; a new frugal or source refetches.
+        let github = source["source"] == "github";
+        let key = json!([source, frugal]);
+        let (remote, cached) = {
+            let mut cache = REMOTE.lock().unwrap();
+            match cache.as_ref().filter(|(at, k, _)| force != Some(true) && at.elapsed() < REMOTE_TTL && *k == key) {
+                Some((_, _, remote)) => remote.clone(),
+                None => {
+                    let remote = (latest_release(), if github { check() } else { Value::Null });
+                    *cache = Some((Instant::now(), key, remote.clone()));
+                    remote
+                }
+            }
+        };
+        let latest = if github { cached } else { check() };
         let folder = Some(build_folder()).filter(|folder| folder.is_dir());
         json!({ "version": env!("CARGO_PKG_VERSION"), "local": local_build(), "remote": remote.as_ref().ok().cloned().flatten(), "error": remote.err(), "buildFolder": folder,
                 "frugal": frugal, "frugalSource": source, "frugalLatest": latest })
