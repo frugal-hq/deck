@@ -1206,8 +1206,9 @@ function drawSubagents(tasks) {
   $('info-subagents').hidden = !shown.length;
   $('info-tasks-list').replaceChildren(...shown.filter((task) => !isLocal(task)).map(taskRow), ...local.slice(0, infoLocalExpanded ? local.length : LOCAL_SHOWN).map(taskRow));
   const more = $('info-tasks-more');
-  more.hidden = local.length <= LOCAL_SHOWN;
-  more.textContent = infoLocalExpanded ? t('sidebar.show-less') : tp('info.tasks.more', local.length - LOCAL_SHOWN);
+  const hidden = local.length <= LOCAL_SHOWN;
+  more.hidden = hidden;
+  if (!hidden) more.textContent = infoLocalExpanded ? t('sidebar.show-less') : tp('info.tasks.more', local.length - LOCAL_SHOWN);
   more.setAttribute('aria-expanded', String(infoLocalExpanded));
 }
 $('info-tasks-more').onclick = () => {
@@ -1225,8 +1226,8 @@ function procRow(chat, proc) {
   main.append(name);
   const usage = [t('info.procs.cpu', { percent: Math.round(proc.cpu_pct) }), sizeText(proc.ram_bytes, 1024)];
   if (proc.gpu_pct != null) usage.push(t('info.procs.gpu', { percent: Math.round(proc.gpu_pct) }));
+  main.append(node('span', 'row__meta', usage.join(' · ')));
   const controls = node('div', 'row__controls');
-  controls.append(node('span', 'row__meta', usage.join(' · ')));
   if (!proc.is_chat && !/^claude\.exe$/i.test(proc.name) && proc.started_ms) {
     const end = node('button', 'btn btn--icon');
     end.type = 'button';
