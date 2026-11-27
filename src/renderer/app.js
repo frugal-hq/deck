@@ -223,6 +223,7 @@ const failureLabels = {
 const benchTime = resetDay;
 const resetExact = new Intl.DateTimeFormat('en-US', { dateStyle: 'medium', timeStyle: 'short' });
 const compact = new Intl.NumberFormat('en-US', { notation: 'compact' });
+const usd = new Intl.NumberFormat('en-US', { style: 'currency', currency: 'USD' });
 
 function drawMeter(id, pct, text) {
   const element = $(id);
@@ -519,15 +520,16 @@ async function confirmAccountAction(title, message, action, run) {
   if (confirmed) report(await run());
 }
 
-// Free OpenCode models and Gemini's API key have no sign-in.
-const delegateSignsIn = (account) => account.kind !== 'gemini' && !(account.kind === 'opencode' && /[-:]free$/.test(account.model ?? ''));
+// Free OpenCode models and API keys have no sign-in.
+const delegateSignsIn = (account) => account.kind !== 'api' && !(account.kind === 'opencode' && /[-:]free$/.test(account.model ?? ''));
 
 // Claude accounts sign in, sign out and delete their config folder; delegates sign in again when logged out and are removed from frugal.
 function accountMenu(account, opener) {
   const items = [{ label: t('account.rename.menu'), run: () => askRename(account) }];
   if ('kind' in account) {
-    if (!account.signedIn && delegateSignsIn(account)) items.push({ label: t('account.steps.sign-in'), run: () => signInDelegate(account) });
+    if (!account.signedIn && ACCOUNT_KINDS.has(account.kind) && delegateSignsIn(account)) items.push({ label: t('account.steps.sign-in'), run: () => signInDelegate(account) });
     if (account.capsApply === 'ok') items.push({ label: t('account.limits.menu'), run: () => askLimits(account, opener) });
+    if (account.kind === 'api') items.push({ label: t('account.spend.menu'), run: () => askSpend(account, opener) });
     items.push({ separator: true }, { label: t('account.remove.action'), danger: true, run: () => confirmAccountAction(
       t('account.remove.title', { name: account.name }),
       t('account.remove.text'),
@@ -642,6 +644,78 @@ limitsDialog.addEventListener('close', () => {
   (opener.isConnected ? opener : panel.querySelector(`.account__more[data-account="${CSS.escape(account.id)}"]`))?.focus();
 });
 
+// The first local day of the spend period, as frugal writes spend.since: YYYY-MM-DD.
+function periodStart(period, now = new Date()) {
+  const day = new Date(now.getFullYear(), now.getMonth(), now.getDate());
+  if (period === 'week') day.setDate(day.getDate() - (day.getDay() + 6) % 7);
+  else if (period === 'month') day.setDate(1);
+  else if (period === 'quarter') day.setMonth(day.getMonth() - day.getMonth() % 3, 1);
+  else if (period === 'year') day.setMonth(0, 1);
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${day.getFullYear()}-${pad(day.getMonth() + 1)}-${pad(day.getDate())}`;
+}
+
+// An API key's spend this period as a limit row: against its spend limit with a bar, or the amount alone. Spend from an earlier period counts as none.
+function spendRow(account) {
+  const period = account.spendPeriod ?? 'month';
+  const spent = account.spend?.since === periodStart(period) ? Number(account.spend.usd) || 0 : 0;
+  const label = t('account.spend.label');
+  const row = node('div', 'limit');
+  if (typeof account.spendLimit !== 'number') {
+    row.append(node('span', 'limit__label', label), node('span', 'limit__reset', t(`account.spend.this.${period}`, { spent: usd.format(spent) })));
+    return row;
+  }
+  const pct = account.spendLimit > 0 ? Math.min(100, (spent / account.spendLimit) * 100) : 100;
+  const used = node('span', 'limit__pct', t('common.percent', { percent: Math.round(pct) }));
+  used.classList.toggle('is-warn', pct >= WARN_PCT);
+  row.append(node('span', 'limit__label', label),
+    node('span', 'limit__reset', t(`account.spend.of.${period}`, { spent: usd.format(spent), limit: usd.format(account.spendLimit) })),
+    used, usageMeter(label, { pct }));
+  return row;
+}
+
+const spendDialog = $('spend-dialog');
+let spendFor = null;
+
+function askSpend(account, opener) {
+  spendFor = { account, opener };
+  $('spend-title').textContent = t('account.spend.title', { name: account.name });
+  $('spend-error').textContent = '';
+  $('spend-amount').value = account.spendLimit ?? '';
+  $('spend-period').value = account.spendPeriod ?? 'month';
+  $('spend-remove').disabled = typeof account.spendLimit !== 'number';
+  spendDialog.showModal();
+}
+
+// Saving or removing the limit shows at once in the account's spend row.
+async function saveSpend(args, button) {
+  const { account } = spendFor;
+  button.disabled = true;
+  button.setAttribute('aria-busy', 'true');
+  try {
+    const result = await deck.accountCli(['limit', account.id, ...args]);
+    if (result.code !== 0) throw new Error(result.last || t('account.error.command-exit', { code: result.code }));
+    spendDialog.close();
+    setAccounts(await deck.getAccounts());
+  } catch (error) {
+    $('spend-error').textContent = t('account.spend.error', { error: error?.message ?? String(error) });
+  } finally {
+    button.disabled = false;
+    button.removeAttribute('aria-busy');
+  }
+}
+
+$('spend-form').onsubmit = (event) => {
+  event.preventDefault();
+  saveSpend([$('spend-amount').value.trim(), $('spend-period').value], $('spend-save'));
+};
+$('spend-remove').onclick = () => saveSpend(['off'], $('spend-remove'));
+$('spend-cancel').onclick = () => spendDialog.close();
+spendDialog.addEventListener('close', () => {
+  const { account, opener } = spendFor;
+  (opener.isConnected ? opener : $('settings-accounts').querySelector(`.account__more[data-account="${CSS.escape(account.id)}"]`))?.focus();
+});
+
 function useButton(account) {
   const button = node('button', 'btn', t('account.use'));
   button.type = 'button';
@@ -713,7 +787,10 @@ function accountRow(account, claude, featured) {
   const controls = node('div', 'row__controls');
   const age = account.limits?.at ? t('account.read-ago', { duration: spanText(Date.now() - account.limits.at) }) : '';
   main.append(accountName(account, [claude ? account.configDir : account.model, age]));
-  const notes = claude ? claudeNotes(account) : account.signedIn ? [delegateState(account)] : [t('account.signed-out')];
+  // Kinds frugal no longer runs (Gemini before its move to API keys) can only be removed.
+  const notes = claude ? claudeNotes(account) : !ACCOUNT_KINDS.has(account.kind) ? [t('account.unsupported')]
+    : account.signedIn ? [delegateState(account)] : [t('account.signed-out')];
+  if (account.kind === 'api' && account.model) notes.unshift(account.model);
   if (notes.length) {
     const meta = node('span', 'row__meta');
     meta.append(...notes.flatMap((note, index) => (index ? [' · ', note] : [note])));
@@ -724,18 +801,20 @@ function accountRow(account, claude, featured) {
   controls.append(withMenu(block, account));
   row.append(main, controls);
   block.append(row, ...accountLimits(account).filter(([, limit]) => limit).map(([label, limit]) => limitRow(label, limit)));
+  if (account.kind === 'api') block.append(spendRow(account));
   return block;
 }
 
-// Settings lists accounts by kind in this order; the keys match the kind radios in the Add account dialog.
-const ACCOUNT_KINDS = new Map([['claude', 'Claude'], ['codex', 'Codex'], ['grok', 'Grok'], ['antigravity', 'Antigravity'], ['gemini', 'Gemini'], ['opencode', t('account.kind.opencode')]]);
+// Settings lists accounts by kind in this order; the keys match the kind options in the Add account dialog.
+const ACCOUNT_KINDS = new Map([['claude', 'Claude'], ['codex', 'Codex'], ['grok', 'Grok'], ['antigravity', 'Antigravity'], ['opencode', t('account.kind.opencode')], ['api', t('account.kind.api')]]);
 const kindName = (kind) => ACCOUNT_KINDS.get(kind) ?? kind;
+const kindIcon = (kind) => icon(ACCOUNT_KINDS.has(kind) ? `kind-${kind}` : 'puzzle');
 
 function kindSection(kind, rows) {
   const section = node('section', 'account-kind');
   const head = node('div', 'account-kind__head');
   const title = node('h4', 'account-kind__title', kindName(kind));
-  if ($(`i-kind-${kind}`)) title.prepend(icon(`kind-${kind}`));
+  title.prepend(kindIcon(kind));
   title.id = `settings-kind-${kind}`;
   section.setAttribute('aria-labelledby', title.id);
   head.append(title);
@@ -865,6 +944,99 @@ function drawOrder() {
   const button = box.querySelector(`[data-move="${CSS.escape(focused)}"]`);
   (button?.disabled ? button.parentElement.querySelector('button:not(:disabled)') : button)?.focus();
 }
+
+// Model training: frugal skips accounts whose provider may train on their traffic until the user allows them here.
+const training = { state: null, error: '', applyError: '', busy: false, someView: false };
+// "Allow only on selected" with nothing checked is stored as off; someView keeps the list on screen.
+const trainingMode = () => (training.state?.mode === 'off' && training.someView ? 'some' : training.state?.mode ?? 'off');
+
+async function loadTraining() {
+  training.error = '';
+  if (!training.state) drawTraining();
+  try {
+    const result = await deck.accountCli(['training']);
+    if (!result?.training) throw new Error(t('error.update-frugal-for-training'));
+    training.state = result.training;
+  } catch (error) {
+    training.state = null;
+    training.error = t('settings.accounts.training.error.load', { error: error?.message ?? String(error) });
+  }
+  drawTraining();
+}
+
+function trainingRow(candidate, allowed) {
+  const name = accountState?.others.find((other) => other.id === candidate.id)?.name ?? candidate.id;
+  const item = node('li');
+  const label = node('label', 'organize__check');
+  const box = node('input');
+  box.type = 'checkbox';
+  box.value = candidate.id;
+  box.checked = allowed.has(candidate.id);
+  box.disabled = training.busy;
+  box.onchange = () => toggleTraining(box, name);
+  label.append(box, kindIcon(candidate.kind), node('span', '', name),
+    node('span', 'settings__hint', [candidate.model, candidate.reason].filter(Boolean).join(' · ')));
+  item.append(label);
+  return item;
+}
+
+function drawTraining() {
+  const { state, error, applyError, busy } = training;
+  const candidates = state?.candidates ?? [];
+  const mode = trainingMode();
+  const select = $('settings-training');
+  select.value = mode;
+  select.disabled = busy || !state || (!candidates.length && mode === 'off');
+  $('settings-training-warn').hidden = !state || mode === 'off';
+  drawState($('settings-training-state'), error || (!state ? t('common.loading') : candidates.length ? '' : t('settings.accounts.training.empty')), Boolean(error));
+  const list = $('settings-training-list');
+  const allowed = new Set(state?.allowed ?? []);
+  list.hidden = mode !== 'some' || !candidates.length;
+  list.replaceChildren(...(list.hidden ? [] : candidates.map((candidate) => trainingRow(candidate, allowed))));
+  $('settings-training-error').textContent = applyError;
+}
+
+async function applyTraining(args) {
+  training.busy = true;
+  training.applyError = '';
+  drawTraining();
+  try {
+    const result = await deck.accountCli(['training', ...args]);
+    if (result.code !== 0) throw new Error(result.last || t('account.error.command-exit', { code: result.code }));
+  } catch (error) {
+    training.applyError = t('settings.accounts.training.error.save', { error: error?.message ?? String(error) });
+  }
+  training.busy = false;
+  await loadTraining();
+}
+
+const askTraining = (title) => askConfirm(title, t('settings.accounts.training.warn'), t('settings.accounts.training.confirm.action'), true);
+// `training some` needs at least one id, so an empty selection applies as off.
+const someArgs = (ids) => (ids.length ? ['some', ...ids] : ['off']);
+
+$('settings-training').onchange = async () => {
+  const select = $('settings-training');
+  const mode = select.value;
+  const before = trainingMode();
+  if (before === 'off' && !await askTraining(t('settings.accounts.training.confirm.title'))) {
+    select.value = before;
+    return;
+  }
+  training.someView = mode === 'some';
+  const { allowed, candidates } = training.state;
+  applyTraining(mode === 'some' ? someArgs(allowed.filter((id) => candidates.some((candidate) => candidate.id === id))) : [mode]);
+};
+
+async function toggleTraining(box, name) {
+  if (box.checked && !await askTraining(t('settings.accounts.training.confirm.account', { name }))) {
+    box.checked = false;
+    return;
+  }
+  training.someView = true;
+  applyTraining(someArgs([...$('settings-training-list').querySelectorAll('input:checked')].map((input) => input.value)));
+}
+
+$('settings-training-state').querySelector('button').onclick = loadTraining;
 
 for (const radio of document.getElementsByName('order-mode')) radio.onchange = () => setOrder(radio.value, delegateOrder().flat().map((entry) => entry.id));
 $('settings-order-state').querySelector('button').onclick = loadOrder;
@@ -1728,30 +1900,98 @@ function accountStep(index, state) {
 }
 
 function accountFields() {
-  const kind = accountForm.querySelector('[name="account-kind"]:checked').value;
+  const kind = $('account-kind').value;
   const locked = Boolean(accountAdd?.busy || accountAdd?.registered);
-  const paid = kind === 'gemini' || kind === 'antigravity';
-  for (const input of accountForm.querySelectorAll('input')) input.disabled = locked;
+  const api = kind === 'api';
+  for (const input of accountForm.querySelectorAll('input, select')) input.disabled = locked;
   $('account-model-field').hidden = kind !== 'opencode';
   $('account-model').disabled = locked || kind !== 'opencode';
   $('account-model').required = kind === 'opencode';
-  $('account-key-field').hidden = kind !== 'gemini';
-  $('account-paid-field').hidden = !paid;
-  $('account-key-hint').hidden = kind !== 'gemini';
+  $('account-paid-field').hidden = kind !== 'antigravity';
   $('account-agy-hint').hidden = kind !== 'antigravity';
-  $('account-key').disabled = locked || kind !== 'gemini';
-  $('account-key').required = kind === 'gemini' && !accountAdd?.registered;
-  $('account-paid').disabled = locked || !paid;
-  if (kind !== 'gemini') $('account-key').value = '';
+  $('account-paid').disabled = locked || kind !== 'antigravity';
+  apiPaidField();
+  for (const id of ['account-key-field', 'account-provider-field', 'account-api-model-field', 'account-spend-field']) $(id).hidden = !api;
+  for (const id of ['account-key', 'account-provider', 'account-api-model', 'account-spend', 'account-period']) $(id).disabled = locked || !api;
+  for (const id of ['account-provider', 'account-api-model']) $(id).required = api;
+  $('account-key').required = api && !accountAdd?.registered;
+  if (!api) {
+    $('account-key').value = '';
+    $('account-providers-state').hidden = true;
+  } else if (accountProviders) providersStatus();
+  else loadProviders();
   $('account-submit').disabled = Boolean(accountAdd?.busy);
 }
+
+// API providers load once per dialog open and stay in memory until it closes.
+let accountProviders = null;
+
+function providersStatus() {
+  const { list, error } = accountProviders;
+  drawState($('account-providers-state'), error || (!list ? t('common.loading') : list.length ? '' : t('account.providers.empty')), Boolean(error));
+}
+
+async function loadProviders() {
+  const state = accountProviders = { list: null, error: '' };
+  providersStatus();
+  try {
+    const result = await deck.accountCli(['providers']);
+    if (!Array.isArray(result?.providers)) throw new Error(t('account.error.update'));
+    state.list = result.providers;
+  } catch (error) {
+    state.error = t('account.providers.error', { error: error?.message ?? String(error) });
+  }
+  if (accountProviders !== state) return;
+  $('account-provider').replaceChildren(...(state.list ?? []).map((provider) => Object.assign(node('option', '', provider.name), { value: provider.id })));
+  guessProvider();
+  fillModels();
+  accountFields();
+}
+
+$('account-providers-state').querySelector('button').onclick = loadProviders;
+
+// A key's prefix picks its provider; the user can still change it.
+const KEY_PREFIXES = [['sk-ant-', 'anthropic'], ['sk-or-', 'openrouter'], ['xai-', 'xai'], ['AIza', 'google'], ['gsk_', 'groq'], ['pplx-', 'perplexity'],
+  ['hf_', 'huggingface'], ['csk-', 'cerebras'], ['fw_', 'fireworks-ai'], ['nvapi-', 'nvidia'], ['sk-', 'openai']];
+
+function guessProvider() {
+  const key = $('account-key').value.trim();
+  const id = KEY_PREFIXES.find(([prefix]) => key.startsWith(prefix))?.[1];
+  const select = $('account-provider');
+  if (!id || id === select.value || ![...select.options].some((option) => option.value === id)) return;
+  select.value = id;
+  fillModels();
+}
+
+const modelLabel = (model) => (model.input == null || model.output == null ? model.name
+  : t('account.model.price', { name: model.name, input: usd.format(model.input), output: usd.format(model.output) }));
+
+function fillModels() {
+  const provider = accountProviders?.list?.find((entry) => entry.id === $('account-provider').value);
+  $('account-api-model').replaceChildren(...(provider?.models ?? []).map((model) => Object.assign(node('option', '', modelLabel(model)), { value: model.id })));
+  apiPaidField();
+}
+
+// Google trains on free-tier API traffic, so its keys say whether billing is on.
+function apiPaidField() {
+  const google = $('account-kind').value === 'api' && $('account-provider').value === 'google';
+  $('account-api-paid-field').hidden = !google;
+  $('account-api-paid-hint').hidden = !google;
+  $('account-api-paid').disabled = !google || Boolean(accountAdd?.busy || accountAdd?.registered);
+}
+
+$('account-key').oninput = guessProvider;
+$('account-provider').addEventListener('change', fillModels);
 
 function addAccount(kind = 'claude') {
   $('usage').hidePopover();
   if (!accountDialog.open) {
     accountAdd = null;
+    accountProviders = null;
     accountForm.reset();
-    accountForm.querySelector(`[name="account-kind"][value="${kind}"]`).checked = true;
+    $('account-provider').replaceChildren();
+    $('account-api-model').replaceChildren();
+    $('account-kind').value = kind;
     $('account-log').textContent = '';
     $('account-error').textContent = '';
     $('account-submit').textContent = t('common.add');
@@ -1826,7 +2066,7 @@ accountForm.onsubmit = async (event) => {
   event.preventDefault();
   if (accountAdd?.busy) return;
   const name = $('account-name').value.trim();
-  const kind = accountForm.querySelector('[name="account-kind"]:checked').value;
+  const kind = $('account-kind').value;
   const id = name.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 32);
   $('account-error').textContent = '';
   if (!id) { $('account-error').textContent = t('account.error.name'); return; }
@@ -1859,10 +2099,15 @@ async function runAccountAdd(run) {
       } else {
         const args = ['add', kind, id];
         if (kind === 'opencode') args.push($('account-model').value.trim());
-        if ((kind === 'gemini' || kind === 'antigravity') && $('account-paid').checked) args.push('--paid');
+        if (kind === 'antigravity' && $('account-paid').checked) args.push('--paid');
+        if (kind === 'api') {
+          const amount = $('account-spend').value.trim();
+          args.push($('account-provider').value, $('account-api-model').value, ...(amount ? ['--limit', amount, $('account-period').value] : []));
+          if ($('account-provider').value === 'google' && $('account-api-paid').checked) args.push('--paid');
+        }
         // Clear the input immediately; the key lives only in this invocation's stdin.
         let pending;
-        try { pending = deck.accountCli(args, kind === 'gemini' ? `${$('account-key').value}\n` : null); }
+        try { pending = deck.accountCli(args, kind === 'api' ? `${$('account-key').value.trim()}\n` : null); }
         finally { $('account-key').value = ''; }
         const result = accountResult(await pending, true);
         if (result.ok !== true || result.id !== id || result.kind !== kind || typeof result.loggedIn !== 'boolean') throw new Error(t('account.error.add'));
@@ -1872,7 +2117,8 @@ async function runAccountAdd(run) {
     }
     run.step = 1;
     accountStep(1, 'running');
-    if (kind !== 'claude' || !run.registered) {
+    if (kind === 'api') accountStep(1, 'skipped');
+    else if (kind !== 'claude' || !run.registered) {
       const command = kind === 'claude' ? null : accountResult(await deck.accountCli(['login-command', id]), true);
       if (command && command.argv === null) accountStep(1, 'skipped');
       else {
@@ -1949,6 +2195,7 @@ async function removeDelegate(account) {
   if (result.code !== 0) return { error: result.last || t('account.error.command-exit', { code: result.code }) };
   setAccounts(await deck.getAccounts());
   loadOrder();
+  loadTraining();
 }
 
 // xterm reports a selection only on mouseup, so output during a drag would see it as stale and clear it.
@@ -3841,6 +4088,7 @@ function showSettingsSection(name) {
   if (name === 'accounts' && settingsDialog.open) {
     loadAccounts(true);
     loadOrder();
+    loadTraining();
   }
   if (name === 'debug') debugConsole.scrollTop = debugConsole.scrollHeight;
   if (name === 'updates' && !updatesBusy) loadUpdates();

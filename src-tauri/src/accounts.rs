@@ -399,7 +399,8 @@ impl Accounts {
             json!({"id": id, "name": coalesce(&s["labels"][id], json!(id.strip_prefix("oc-").unwrap_or(id))),
                 "kind": if e["kind"].is_null() { "".to_owned() } else { js_string(&e["kind"]) },
                 "model": if e["model"].is_string() { e["model"].clone() } else { Value::Null },
-                "signedIn": e["needs_login"] != true,
+                "provider": e["provider"].clone(), "spendLimit": e["spend_limit"].clone(), "spendPeriod": e["spend_period"].clone(), "spend": e["spend"].clone(),
+                "signedIn": e["kind"] == "api" || e["needs_login"] != true,
                 "exhaustedUntil": if number(&e["exhausted_until"]) > at / 1000.0 { e["exhausted_until"].clone() } else { Value::Null },
                 "benchReason": e["bench_reason"].clone(),
                 "usedToday": if e["day"] == local_day(at) && e["used"].is_number() { e["used"].clone() } else { json!(0) },
@@ -959,16 +960,43 @@ fn valid_cli_args(args: &[String], stdin: Option<&str>) -> bool {
             "claude" | "codex" | "grok" => args.len() == 3 && stdin.is_none(),
             "opencode" => args.len() == 4 && stdin.is_none() && args[3].split_once('/').is_some_and(|(p, m)|
                 !p.is_empty() && !m.is_empty() && !args[3].chars().any(|c| c.is_whitespace() || c.is_control())) && !args[3].starts_with('-'),
-            "gemini" => matches!(&args[3..], [] | [_]) && args[3..].iter().all(|a| a == "--paid") &&
-                stdin.is_some_and(|s| !s.trim().is_empty() && s.len() <= 4097 && !s.strip_suffix('\n').unwrap_or(s).contains(['\r', '\n', '\0'])),
             "antigravity" => matches!(&args[3..], [] | [_]) && args[3..].iter().all(|a| a == "--paid") && stdin.is_none(),
+            // --paid only for Google, which trains on free-tier API traffic.
+            "api" => valid_key(stdin) && match &args[3..] {
+                [provider, model, rest @ ..] => cli_word(provider) && cli_word(model) && match rest.strip_suffix(&["--paid".to_owned()]) {
+                    Some(rest) => provider == "google" && valid_limit(rest),
+                    None => valid_limit(rest),
+                },
+                _ => false,
+            },
             _ => false,
         },
         Some("status" | "login-command" | "remove") => args.len() == 2 && valid_id(&args[1]) && stdin.is_none(),
+        Some("providers") => args.len() == 1 && stdin.is_none(),
+        Some("training") => stdin.is_none() && match &args[1..] {
+            [] => true,
+            [mode] => mode == "off" || mode == "all",
+            [mode, ids @ ..] => mode == "some" && ids.len() <= 200 && ids.iter().all(|id| valid_id(id)),
+        },
+        Some("limit") => stdin.is_none() && match &args[1..] {
+            [id, off] => valid_id(id) && off == "off",
+            [id, usd, period] => valid_id(id) && valid_usd(usd) && valid_period(period),
+            _ => false,
+        },
         _ => false,
     };
     valid && args.iter().all(|s| !s.contains('\0'))
 }
+
+// An API key on one stdin line.
+fn valid_key(stdin: Option<&str>) -> bool {
+    stdin.is_some_and(|s| !s.trim().is_empty() && s.len() <= 4097 && !s.strip_suffix('\n').unwrap_or(s).contains(['\r', '\n', '\0']))
+}
+// A provider or model id: no flag, whitespace or control characters.
+fn cli_word(s: &str) -> bool { !s.is_empty() && s.len() <= 200 && !s.starts_with('-') && !s.chars().any(|c| c.is_whitespace() || c.is_control()) }
+fn valid_usd(s: &str) -> bool { !s.starts_with(['-', '+']) && s.parse::<f64>().is_ok_and(|n| n.is_finite() && n >= 0.0) }
+fn valid_period(s: &str) -> bool { matches!(s, "day" | "week" | "month" | "quarter" | "year") }
+fn valid_limit(rest: &[String]) -> bool { match rest { [] => true, [flag, usd, period] => flag == "--limit" && valid_usd(usd) && valid_period(period), _ => false } }
 
 fn frugal_script(app: &AppHandle) -> Result<PathBuf> {
     let accounts = app.state::<Mutex<Accounts>>();
@@ -1007,6 +1035,24 @@ pub async fn account_cli(app: AppHandle, args: Vec<String>, stdin: Option<String
             return Err(crate::i18n::t("error.update-frugal-for-kind", &[]).into());
         }
         let timeout = Duration::from_secs(if args[0] == "add" { 600 } else { 30 });
+        if args[0] == "providers" {
+            // The whole JSON list goes back to the renderer, not the last line.
+            let mut command = Command::new("python");
+            command.arg("-u").arg(script).arg("providers");
+            let list: Value = serde_json::from_slice(&run(&mut command, timeout)?)?;
+            if !list.is_array() { return Err(crate::i18n::t("error.update-frugal-for-kind", &[]).into()); }
+            return Ok(json!({"code": 0, "providers": list}));
+        }
+        if args == ["training"] {
+            // The training state goes back whole, like providers.
+            let mut command = Command::new("python");
+            command.arg("-u").arg(script).arg("training");
+            let state: Value = serde_json::from_slice(&run(&mut command, timeout)?).unwrap_or(Value::Null);
+            if !matches!(state["mode"].as_str(), Some("off" | "all" | "some")) || !state["allowed"].is_array() || !state["candidates"].is_array() {
+                return Err(crate::i18n::t("error.update-frugal-for-training", &[]).into());
+            }
+            return Ok(json!({"code": 0, "training": state}));
+        }
         let mut command = Command::new("python");
         command.arg("-u").arg(script).args(args);
         cli_lines(&app, &mut command, stdin, timeout)
@@ -1192,16 +1238,38 @@ pub(crate) mod tests {
     use std::io::Write;
 
     #[test]
-    fn valid_cli_gemini_auth() {
+    fn valid_cli_gemini_gone() {
         let a = |tail: &[&str]| ["add", "gemini", "gg"].iter().chain(tail).map(|s| s.to_string()).collect::<Vec<_>>();
-        assert!(valid_cli_args(&a(&[]), Some("key\n")));
-        assert!(valid_cli_args(&a(&["--paid"]), Some("key\n")));
-        assert!(!valid_cli_args(&a(&["--google"]), None));
-        assert!(!valid_cli_args(&a(&["--google"]), Some("key\n")));
-        assert!(!valid_cli_args(&a(&["--paid", "--paid"]), Some("key\n")));
-        assert!(!valid_cli_args(&a(&[]), None));
-        assert!(!valid_cli_args(&a(&["--paid"]), None));
-        assert!(!valid_cli_args(&a(&["--other"]), Some("key\n")));
+        assert!(!valid_cli_args(&a(&[]), Some("key\n")));
+        assert!(!valid_cli_args(&a(&["--paid"]), Some("key\n")));
+    }
+
+    #[test]
+    fn valid_cli_api_paid() {
+        let a = |args: &[&str]| args.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+        assert!(valid_cli_args(&a(&["add", "api", "g", "google", "gemini-2.5-pro", "--paid"]), Some("AIza\n")));
+        assert!(valid_cli_args(&a(&["add", "api", "g", "google", "gemini-2.5-pro", "--limit", "5", "month", "--paid"]), Some("AIza\n")));
+        assert!(!valid_cli_args(&a(&["add", "api", "g", "google", "gemini-2.5-pro", "--paid", "--limit", "5", "month"]), Some("AIza\n")));
+        assert!(!valid_cli_args(&a(&["add", "api", "g", "google", "gemini-2.5-pro", "--paid", "--paid"]), Some("AIza\n")));
+        assert!(!valid_cli_args(&a(&["add", "api", "o", "openai", "gpt-5", "--paid"]), Some("sk-x\n")));
+        assert!(!valid_cli_args(&a(&["add", "api", "g", "google", "--paid"]), Some("AIza\n")));
+    }
+
+    #[test]
+    fn valid_cli_training() {
+        let a = |args: &[&str]| args.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+        assert!(valid_cli_args(&a(&["training"]), None));
+        assert!(valid_cli_args(&a(&["training", "off"]), None));
+        assert!(valid_cli_args(&a(&["training", "all"]), None));
+        assert!(valid_cli_args(&a(&["training", "some", "oc-free", "g2"]), None));
+        assert!(!valid_cli_args(&a(&["training"]), Some("x\n")));
+        assert!(!valid_cli_args(&a(&["training", "some"]), None));
+        assert!(!valid_cli_args(&a(&["training", "on"]), None));
+        assert!(!valid_cli_args(&a(&["training", "all", "x"]), None));
+        assert!(!valid_cli_args(&a(&["training", "off", "x"]), None));
+        assert!(!valid_cli_args(&a(&["training", "some", "--all"]), None));
+        assert!(!valid_cli_args(&a(&["training", "some", "ok", "Bad Id"]), None));
+        assert!(!valid_cli_args(&a(&["training", "some", "-x"]), None));
     }
 
     #[test]
@@ -1213,6 +1281,23 @@ pub(crate) mod tests {
         assert!(!valid_cli_args(&a(&["--paid", "--paid"]), None));
         assert!(!valid_cli_args(&a(&["--google"]), None));
         assert!(!valid_cli_args(&a(&["--other"]), None));
+    }
+
+    #[test]
+    fn valid_cli_api() {
+        let a = |args: &[&str]| args.iter().map(|s| s.to_string()).collect::<Vec<_>>();
+        assert!(valid_cli_args(&a(&["add", "api", "k", "openai", "gpt-5"]), Some("sk-x\n")));
+        assert!(valid_cli_args(&a(&["add", "api", "k", "openai", "gpt-5", "--limit", "10.5", "month"]), Some("sk-x\n")));
+        assert!(!valid_cli_args(&a(&["add", "api", "k", "openai", "gpt-5"]), None));
+        assert!(!valid_cli_args(&a(&["add", "api", "k", "openai", "gpt-5", "--limit", "-1", "month"]), Some("sk-x\n")));
+        assert!(!valid_cli_args(&a(&["add", "api", "k", "openai", "gpt-5", "--limit", "1", "hour"]), Some("sk-x\n")));
+        assert!(!valid_cli_args(&a(&["add", "api", "k", "--x", "gpt-5"]), Some("sk-x\n")));
+        assert!(valid_cli_args(&a(&["providers"]), None));
+        assert!(!valid_cli_args(&a(&["providers", "x"]), None));
+        assert!(valid_cli_args(&a(&["limit", "k", "off"]), None));
+        assert!(valid_cli_args(&a(&["limit", "k", "3.2", "week"]), None));
+        assert!(!valid_cli_args(&a(&["limit", "k", "NaN", "week"]), None));
+        assert!(!valid_cli_args(&a(&["limit", "k"]), None));
     }
 
     #[test]

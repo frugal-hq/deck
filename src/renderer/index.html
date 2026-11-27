@@ -53,7 +53,7 @@
   <symbol id="i-kind-codex" viewBox="0 0 24 24" fill="currentColor" fill-rule="evenodd"><path clip-rule="evenodd" d="M8.086.457a6.105 6.105 0 013.046-.415c1.333.153 2.521.72 3.564 1.7a.117.117 0 00.107.029c1.408-.346 2.762-.224 4.061.366l.063.03.154.076c1.357.703 2.33 1.77 2.918 3.198.278.679.418 1.388.421 2.126a5.655 5.655 0 01-.18 1.631.167.167 0 00.04.155 5.982 5.982 0 011.578 2.891c.385 1.901-.01 3.615-1.183 5.14l-.182.22a6.063 6.063 0 01-2.934 1.851.162.162 0 00-.108.102c-.255.736-.511 1.364-.987 1.992-1.199 1.582-2.962 2.462-4.948 2.451-1.583-.008-2.986-.587-4.21-1.736a.145.145 0 00-.14-.032c-.518.167-1.04.191-1.604.185a5.924 5.924 0 01-2.595-.622 6.058 6.058 0 01-2.146-1.781c-.203-.269-.404-.522-.551-.821a7.74 7.74 0 01-.495-1.283 6.11 6.11 0 01-.017-3.064.166.166 0 00.008-.074.115.115 0 00-.037-.064 5.958 5.958 0 01-1.38-2.202 5.196 5.196 0 01-.333-1.589 6.915 6.915 0 01.188-2.132c.45-1.484 1.309-2.648 2.577-3.493.282-.188.55-.334.802-.438.286-.12.573-.22.861-.304a.129.129 0 00.087-.087A6.016 6.016 0 015.635 2.31C6.315 1.464 7.132.846 8.086.457zm-.804 7.85a.848.848 0 00-1.473.842l1.694 2.965-1.688 2.848a.849.849 0 001.46.864l1.94-3.272a.849.849 0 00.007-.854l-1.94-3.393zm5.446 6.24a.849.849 0 000 1.695h4.848a.849.849 0 000-1.696h-4.848z"></path></symbol>
   <symbol id="i-kind-grok" viewBox="0 0 24 24" fill="currentColor" fill-rule="evenodd"><path d="M9.27 15.29l7.978-5.897c.391-.29.95-.177 1.137.272.98 2.369.542 5.215-1.41 7.169-1.951 1.954-4.667 2.382-7.149 1.406l-2.711 1.257c3.889 2.661 8.611 2.003 11.562-.953 2.341-2.344 3.066-5.539 2.388-8.42l.006.007c-.983-4.232.242-5.924 2.75-9.383.06-.082.12-.164.179-.248l-3.301 3.305v-.01L9.267 15.292M7.623 16.723c-2.792-2.67-2.31-6.801.071-9.184 1.761-1.763 4.647-2.483 7.166-1.425l2.705-1.25a7.808 7.808 0 00-1.829-1A8.975 8.975 0 005.984 5.83c-2.533 2.536-3.33 6.436-1.962 9.764 1.022 2.487-.653 4.246-2.34 6.022-.599.63-1.199 1.259-1.682 1.925l7.62-6.815"></path></symbol>
   <symbol id="i-kind-antigravity" viewBox="0 0 24 24" fill="currentColor" fill-rule="evenodd"><path d="M21.751 22.607c1.34 1.005 3.35.335 1.508-1.508C17.73 15.74 18.904 1 12.037 1 5.17 1 6.342 15.74.815 21.1c-2.01 2.009.167 2.511 1.507 1.506 5.192-3.517 4.857-9.714 9.715-9.714 4.857 0 4.522 6.197 9.714 9.715z"></path></symbol>
-  <symbol id="i-kind-gemini" viewBox="0 0 24 24" fill="currentColor" fill-rule="evenodd"><path d="M20.616 10.835a14.147 14.147 0 01-4.45-3.001 14.111 14.111 0 01-3.678-6.452.503.503 0 00-.975 0 14.134 14.134 0 01-3.679 6.452 14.155 14.155 0 01-4.45 3.001c-.65.28-1.318.505-2.002.678a.502.502 0 000 .975c.684.172 1.35.397 2.002.677a14.147 14.147 0 014.45 3.001 14.112 14.112 0 013.679 6.453.502.502 0 00.975 0c.172-.685.397-1.351.677-2.003a14.145 14.145 0 013.001-4.45 14.113 14.113 0 016.453-3.678.503.503 0 000-.975 13.245 13.245 0 01-2.003-.678z"></path></symbol>
+  <symbol id="i-kind-api" viewBox="0 0 24 24" fill="currentColor" fill-rule="evenodd"><path d="M8 1h2v6H8zm6 0h2v6h-2zM5 7h14v4a7 7 0 01-6 6.93V23h-2v-5.07A7 7 0 015 11V7z"></path></symbol>
   <symbol id="i-kind-opencode" viewBox="0 0 24 24" fill="currentColor" fill-rule="evenodd"><path d="M16 6H8v12h8V6zm4 16H4V2h16v20z"></path></symbol>
 </svg>
 <header class="bar" data-tauri-drag-region>
@@ -185,19 +185,31 @@
 <dialog id="account-dialog" class="organize" aria-labelledby="account-title">
   <form id="account-form">
     <h2 id="account-title" class="dialog__title" data-i18n="account.title">Add account</h2>
-    <div class="segmented" role="radiogroup" aria-label="Account kind" data-i18n-aria-label="account.kind.label">
-      <label><input type="radio" name="account-kind" value="claude" checked>Claude</label>
-      <label><input type="radio" name="account-kind" value="codex">Codex</label>
-      <label><input type="radio" name="account-kind" value="grok">Grok</label>
-      <label data-i18n="account.kind.opencode"><input type="radio" name="account-kind" value="opencode">OpenCode</label>
-      <label><input type="radio" name="account-kind" value="gemini">Gemini</label>
-      <label><input type="radio" name="account-kind" value="antigravity">Antigravity</label>
-    </div>
+    <label class="organize__field" data-i18n="account.kind.label">Account kind<select id="account-kind" class="kind-select">
+      <button type="button"><selectedcontent></selectedcontent></button>
+      <option value="claude" selected><svg class="icon" aria-hidden="true"><use href="#i-kind-claude"></use></svg>Claude</option>
+      <option value="codex"><svg class="icon" aria-hidden="true"><use href="#i-kind-codex"></use></svg>Codex</option>
+      <option value="grok"><svg class="icon" aria-hidden="true"><use href="#i-kind-grok"></use></svg>Grok</option>
+      <option value="antigravity"><svg class="icon" aria-hidden="true"><use href="#i-kind-antigravity"></use></svg>Antigravity</option>
+      <option value="opencode" data-i18n="account.kind.opencode"><svg class="icon" aria-hidden="true"><use href="#i-kind-opencode"></use></svg>OpenCode</option>
+      <option value="api" data-i18n="account.kind.api"><svg class="icon" aria-hidden="true"><use href="#i-kind-api"></use></svg>API key</option>
+    </select></label>
     <label class="organize__field" data-i18n="account.name.label">Name<input id="account-name" required maxlength="40" pattern=".*\S.*" autocomplete="off" spellcheck="false"></label>
     <label id="account-model-field" class="organize__field" hidden data-i18n="account.model.label">Model<input id="account-model" placeholder="provider/model" autocomplete="off" spellcheck="false" disabled></label>
     <label id="account-key-field" class="organize__field" hidden data-i18n="account.key.label">API key<input id="account-key" type="password" maxlength="4096" autocomplete="off" spellcheck="false" disabled></label>
+    <label id="account-provider-field" class="organize__field" hidden data-i18n="account.provider.label">Provider<select id="account-provider" disabled></select></label>
+    <div id="account-providers-state" class="empty" hidden>
+      <p role="status"></p>
+      <button class="btn" type="button" hidden data-i18n="common.retry">Retry</button>
+    </div>
+    <label id="account-api-model-field" class="organize__field" hidden data-i18n="account.model.label">Model<select id="account-api-model" disabled></select></label>
+    <div id="account-spend-field" class="organize__pair" hidden>
+      <label class="organize__field" data-i18n="account.spend.amount">Spend limit (USD, optional)<input id="account-spend" type="number" min="0" step="0.01" inputmode="decimal" autocomplete="off" disabled></label>
+      <label class="organize__field" data-i18n="account.spend.period.label">Period<select id="account-period" disabled><option value="day" data-i18n="account.spend.period.day">Daily</option><option value="week" data-i18n="account.spend.period.week">Weekly</option><option value="month" selected data-i18n="account.spend.period.month">Monthly</option><option value="quarter" data-i18n="account.spend.period.quarter">Quarterly</option><option value="year" data-i18n="account.spend.period.year">Yearly</option></select></label>
+    </div>
     <label id="account-paid-field" class="organize__check" hidden data-i18n="account.paid.label"><input id="account-paid" type="checkbox" disabled> Billing or a paid Google plan is on</label>
-    <p id="account-key-hint" class="organize__text" hidden data-i18n="account.key-hint">Google trains on free-tier traffic; frugal only uses free-tier Gemini if you allow training.</p>
+    <label id="account-api-paid-field" class="organize__check" hidden data-i18n="account.api-paid.label"><input id="account-api-paid" type="checkbox" disabled> Billing on (paid tier)</label>
+    <p id="account-api-paid-hint" class="organize__text" hidden data-i18n="account.api-paid.hint">Google trains on free-tier API traffic; frugal only uses a free-tier key if you allow training.</p>
     <p id="account-agy-hint" class="organize__text" hidden data-i18n="account.agy-hint">Google may train on free-plan Antigravity traffic; frugal only uses a free-plan Antigravity account if you allow training.</p>
     <ol id="account-steps" aria-label="Account setup steps" aria-live="polite" data-i18n-aria-label="account.steps.label">
       <li data-state="pending" data-i18n="account.steps.install">Install</li>
@@ -233,6 +245,22 @@
     <div class="organize__actions">
       <button id="limits-cancel" class="btn" type="button" data-i18n="common.cancel">Cancel</button>
       <button id="limits-save" class="btn btn--primary" type="submit" data-i18n="common.save">Save</button>
+    </div>
+  </form>
+</dialog>
+<dialog id="spend-dialog" class="organize" closedby="any" aria-labelledby="spend-title" aria-describedby="spend-text">
+  <form id="spend-form" method="dialog">
+    <h2 id="spend-title" class="dialog__title"></h2>
+    <p id="spend-text" class="organize__text" data-i18n="account.spend.hint">Frugal stops delegating to this account when its spend reaches the limit.</p>
+    <div class="organize__pair">
+      <label class="organize__field" data-i18n="account.spend.amount-required">Spend limit (USD)<input id="spend-amount" type="number" min="0" step="0.01" inputmode="decimal" autocomplete="off" required></label>
+      <label class="organize__field" data-i18n="account.spend.period.label">Period<select id="spend-period"><option value="day" data-i18n="account.spend.period.day">Daily</option><option value="week" data-i18n="account.spend.period.week">Weekly</option><option value="month" selected data-i18n="account.spend.period.month">Monthly</option><option value="quarter" data-i18n="account.spend.period.quarter">Quarterly</option><option value="year" data-i18n="account.spend.period.year">Yearly</option></select></label>
+    </div>
+    <p id="spend-error" class="sort__status" data-failed="true" role="alert"></p>
+    <div class="organize__actions">
+      <button id="spend-remove" class="btn" type="button" data-i18n="account.spend.remove">Remove limit</button>
+      <button id="spend-cancel" class="btn" type="button" data-i18n="common.cancel">Cancel</button>
+      <button id="spend-save" class="btn btn--primary" type="submit" data-i18n="common.save">Save</button>
     </div>
   </form>
 </dialog>
@@ -475,6 +503,26 @@
             <button class="btn" type="button" hidden data-i18n="common.retry">Retry</button>
           </div>
           <ol id="settings-order" class="order__list"></ol>
+        </section>
+        <section class="order" aria-labelledby="settings-training-title">
+          <h3 id="settings-training-title" class="settings__title" data-i18n="settings.accounts.training.title">Model training</h3>
+          <div class="settings__row" data-tip="Free plans and free models may pay for themselves with your data" data-i18n-tip="settings.accounts.training.tip">
+            <label class="organize__check" data-i18n="settings.accounts.training.label">Training
+              <select id="settings-training" class="settings__select" disabled>
+                <option value="off" data-i18n="settings.accounts.training.off">Don't allow</option>
+                <option value="all" data-i18n="settings.accounts.training.all">Allow on all models</option>
+                <option value="some" data-i18n="settings.accounts.training.some">Allow only on selected</option>
+              </select>
+            </label>
+            <p class="settings__hint" data-i18n="settings.accounts.training.hint">Frugal skips accounts whose provider trains on their traffic unless you allow it here.</p>
+            <p id="settings-training-warn" class="settings__warn settings__warn--danger" hidden data-i18n="settings.accounts.training.warn">These providers may use the prompts, code and files sent to these accounts to train their models. Do not allow it for private or client code.</p>
+          </div>
+          <div id="settings-training-state" class="empty" hidden>
+            <p role="status"></p>
+            <button class="btn" type="button" hidden data-i18n="common.retry">Retry</button>
+          </div>
+          <ul id="settings-training-list" class="training__list" hidden></ul>
+          <p id="settings-training-error" class="sort__status" data-failed="true" role="alert"></p>
         </section>
       </section>
       <section class="settings__section" data-section="voice" hidden>

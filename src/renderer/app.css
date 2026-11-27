@@ -467,6 +467,11 @@ meter::-webkit-meter-even-less-good-value { background: var(--color-bad); border
 .organize__check[hidden] { display: none; }
 .organize__field { display: grid; gap: var(--space-2xs); color: var(--color-muted); font-size: var(--text-sm); }
 .organize__field[hidden] { display: none; }
+.organize__pair { display: grid; grid-template-columns: 1fr 1fr; gap: var(--space-sm); }
+.organize__pair[hidden] { display: none; }
+.training__list { display: grid; gap: var(--space-2xs); margin: 0; padding: 0; list-style: none; }
+.training__list[hidden] { display: none; }
+.training__list .settings__hint { margin-inline-start: auto; }
 #account-dialog { overflow-y: auto; }
 #account-dialog[open]:not(:modal) { position: fixed; inset: auto var(--space-md) var(--space-md) auto; max-height: 90vh; margin: 0; z-index: var(--z-base); }
 #account-steps { display: flex; justify-content: space-between; gap: var(--space-xs); margin: 0; padding: 0; list-style: none; color: var(--color-muted); font-size: var(--text-sm); }
@@ -614,6 +619,10 @@ option:focus-visible, .menu__item:focus-visible { outline-offset: -2px; }
 .menu__item[aria-checked="true"]::before { content: "\2713"; color: var(--color-accent); }
 .combo { top: anchor(bottom); left: anchor(left); width: anchor-size(width); min-width: 0; margin-top: var(--space-2xs); }
 option::checkmark { order: 1; margin-inline-start: auto; color: var(--color-accent); }
+/* Account kind options carry their icon; the closed select shows the chosen one through selectedcontent. */
+.kind-select > button { display: contents; }
+.kind-select option, .kind-select selectedcontent { gap: var(--space-xs); }
+.kind-select selectedcontent { display: flex; align-items: center; }
 
 /* Motion. Sets of elements that toggle [hidden] fade through allow-discrete, so they also fade out. */
 @keyframes fade-in { from { opacity: 0; } }
