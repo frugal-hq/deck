@@ -403,10 +403,12 @@ body:has(.info-panel:not([hidden])) { grid-template-columns: var(--sidebar-width
 .account-kinds { display: grid; gap: var(--space-sm); }
 .account-kinds:empty { display: none; }
 .account-kind { display: grid; gap: var(--space-3xs); }
-.account-kind__head { display: flex; align-items: center; justify-content: space-between; gap: var(--space-xs); }
+.account-kind__head { display: flex; align-items: center; justify-content: space-between; gap: var(--space-xs); padding-inline-end: var(--space-xs); }
 .account-kind__title { margin: 0; }
 .account-row .meter { font-size: var(--text-xs); }
-.limits__caps { display: grid; gap: var(--space-2xs); }
+/* One grid for every cap, so labels, sliders and numbers line up across rows. */
+.limits__caps { display: grid; grid-template-columns: max-content minmax(0, 1fr) 3.25rem; align-items: center; gap: var(--space-xs); color: var(--color-muted); font-size: var(--text-xs); }
+.limits__caps > .cap { display: contents; }
 #limits-error:empty { display: none; }
 .order { display: grid; gap: var(--space-xs); }
 .order__mode { justify-self: start; }
@@ -910,10 +912,11 @@ body { transition: opacity var(--dur-short) var(--ease-out); }
 .settings__footer { display: flex; align-items: center; justify-content: end; gap: var(--space-xs); padding: var(--space-sm) var(--space-lg); border-top: var(--rule-hair) solid var(--color-rule); }
 .settings__message { flex: 1; margin: 0 auto 0 0; overflow-wrap: anywhere; color: var(--color-muted); font-size: var(--text-xs); }
 .settings__message[hidden] { display: block; visibility: hidden; }
-.settings__body { overflow-y: auto; margin: var(--space-xs) var(--space-2xs) var(--space-xs) 0; padding: calc(var(--space-md) - var(--space-xs)) calc(var(--space-lg) - var(--space-2xs)) calc(var(--space-lg) - var(--space-xs)) var(--space-lg); scrollbar-width: thin; }
+/* The inline-end padding clears the close button, so nothing scrolls under it. */
+.settings__body { overflow-y: auto; margin: var(--space-xs) var(--space-2xs) var(--space-xs) 0; padding: calc(var(--space-md) - var(--space-xs)) calc(var(--space-sm) + var(--size-control)) calc(var(--space-lg) - var(--space-xs)) var(--space-lg); scrollbar-width: thin; }
 .settings__section { display: grid; gap: var(--space-sm); }
 .settings__section[hidden] { display: none; }
-.settings__title { margin: 0 var(--space-xl) 0 0; padding-bottom: var(--space-sm); border-bottom: var(--rule-hair) solid var(--color-rule); font-size: var(--text-sm); font-weight: 500; max-width: none; }
+.settings__title { margin: 0; padding-bottom: var(--space-sm); border-bottom: var(--rule-hair) solid var(--color-rule); font-size: var(--text-sm); font-weight: 500; max-width: none; }
 .settings__title + .settings__row { padding-top: 0; border-top: 0; }
 .settings__row { display: grid; gap: var(--space-2xs); padding-top: var(--space-sm); border-top: var(--rule-hair) solid var(--color-rule); }
 .settings__row[hidden] { display: none; }

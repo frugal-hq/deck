@@ -789,6 +789,7 @@ function drawAccounts() {
     const list = kind === 'claude' ? ordered : others.filter((other) => other.kind === kind);
     return list.length ? [kindSection(kind, list.map((account) => accountRow(account, kind === 'claude', account === main)))] : [];
   }));
+  drawOrder();
 }
 
 // The delegation order loads with the Accounts section; a move or a mode change saves at once, then reloads it.
@@ -811,12 +812,19 @@ async function setOrder(mode, ids) {
   loadOrder();
 }
 
+// The primary account is not a delegate: the list hides it, and saves append it last so the stored order stays complete.
+function delegateOrder() {
+  const list = delegationOrder.list ?? [];
+  const primary = list.filter((entry) => entry.id === accountState.primary);
+  return [list.filter((entry) => entry.id !== accountState.primary), primary];
+}
+
 function moveOrder(index, step) {
-  const list = [...delegationOrder.list];
+  const [list, primary] = delegateOrder();
   [list[index], list[index + step]] = [list[index + step], list[index]];
-  delegationOrder.list = list;
+  delegationOrder.list = [...list, ...primary];
   drawOrder();
-  setOrder('custom', list.map((entry) => entry.id));
+  setOrder('custom', delegationOrder.list.map((entry) => entry.id));
 }
 
 function orderRow(entry, index, count, custom) {
@@ -849,23 +857,24 @@ function orderRow(entry, index, count, custom) {
 // A redraw keeps keyboard focus on the same move button, or its sibling once the row reaches an end.
 function drawOrder() {
   const { list, error } = delegationOrder;
+  const [shown] = delegateOrder();
   const mode = list?.[0]?.mode === 'custom' ? 'custom' : 'recommended';
-  drawState($('settings-order-state'), error || (!list ? t('common.loading') : list.length ? '' : t('settings.accounts.order.empty')), Boolean(error));
+  drawState($('settings-order-state'), error || (!list ? t('common.loading') : shown.length ? '' : t('settings.accounts.order.empty')), Boolean(error));
   for (const radio of document.getElementsByName('order-mode')) {
     radio.checked = radio.value === mode;
-    radio.disabled = Boolean(error) || !list?.length;
+    radio.disabled = Boolean(error) || !shown.length;
   }
   $('settings-order-hint').textContent = t(`settings.accounts.order.${mode}-hint`);
-  $('settings-order-hint').hidden = Boolean(error) || !list?.length;
+  $('settings-order-hint').hidden = Boolean(error) || !shown.length;
   const box = $('settings-order');
   const focused = box.contains(document.activeElement) ? document.activeElement.dataset.move : null;
-  box.replaceChildren(...(error || !list ? [] : list.map((entry, index) => orderRow(entry, index, list.length, mode === 'custom'))));
+  box.replaceChildren(...(error || !list ? [] : shown.map((entry, index) => orderRow(entry, index, shown.length, mode === 'custom'))));
   if (!focused) return;
   const button = box.querySelector(`[data-move="${CSS.escape(focused)}"]`);
   (button?.disabled ? button.parentElement.querySelector('button:not(:disabled)') : button)?.focus();
 }
 
-for (const radio of document.getElementsByName('order-mode')) radio.onchange = () => setOrder(radio.value, delegationOrder.list.map((entry) => entry.id));
+for (const radio of document.getElementsByName('order-mode')) radio.onchange = () => setOrder(radio.value, delegateOrder().flat().map((entry) => entry.id));
 $('settings-order-state').querySelector('button').onclick = loadOrder;
 
 // Open chats on another account; login chats keep theirs.
