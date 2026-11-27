@@ -175,8 +175,33 @@ fn read_commands(cache: &mut Commands, file: &Path) -> Vec<Value> {
                         if item["type"] == "tool_result" {
                             if let Some(tool_use_id) = item["tool_use_id"].as_str() {
                                 if let Some(&idx) = cache.by_id.get(tool_use_id) {
-                                    let status = if item["is_error"] == true { "failed" } else { "done" };
+                                    let text = match &item["content"] {
+                                        Value::String(s) => s.clone(),
+                                        Value::Array(a) => a.iter().filter_map(|x| x["text"].as_str()).collect::<Vec<_>>().join("\n"),
+                                        _ => String::new(),
+                                    };
+                                    let lower = text.to_lowercase();
+                                    let exit = text.strip_prefix("Exit code ").and_then(|r| r[..r.find(|c: char| !c.is_ascii_digit()).unwrap_or(r.len())].parse::<i64>().ok());
+                                    let status = if item["is_error"] != true {
+                                        if cache.items[idx]["background"] == true { "background" } else { "done" }
+                                    } else if exit.is_some() {
+                                        "failed"
+                                    } else if lower.contains("timed out") {
+                                        "timeout"
+                                    } else if lower.contains("interrupted") || lower.contains("doesn't want to proceed") {
+                                        "interrupted"
+                                    } else {
+                                        "failed"
+                                    };
                                     cache.items[idx]["status"] = json!(status);
+                                    if let Some(code) = exit {
+                                        cache.items[idx]["exit"] = json!(code);
+                                    }
+                                    if status != "done" && status != "background" {
+                                        if let Some(line) = text.lines().map(str::trim).find(|l| !l.is_empty() && !l.starts_with("Exit code ")) {
+                                            cache.items[idx]["detail"] = json!(utf16_prefix(line, 200));
+                                        }
+                                    }
                                 }
                             }
                         }
@@ -443,7 +468,14 @@ ok"}), 0.0);
             r#"{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"b1","content":"ok"}]}}"#,
             r#"{"type":"assistant","timestamp":"2026-11-26T20:01:00Z","message":{"content":[{"type":"tool_use","id":"p1","name":"PowerShell","input":{"command":"Get-Process"}}]}}"#,
             r#"{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"p1","is_error":true,"content":"err"}]}}"#,
+            r#"{"type":"assistant","timestamp":"2026-11-26T20:01:10Z","message":{"content":[{"type":"tool_use","id":"e1","name":"Bash","input":{"command":"exit 2"}}]}}"#,
+            r#"{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"e1","is_error":true,"content":"Exit code 2\nboom"}]}}"#,
+            r#"{"type":"assistant","timestamp":"2026-11-26T20:01:20Z","message":{"content":[{"type":"tool_use","id":"t1","name":"Bash","input":{"command":"sleep 999"}}]}}"#,
+            r#"{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"t1","is_error":true,"content":[{"type":"text","text":"Command timed out after 2m 0.0s"}]}]}}"#,
+            r#"{"type":"assistant","timestamp":"2026-11-26T20:01:30Z","message":{"content":[{"type":"tool_use","id":"i1","name":"Bash","input":{"command":"sleep 5"}}]}}"#,
+            r#"{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"i1","is_error":true,"content":"Interrupted by user"}]}}"#,
             r#"{"type":"assistant","timestamp":"2026-11-26T20:02:00Z","message":{"content":[{"type":"tool_use","id":"b2","name":"Bash","input":{"command":"sleep 10","run_in_background":true}}]}}"#,
+            r#"{"type":"user","message":{"content":[{"type":"tool_result","tool_use_id":"b2","content":"Command running in background with ID: b123"}]}}"#,
             r#"{"isSidechain":true,"type":"assistant","timestamp":"2026-11-26T20:03:00Z","message":{"content":[{"type":"tool_use","id":"b_side","name":"Bash","input":{"command":"echo side"}}]}}"#,
             r#"{"type":"assistant","timestamp":"2026-11-26T20:04:00Z","message":{"content":[{"type":"tool_use","id":"r1","name":"Read","input":{"path":"src/main.rs"}}]}}"#,
             "",
@@ -453,7 +485,7 @@ ok"}), 0.0);
         let cmds = read_commands(&mut cache, &file);
 
         let ids: Vec<_> = cmds.iter().map(|c| c["id"].as_str().unwrap()).collect();
-        assert_eq!(ids, ["b1", "p1", "b2"]);
+        assert_eq!(ids, ["b1", "p1", "e1", "t1", "i1", "b2"]);
         assert!(!ids.contains(&"b_side"));
         assert!(!ids.contains(&"r1"));
 
@@ -468,10 +500,16 @@ ok"}), 0.0);
         assert_eq!(cmds[1]["command"], "Get-Process");
         assert_eq!(cmds[1]["description"], Value::Null);
 
-        assert_eq!(cmds[2]["status"], "running");
-        assert_eq!(cmds[2]["shell"], "Bash");
-        assert_eq!(cmds[2]["command"], "sleep 10");
-        assert_eq!(cmds[2]["background"], true);
+        assert_eq!(cmds[1]["detail"], "err");
+
+        assert_eq!((&cmds[2]["status"], &cmds[2]["exit"], &cmds[2]["detail"]), (&json!("failed"), &json!(2), &json!("boom")));
+        assert_eq!(cmds[3]["status"], "timeout");
+        assert_eq!(cmds[4]["status"], "interrupted");
+
+        assert_eq!(cmds[5]["status"], "background");
+        assert_eq!(cmds[5]["shell"], "Bash");
+        assert_eq!(cmds[5]["command"], "sleep 10");
+        assert_eq!(cmds[5]["background"], true);
 
         let mut f = fs::OpenOptions::new().append(true).open(&file).unwrap();
         f.write_all(b"{\"type\":\"assistant\",\"timestamp\":\"2026-11-26T20:05:00Z\",\"message\":{\"content\":[{\"type\":\"tool_use\",\"id\":\"b3\",\"name\":\"Bash\",\"input\":{\"command\":\"cargo test\"}}]}}\n").unwrap();
@@ -479,12 +517,15 @@ ok"}), 0.0);
 
         let cmds2 = read_commands(&mut cache, &file);
         let ids2: Vec<_> = cmds2.iter().map(|c| c["id"].as_str().unwrap()).collect();
-        assert_eq!(ids2, ["b1", "p1", "b2", "b3"]);
+        assert_eq!(ids2, ["b1", "p1", "e1", "t1", "i1", "b2", "b3"]);
         assert_eq!(cmds2[0]["status"], "done");
         assert_eq!(cmds2[1]["status"], "failed");
-        assert_eq!(cmds2[2]["status"], "running");
-        assert_eq!(cmds2[3]["status"], "running");
-        assert_eq!(cmds2[3]["command"], "cargo test");
+        assert_eq!(cmds2[2]["exit"], 2);
+        assert_eq!(cmds2[3]["status"], "timeout");
+        assert_eq!(cmds2[4]["status"], "interrupted");
+        assert_eq!(cmds2[5]["status"], "background");
+        assert_eq!(cmds2[6]["status"], "running");
+        assert_eq!(cmds2[6]["command"], "cargo test");
 
         let _ = fs::remove_file(file);
     }
