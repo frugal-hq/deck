@@ -110,8 +110,11 @@
   </section>
   <p id="notice" class="notice" role="alert" hidden></p>
   <section id="handoff" class="handoff" aria-labelledby="handoff-title" hidden>
-    <h2 id="handoff-title" class="handoff__title" data-i18n="handoff.title">Handoff ready</h2>
-    <p id="handoff-status" class="handoff__status" role="status"></p>
+    <header class="handoff__head">
+      <h2 id="handoff-title" class="handoff__title" data-i18n="handoff.title">Handoff ready</h2>
+      <p id="handoff-status" class="handoff__status" role="status"></p>
+    </header>
+    <div id="handoff-bar" class="handoff__bar" aria-hidden="true" hidden><span></span></div>
     <textarea id="handoff-text" class="handoff__text" spellcheck="false" aria-label="Prompt for the new chat" data-i18n-aria-label="handoff.text.label"></textarea>
     <textarea id="handoff-note" class="handoff__text handoff__note" placeholder="Add a note for the new chat. Typing pauses the countdown" aria-label="Note for the new chat" data-i18n-placeholder="handoff.note.placeholder" data-i18n-aria-label="handoff.note.label"></textarea>
     <div class="handoff__actions">

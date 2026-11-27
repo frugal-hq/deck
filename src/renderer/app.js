@@ -2432,6 +2432,11 @@ function drawHandoff() {
   stop.textContent = counting ? t('common.cancel') : t('undo.dismiss.label');
   stop.dataset.tip = counting ? t('handoff.stop.tip') : t('handoff.dismiss.tip');
   $('handoff-save').hidden = !handoff.paused;
+  $('handoff').classList.toggle('is-paused', Boolean(handoff.paused));
+  const bar = $('handoff-bar');
+  bar.hidden = !counting;
+  // The bar runs one second ahead of the text, so it empties as the count ends; paused, it holds.
+  if (counting) bar.style.setProperty('--handoff-left', Math.max(handoff.left - 1, 0) / (handoff.total || 1));
 }
 
 async function continueHandoff(chat) {
@@ -2467,7 +2472,7 @@ function offerHandoff(id, { prompt, tokens }) {
   const delay = handoffDelay();
   const auto = handoffAuto() && tokens >= HANDOFF_AUTO_TOKENS;
   deck.debugLog('handoff', `${id}: ${tokens} tokens, auto ${auto} (setting ${handoffAuto()}, from ${HANDOFF_AUTO_TOKENS}), delay ${delay} s, on screen ${activeId === id}`);
-  chat.handoff = { prompt, note: '', tokens, left: delay, timer: null, paused: false, instant: auto && delay === 0 };
+  chat.handoff = { prompt, note: '', tokens, left: delay, total: delay, timer: null, paused: false, instant: auto && delay === 0 };
   if (auto && delay === 0 && activeId === id) {
     continueHandoff(chat);
     return;

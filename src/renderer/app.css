@@ -647,9 +647,9 @@ option::checkmark { order: 1; margin-inline-start: auto; color: var(--color-acce
 body { transition: opacity var(--dur-short) var(--ease-out); }
 @starting-style { body { opacity: 0; } }
 
-.empty, .notice, .handoff, .readout, .term, .meter, .sidebar__status, .sort__status { transition: opacity var(--dur-micro) var(--ease-out), display var(--dur-micro) allow-discrete; }
-:is(.empty, .notice, .handoff, .readout, .term, .meter, .sidebar__status, .sort__status)[hidden] { opacity: 0; pointer-events: none; }
-@starting-style { :is(.empty, .notice, .handoff, .readout, .term, .meter, .sidebar__status, .sort__status) { opacity: 0; } }
+.empty, .notice, .readout, .term, .meter, .sidebar__status, .sort__status { transition: opacity var(--dur-micro) var(--ease-out), display var(--dur-micro) allow-discrete; }
+:is(.empty, .notice, .readout, .term, .meter, .sidebar__status, .sort__status)[hidden] { opacity: 0; pointer-events: none; }
+@starting-style { :is(.empty, .notice, .readout, .term, .meter, .sidebar__status, .sort__status) { opacity: 0; } }
 
 .tab { transition: background-color var(--dur-micro) var(--ease-out), opacity var(--dur-micro) var(--ease-out), translate var(--dur-micro) var(--ease-out); }
 @starting-style { .tabs:not(.is-sorting) .tab { opacity: 0; translate: 0 4px; } }
@@ -757,24 +757,35 @@ body { transition: opacity var(--dur-short) var(--ease-out); }
 .sort__undo { display: flex; flex-wrap: wrap; gap: var(--space-xs); }
 .sort__joins { display: flex; align-items: center; gap: var(--space-xs); }
 .sort__joins p { flex: 1; min-width: 0; }
+/* Sits over the chat badge, top right; slides in and out, and its bar runs the countdown. */
 .handoff {
   position: absolute;
   top: var(--space-md);
   right: var(--space-md);
   display: grid;
-  gap: var(--space-xs);
+  gap: var(--space-sm);
   width: min(40rem, calc(100% - 2 * var(--space-md)));
-  padding: var(--space-sm) var(--space-md);
+  padding: var(--space-md);
   border: 0;
   border-radius: var(--radius-card);
   background: var(--color-control-2);
   box-shadow: var(--shadow-float);
-  z-index: var(--z-raised);
+  z-index: calc(var(--z-raised) + 2 * var(--z-base));
+  transform-origin: top right;
+  transition: opacity var(--dur-short) var(--ease-out), translate var(--dur-short) var(--ease-out), scale var(--dur-short) var(--ease-out), display var(--dur-short) allow-discrete;
 }
-.handoff__title { margin: 0; font-size: var(--text-sm); font-weight: 500; }
-.handoff__status { margin: 0; color: var(--color-muted); font-size: var(--text-sm); }
-.handoff__text { min-height: 12lh; max-height: 70vh; padding: var(--space-xs) var(--space-md); border: 0; border-radius: var(--radius-card); background: var(--color-paper-3); color: var(--color-ink); font: var(--text-sm) / 1.5 var(--font-body); resize: vertical; }
-.handoff__note { min-height: 3lh; max-height: 30vh; }
+.handoff[hidden] { opacity: 0; translate: 0 -8px; scale: 0.98; pointer-events: none; }
+@starting-style { .handoff { opacity: 0; translate: 0 -8px; scale: 0.98; } }
+.handoff__head { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: var(--space-2xs) var(--space-sm); }
+.handoff__title { margin: 0; font-size: var(--text-md); font-weight: 500; }
+.handoff__status { margin: 0; color: var(--color-muted); font-size: var(--text-xs); font-variant-numeric: tabular-nums; }
+.handoff__bar { height: var(--size-bar-sm); overflow: hidden; border-radius: var(--radius-pill); background: var(--color-paper-3); }
+.handoff__bar > span { display: block; height: 100%; border-radius: inherit; background: var(--color-accent); scale: var(--handoff-left, 1) 1; transform-origin: left; transition: scale var(--dur-tick) var(--ease-linear), background-color var(--dur-short) var(--ease-out); }
+@starting-style { .handoff__bar > span { scale: 1 1; } }
+.handoff.is-paused .handoff__bar > span { background: var(--color-muted); }
+.handoff__text { min-height: 6lh; max-height: 40vh; field-sizing: content; padding: var(--space-xs) var(--space-md); border: 0; border-radius: var(--radius-card); background: var(--color-paper-3); color: var(--color-ink); font: var(--text-sm) / 1.5 var(--font-body); resize: none; scrollbar-width: thin; scrollbar-color: var(--color-rule-2) transparent; }
+.handoff__text:focus-visible { outline-offset: -1px; }
+.handoff__note { min-height: 2lh; max-height: 20vh; }
 .handoff__actions { display: flex; justify-content: flex-end; gap: var(--space-xs); }
 
 /* The Ctrl+G prompt editor: sits over the bottom of its own chat's terminal, never a new window. */
