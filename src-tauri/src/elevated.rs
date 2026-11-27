@@ -616,6 +616,11 @@ fn serve(addr: SocketAddrV4, secret: &str, elevated: bool) {
         register_task();
     }
     let terms = Terms::default();
+    let swept = Arc::downgrade(&terms);
+    procs::sweep_idle(move || swept.upgrade().is_some_and(|terms| {
+        terms.lock().unwrap().values_mut().filter_map(|term| term.job.as_mut()).for_each(Job::end_idle);
+        true
+    }));
     while let Some(message) = read_message(&mut reader) {
         let Some(c) = message["c"].as_str().filter(|c| is_hex(c, 32)) else { break };
         let t = message["t"].as_str().unwrap_or_default();

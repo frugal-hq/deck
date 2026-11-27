@@ -75,6 +75,13 @@ impl Chats {
         }
     }
 
+    // Administrator chats have no job here: the elevated helper sweeps its own.
+    pub fn end_idle(&self) {
+        for job in self.live.lock().unwrap().values_mut().filter_map(|chat| chat.job.as_mut()) {
+            job.end_idle();
+        }
+    }
+
     pub fn is_live(&self, id: &str) -> bool {
         self.live.lock().unwrap().contains_key(id)
     }

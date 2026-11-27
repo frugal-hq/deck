@@ -1239,24 +1239,8 @@ function procRow(chat, proc) {
   row.append(main, controls);
   return row;
 }
-const SHELL = /^(bash|sh|cmd|powershell|pwsh)\.exe$/i;
-const CLAUDE = /^claude(\.exe)?$/i;
-// What tool calls started: shells and all under them. Kept: the chat, Claude, conhost, MCP servers (what Claude starts that is not a shell) and all under those, delegated work included.
-function backgroundProcs(processes) {
-  const byPid = new Map(processes.map((proc) => [proc.pid, proc]));
-  const underMcp = (proc) => {
-    for (const seen = new Set(); proc && !seen.has(proc.pid); proc = byPid.get(proc.ppid)) {
-      seen.add(proc.pid);
-      // The chat's root counts as Claude: an npm install runs it as node.exe.
-      const parent = byPid.get(proc.ppid);
-      if (!SHELL.test(proc.name) && parent && (parent.is_chat || CLAUDE.test(parent.name))) return true;
-    }
-    return false;
-  };
-  return processes.filter((proc) => !proc.is_chat && !CLAUDE.test(proc.name) && !/^conhost\.exe$/i.test(proc.name) && !underMcp(proc));
-}
 function drawProcs(chat, { processes, totals }) {
-  const background = backgroundProcs(processes);
+  const background = processes.filter((proc) => proc.background);
   const end = $('info-procs-end');
   end.disabled = !background.length || end.getAttribute('aria-busy') === 'true';
   if (background.length) delete end.dataset.tip;
@@ -3929,6 +3913,7 @@ function showPerf() {
   perfCustom = perf.custom && { ...perf.custom };
   settingsDialog.querySelector(`[name="perf-mode"][value="${perf.mode}"]`).checked = true;
   $('perf-machine').textContent = machineText(perfMachine);
+  $('perf-idle').value = perf.idle_minutes;
   drawPerf();
 }
 async function loadPerf() {
@@ -3936,6 +3921,7 @@ async function loadPerf() {
   perfLoading = true;
   $('perf-body').hidden = true;
   $('perf-suggest-row').hidden = true;
+  $('perf-idle-row').hidden = true;
   $('perf-state').replaceChildren(emptyState(t('common.loading')));
   try {
     [perf, perfMachine] = await Promise.all([deck.perfGet(), deck.perfMachine()]);
@@ -3943,6 +3929,7 @@ async function loadPerf() {
     $('perf-state').replaceChildren();
     $('perf-body').hidden = false;
     $('perf-suggest-row').hidden = false;
+    $('perf-idle-row').hidden = false;
   } catch (error) {
     $('perf-state').replaceChildren(emptyState(t('settings.performance.error', { error }), loadPerf));
   } finally {
@@ -3986,6 +3973,16 @@ for (const radio of settingsDialog.querySelectorAll('[name="perf-mode"]')) {
     savePerf();
   };
 }
+$('perf-idle').onchange = async ({ target }) => {
+  showStatus('perf-idle-status', '');
+  try {
+    perf = await deck.perfSetIdle(Number(target.value));
+    showStatus('perf-idle-status', t('common.saved'));
+  } catch (error) {
+    showStatus('perf-idle-status', String(error), true);
+    target.value = perf.idle_minutes;
+  }
+};
 function busyPerf(button, busy) {
   button.disabled = busy;
   button.setAttribute('aria-busy', busy);

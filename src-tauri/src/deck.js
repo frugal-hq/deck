@@ -129,6 +129,7 @@
     processKill: (id, pid, startedMs) => invoke('chat:process-kill', { id, pid, startedMs }),
     perfGet: () => invoke('perf:get'),
     perfSet: (mode, custom) => invoke('perf:set', { mode, custom }),
+    perfSetIdle: (minutes) => invoke('perf:set-idle', { minutes }),
     perfMachine: () => invoke('perf:machine'),
     perfProfile: () => invoke('perf:profile'),
     perfSuggest: (profile, language) => invoke('perf:suggest', { profile, language }),

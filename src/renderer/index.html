@@ -557,6 +557,20 @@
           </div>
           <div id="perf-suggestion" hidden></div>
         </div>
+        <div id="perf-idle-row" class="settings__row" hidden>
+          <div class="perf__head">
+            <label class="organize__check" data-i18n="settings.performance.idle.label">End idle background processes after
+              <select id="perf-idle" class="settings__select">
+                <option value="0" data-i18n="settings.performance.idle.off">Off</option>
+                <option value="30" data-i18n="settings.performance.idle.30">30 minutes</option>
+                <option value="60" data-i18n="settings.performance.idle.60">1 hour</option>
+                <option value="240" data-i18n="settings.performance.idle.240">4 hours</option>
+              </select>
+            </label>
+            <p id="perf-idle-status" class="sort__status" role="status" hidden></p>
+          </div>
+          <p class="settings__hint" data-i18n="settings.performance.idle.hint">Ends shell commands and what they started once they use under 0.5% CPU for this long. Never Claude, MCP servers or delegated work.</p>
+        </div>
       </section>
       <section id="settings-updates" class="settings__section" data-section="updates" hidden>
         <h3 class="settings__title" data-i18n="update.deck.label">Frugal Deck</h3>

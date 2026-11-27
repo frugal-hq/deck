@@ -293,6 +293,7 @@ fn main() {
             chat::chat_process_kill,
             procs::perf_get,
             procs::perf_set,
+            procs::perf_set_idle,
             procs::perf_machine,
             procs::perf_profile,
             chat::chat_recorded_sessions,

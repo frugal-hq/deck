@@ -1,11 +1,21 @@
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
+#[cfg(any(windows, test))]
+use std::collections::{HashMap, HashSet};
 use std::path::{Path, PathBuf};
 use std::sync::Mutex;
 #[cfg(any(windows, test))]
 use std::time::Duration;
 
 const GIB: u64 = 1 << 30;
+// Settings > Performance > End idle background processes after: 0 is Off.
+const IDLE_MINUTES: [u64; 4] = [0, 30, 60, 240];
+const IDLE_DEFAULT: u64 = 60;
+#[cfg(windows)]
+const IDLE_SWEEP: Duration = Duration::from_secs(60);
+// A background process under this share of the machine's CPU for a whole sweep counts as idle.
+#[cfg(windows)]
+const IDLE_CPU_PCT: f64 = 0.5;
 
 #[derive(Clone, Copy, Debug, Default, Deserialize, PartialEq, Serialize)]
 #[serde(rename_all = "lowercase")]
@@ -29,11 +39,16 @@ const LIGHT: Budget = Budget { cpu: 10, ram: 10, gpu: 0, parallel: 1 };
 const BALANCED: Budget = Budget { cpu: 40, ram: 40, gpu: 30, parallel: 3 };
 const PERFORMANCE: Budget = Budget { cpu: 90, ram: 85, gpu: 90, parallel: 0 };
 
-#[derive(Clone, Copy, Debug, Default, PartialEq, Serialize)]
+#[derive(Clone, Copy, Debug, PartialEq, Serialize)]
 struct Config {
     mode: Mode,
     #[serde(skip_serializing_if = "Option::is_none")]
     custom: Option<Budget>,
+    idle_minutes: u64,
+}
+
+impl Default for Config {
+    fn default() -> Self { Self { mode: Mode::default(), custom: None, idle_minutes: IDLE_DEFAULT } }
 }
 
 impl Config {
@@ -42,7 +57,8 @@ impl Config {
         let custom = serde_json::from_value(data["custom"].clone()).ok();
         let mode = serde_json::from_value(data["mode"].clone()).unwrap_or_default();
         let mode = if mode == Mode::Custom && custom.is_none() { Mode::Balanced } else { mode };
-        Self { mode, custom }
+        let idle_minutes = data["idle_minutes"].as_u64().filter(|minutes| IDLE_MINUTES.contains(minutes)).unwrap_or(IDLE_DEFAULT);
+        Self { mode, custom, idle_minutes }
     }
 
     fn budget(self) -> Budget {
@@ -94,7 +110,7 @@ fn validate(mode: &str, custom: Option<Budget>, saved: Option<Budget>) -> Result
     if mode == Mode::Custom && !custom.is_some_and(valid) {
         return Err(crate::i18n::t("error.custom-performance-needs-budgets", &[]));
     }
-    Ok(Config { mode, custom })
+    Ok(Config { mode, custom, ..Config::default() })
 }
 
 fn config_path() -> Result<PathBuf, String> {
@@ -150,10 +166,52 @@ pub(crate) fn watch(app: tauri::AppHandle) {
     }) {
         crate::debug_log!("procs", "Could not watch performance settings: {error}");
     }
+    sweep_idle(move || {
+        app.state::<crate::chat::Chats>().end_idle();
+        true
+    });
 }
 
 #[cfg(not(windows))]
 pub(crate) fn watch(_: tauri::AppHandle) {}
+
+#[cfg(windows)]
+fn idle_after() -> Option<Duration> {
+    let minutes = config().idle_minutes;
+    (minutes != 0).then(|| Duration::from_secs(minutes * 60))
+}
+
+// Every IDLE_SWEEP, `sweep` calls Job::end_idle on its jobs; the thread stops once it returns false.
+#[cfg(windows)]
+pub(crate) fn sweep_idle(sweep: impl Fn() -> bool + Send + 'static) {
+    if let Err(error) = std::thread::Builder::new().spawn(move || while { std::thread::sleep(IDLE_SWEEP); sweep() } {}) {
+        crate::debug_log!("procs", "Could not start the idle process sweep: {error}");
+    }
+}
+
+// What tool calls started: shells and everything under them. Kept: the chat root, Claude, conhost, MCP servers
+// (a non-shell process whose parent is the chat root or Claude) and everything under those, delegated work included.
+// Rows are (pid, ppid, name, is_chat).
+#[cfg(any(windows, test))]
+fn background(rows: &[(u32, u32, &str, bool)]) -> HashSet<u32> {
+    let by_pid: HashMap<u32, (u32, &str, bool)> = rows.iter().map(|&(pid, ppid, name, chat)| (pid, (ppid, name, chat))).collect();
+    let any = |name: &str, names: &[&str]| names.iter().any(|known| name.eq_ignore_ascii_case(known));
+    let shell = |name| any(name, &["bash.exe", "sh.exe", "cmd.exe", "powershell.exe", "pwsh.exe"]);
+    let claude = |name| any(name, &["claude", "claude.exe"]);
+    let under_mcp = |mut pid: u32| {
+        let mut seen = HashSet::new();
+        while let Some(&(ppid, name, _)) = by_pid.get(&pid).filter(|_| seen.insert(pid)) {
+            // The chat root counts as Claude: an npm install runs it as node.exe.
+            if !shell(name) && by_pid.get(&ppid).is_some_and(|&(_, parent, chat)| chat || claude(parent)) {
+                return true;
+            }
+            pid = ppid;
+        }
+        false
+    };
+    rows.iter().filter(|&&(pid, _, name, chat)| !chat && !claude(name) && !any(name, &["conhost.exe"]) && !under_mcp(pid))
+        .map(|&(pid, ..)| pid).collect()
+}
 
 #[cfg(any(windows, test))]
 fn cpu_pct(previous: u64, current: u64, elapsed: Duration, cores: u32) -> f64 {
@@ -174,16 +232,33 @@ pub fn perf_get() -> Value {
             "performance": budget_json(PERFORMANCE, Mode::Performance),
         },
         "effective": config.effective(platform::cores(), platform::ram_bytes()),
+        "idle_minutes": config.idle_minutes,
     })
 }
 
 #[tauri::command]
 pub fn perf_set(mode: String, custom: Option<Budget>, host: tauri::State<crate::elevated::Host>) -> Result<Value, String> {
+    save(|saved| Ok(Config { idle_minutes: saved.idle_minutes, ..validate(&mode, custom, saved.custom)? }))?;
+    refresh(&host);
+    Ok(perf_get())
+}
+
+#[tauri::command]
+pub fn perf_set_idle(minutes: u64) -> Result<Value, String> {
+    if !IDLE_MINUTES.contains(&minutes) {
+        return Err(crate::i18n::t("error.invalid-idle-minutes", &[]));
+    }
+    save(|saved| Ok(Config { idle_minutes: minutes, ..saved }))?;
+    Ok(perf_get())
+}
+
+// Writes the performance file atomically; `change` gets the saved config under the write lock.
+fn save(change: impl FnOnce(Config) -> Result<Config, String>) -> Result<(), String> {
     use std::io::Write;
     static WRITE: Mutex<()> = Mutex::new(());
     let _write = WRITE.lock().map_err(|error| error.to_string())?;
     let file = config_path()?;
-    let config = validate(&mode, custom, Config::load(&file).custom)?;
+    let config = change(Config::load(&file))?;
     let bytes = serde_json::to_vec_pretty(&config).map_err(|error| error.to_string())?;
     let folder = file.parent().ok_or_else(|| crate::i18n::t("error.no-user-folder", &[]))?;
     std::fs::create_dir_all(folder).map_err(|error| error.to_string())?;
@@ -198,8 +273,7 @@ pub fn perf_set(mode: String, custom: Option<Budget>, host: tauri::State<crate::
         let _ = std::fs::remove_file(&temp);
         return Err(error.to_string());
     }
-    refresh(&host);
-    Ok(perf_get())
+    Ok(())
 }
 
 #[tauri::command]
@@ -506,13 +580,17 @@ mod platform {
         root_pid: u32,
         cpu: CpuSample,
         gpu: Option<Option<GpuQuery>>,
+        // The idle sweep's own sample, apart from the details panel's: when it last ran and, per (pid, start),
+        // the CPU ticks then and since when the process stayed under IDLE_CPU_PCT.
+        idle_at: Option<Instant>,
+        idle: HashMap<(u32, u64), (u64, Option<Instant>)>,
     }
 
     impl Job {
         pub fn new() -> Option<Self> {
             let _ = parent();
             match create_job() {
-                Ok(handle) => Some(Self { handle, root_pid: 0, cpu: CpuSample::default(), gpu: None }),
+                Ok(handle) => Some(Self { handle, root_pid: 0, cpu: CpuSample::default(), gpu: None, idle_at: None, idle: HashMap::new() }),
                 Err(error) => {
                     log_once(&ASSIGN_ERROR, "Could not create the chat process job", &error);
                     None
@@ -587,9 +665,62 @@ mod platform {
             Ok(json!({"ok": true}))
         }
 
+        fn background(&self, pids: &[u32], metadata: &HashMap<u32, (u32, String)>) -> HashSet<u32> {
+            let rows: Vec<_> = pids.iter().map(|&pid| {
+                let (ppid, name) = metadata.get(&pid).map_or((0, ""), |(ppid, name)| (*ppid, name.as_str()));
+                (pid, ppid, name, pid == self.root_pid)
+            }).collect();
+            background(&rows)
+        }
+
+        // Ends background processes that stayed under IDLE_CPU_PCT for the configured time, through kill's checks.
+        pub fn end_idle(&mut self) {
+            let now = Instant::now();
+            let (Some(after), Some(previous)) = (idle_after(), self.idle_at.replace(now)) else {
+                self.idle.clear();
+                return;
+            };
+            let Ok(pids) = self.pids() else { return };
+            let cores = cores();
+            let metadata = process_metadata();
+            let mut idle = HashMap::new();
+            let mut due = HashMap::new();
+            for pid in self.background(&pids, &metadata) {
+                let Ok(handle) = (unsafe { OpenProcess(PROCESS_QUERY_LIMITED_INFORMATION, false, pid) }) else { continue };
+                let process = unsafe { OwnedHandle::from_raw_handle(handle.0) };
+                if !self.contains(raw(&process)).unwrap_or(false) {
+                    continue;
+                }
+                let Some((started, ticks)) = process_times(raw(&process)) else { continue };
+                let since = self.idle.get(&(pid, started)).and_then(|&(last, since)| {
+                    (cpu_pct(last, ticks, now.duration_since(previous), cores) < IDLE_CPU_PCT).then(|| since.unwrap_or(previous))
+                });
+                if since.is_some_and(|since| now.duration_since(since) >= after) {
+                    due.insert(pid, started);
+                }
+                idle.insert((pid, started), (ticks, since));
+            }
+            // A shell waiting on a busy child, or on Claude it started, uses no CPU itself: keep every ancestor of a process that is not due.
+            let mut kept = HashSet::new();
+            for &pid in pids.iter().filter(|pid| !due.contains_key(pid)) {
+                let mut pid = metadata.get(&pid).map_or(0, |&(ppid, _)| ppid);
+                while due.contains_key(&pid) && kept.insert(pid) {
+                    pid = metadata.get(&pid).map_or(0, |&(ppid, _)| ppid);
+                }
+            }
+            for (&pid, &started) in due.iter().filter(|(pid, _)| !kept.contains(*pid)) {
+                match self.kill(pid, Some(unix_ms(started))) {
+                    Ok(_) => crate::debug_log!("procs", "Ended idle background process {pid}"),
+                    Err(error) => crate::debug_log!("procs", "Could not end idle background process {pid}: {error}"),
+                }
+            }
+            self.idle = idle;
+        }
+
         pub fn processes(&mut self) -> Result<Value, String> {
             let pids = self.pids().map_err(|error| error.to_string())?;
             let metadata = process_metadata();
+            let background = self.background(&pids, &metadata);
             let gpu = if let Some(gpu) = &mut self.gpu {
                 gpu.as_mut().and_then(GpuQuery::sample)
             } else {
@@ -626,7 +757,8 @@ mod platform {
                     memory.WorkingSetSize as u64
                 } else { 0 };
                 let mut row = json!({"pid": pid, "ppid": ppid, "name": name, "cmd": command_line(process),
-                    "cpu_pct": cpu, "ram_bytes": ram, "started_ms": started_ms, "is_chat": pid == self.root_pid});
+                    "cpu_pct": cpu, "ram_bytes": ram, "started_ms": started_ms, "is_chat": pid == self.root_pid,
+                    "background": background.contains(&pid)});
                 if let Some(gpu) = &gpu {
                     match gpu.get(&pid).copied().unwrap_or(Some(0.0)) {
                         Some(pct) => {
@@ -838,6 +970,7 @@ mod platform {
         pub fn terminate(self) -> bool { false }
         pub fn processes(&mut self) -> Result<Value, String> { Err(crate::i18n::t("error.process-jobs-unavailable", &[])) }
         pub fn kill(&self, _: u32, _: Option<u64>) -> Result<Value, String> { Err(crate::i18n::t("error.process-jobs-unavailable", &[])) }
+        pub fn end_idle(&mut self) {}
     }
 }
 
@@ -849,9 +982,9 @@ mod tests {
     fn presets_and_budgets() {
         assert_eq!(Config::default().effective(8, 8 * GIB),
             json!({"mode":"balanced","cpu":40,"ram":40,"gpu":30,"parallel":3,"priority":"normal"}));
-        assert_eq!(Config { mode: Mode::Light, custom: None }.effective(8, 8 * GIB),
+        assert_eq!(Config { mode: Mode::Light, custom: None, ..Config::default() }.effective(8, 8 * GIB),
             json!({"mode":"light","cpu":10,"ram":10,"gpu":0,"parallel":1,"priority":"below_normal"}));
-        let performance = Config { mode: Mode::Performance, custom: None };
+        let performance = Config { mode: Mode::Performance, ..Config::default() };
         assert_eq!(performance.effective(8, 8 * GIB),
             json!({"mode":"performance","cpu":87.5,"ram":75.0,"gpu":90,"parallel":0,"priority":"normal"}));
         assert!((performance.effective(16, 32 * GIB)["ram"].as_f64().unwrap() - 85.0).abs() < 1e-8);
@@ -867,12 +1000,12 @@ mod tests {
 
     #[test]
     fn cpu_rate_matches_plugin() {
-        let performance = Config { mode: Mode::Performance, custom: None };
+        let performance = Config { mode: Mode::Performance, ..Config::default() };
         for (cores, rate) in [(0, 9000), (1, 9000), (2, 5000), (3, 6666), (8, 8750), (10, 9000), (16, 9000)] {
             assert_eq!(performance.cpu_rate(cores), rate);
         }
         assert_eq!(Config::default().cpu_rate(8), 4000);
-        assert_eq!(Config { mode: Mode::Light, custom: None }.cpu_rate(8), 1000);
+        assert_eq!(Config { mode: Mode::Light, custom: None, ..Config::default() }.cpu_rate(8), 1000);
     }
 
     #[test]
@@ -903,6 +1036,33 @@ mod tests {
         for tool in ["Steamworks Common Redistributables", "Proton 9.0", "Steam Linux Runtime 3.0", "", "Valheim Dedicated Server"] {
             assert!(!is_game(tool), "{tool}");
         }
+    }
+
+    #[test]
+    fn background_is_what_shells_started() {
+        let rows = [
+            (1, 0, "node.exe", true), (3, 1, "conhost.exe", false), (4, 1, "bash.exe", false), (5, 4, "node.exe", false),
+            (6, 1, "cmd.exe", false), (7, 1, "node.exe", false), (8, 7, "python.exe", false), (9, 8, "bash.exe", false),
+            // Delegated work: Claude started from a shell, and what it starts.
+            (10, 5, "claude.exe", false), (11, 10, "node.exe", false), (12, 11, "bash.exe", false),
+        ];
+        let mut found: Vec<_> = background(&rows).into_iter().collect();
+        found.sort_unstable();
+        assert_eq!(found, [4, 5, 6]);
+        let cycle = [(1, 2, "bash.exe", false), (2, 1, "node.exe", false), (3, 3, "sh.exe", false)];
+        assert_eq!(background(&cycle).len(), 3);
+    }
+
+    #[test]
+    fn idle_minutes_load_and_default() {
+        let dir = std::env::temp_dir().join(format!("frugal-idle-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let file = dir.join("performance.json");
+        for (text, minutes) in [("{}", 60), (r#"{"idle_minutes":30}"#, 30), (r#"{"idle_minutes":0}"#, 0), (r#"{"idle_minutes":45}"#, 60), (r#"{"idle_minutes":"30"}"#, 60)] {
+            std::fs::write(&file, text).unwrap();
+            assert_eq!(Config::load(&file).idle_minutes, minutes, "{text}");
+        }
+        std::fs::remove_dir_all(&dir).unwrap();
     }
 
     #[test]
