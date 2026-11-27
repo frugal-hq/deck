@@ -41,6 +41,11 @@ const STATUS_LABEL = { working: t('chat.status.working'), waiting: t('chat.statu
 // Chats in the middle of a turn, highlighted in the tabs while the switch dialog asks about them.
 let switchBusy = new Set();
 
+function disclosure() {
+  const chevron = icon('chevron');
+  chevron.classList.add('disclosure');
+  return chevron;
+}
 function statusIcon(status) {
   if (!status) return icon('terminal');
   const svg = inlineIcon(status);
@@ -1387,6 +1392,46 @@ $('info-tasks-more').onclick = () => {
   drawSubagents(infoTasks);
 };
 
+// Bash and PowerShell calls of the chat itself, newest first; a subagent's commands stay in its task.
+const COMMANDS_SHOWN = 5;
+let infoCommands = [];
+let infoCommandsExpanded = false;
+function commandRow(command) {
+  // A button only so the details tooltip is reachable by keyboard; it has no click action.
+  const row = node('button', 'row row--interactive info-panel__task');
+  row.type = 'button';
+  const state = command.status === 'running' ? 'running' : command.status === 'failed' ? 'failed' : 'done';
+  const mark = node('span', `info-panel__status is-${state}`);
+  mark.append(state === 'running' ? statusIcon('working') : icon(TASK_MARK[state]));
+  mark.setAttribute('role', 'img');
+  mark.setAttribute('aria-label', TASK_STATUS[state]);
+  const at = Date.parse(command.at);
+  const time = Number.isNaN(at) ? '' : new Date(at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  row.append(mark, node('span', 'row__name', command.description || commandTitle(command.command)), node('span', 'row__meta', time));
+  const label = (name, value) => (value ? t('common.label-value', { label: name, value }) : '');
+  row.dataset.tip = [
+    label(t('task.command'), command.command),
+    label(t('clean.col.status'), TASK_STATUS[state]),
+    label(t('mcp.add.type.label'), command.shell),
+    label(t('task.when'), time && new Date(at).toLocaleString()),
+  ].filter(Boolean).join('\n');
+  return row;
+}
+function drawCommands(commands) {
+  infoCommands = commands;
+  const shown = [...commands].reverse();
+  $('info-commands').hidden = !shown.length;
+  $('info-commands-list').replaceChildren(...shown.slice(0, infoCommandsExpanded ? shown.length : COMMANDS_SHOWN).map(commandRow));
+  const more = $('info-commands-more');
+  more.hidden = shown.length <= COMMANDS_SHOWN;
+  if (!more.hidden) more.textContent = infoCommandsExpanded ? t('sidebar.show-less') : tp('info.commands.more', shown.length - COMMANDS_SHOWN);
+  more.setAttribute('aria-expanded', String(infoCommandsExpanded));
+}
+$('info-commands-more').onclick = () => {
+  infoCommandsExpanded = !infoCommandsExpanded;
+  drawCommands(infoCommands);
+};
+
 function procRow(chat, proc) {
   // One line like a task row; the command, PID and GPU go in the tooltip.
   const row = node('div', 'row info-panel__task');
@@ -1412,12 +1457,16 @@ function drawProcs(chat, { processes, totals }) {
   const background = processes.filter((proc) => proc.background);
   const end = $('info-procs-end');
   end.disabled = !background.length || end.getAttribute('aria-busy') === 'true';
-  if (background.length) delete end.dataset.tip;
-  else end.dataset.tip = t('info.procs.background.none');
+  end.dataset.tip = background.length ? t('info.procs.background.action') : t('info.procs.background.none');
   end.onclick = () => endBackground(chat, background);
   const list = $('info-procs-list');
-  const summary = [processes.length, t('info.procs.cpu', { percent: Math.round(totals.cpu_pct) }), sizeText(totals.ram_bytes, 1024)];
-  $('info-procs-count').textContent = summary.join(' · ');
+  const usage = [['menu', tp('info.procs.count', processes.length)], ['gauge', t('info.procs.cpu', { percent: Math.round(totals.cpu_pct) })],
+    ['memory', sizeText(totals.ram_bytes, 1024)], ...(totals.gpu_pct != null ? [['gpu', t('info.procs.gpu', { percent: Math.round(totals.gpu_pct) })]] : [])];
+  $('info-procs-count').replaceChildren(...usage.map(([name, text]) => {
+    const item = node('span');
+    item.append(icon(name), text);
+    return item;
+  }));
   const focused = document.activeElement?.closest('[data-process]')?.dataset.process;
   const rows = processes.sort((a, b) => b.ram_bytes - a.ram_bytes).map((proc) => procRow(chat, proc));
   list.replaceChildren(...(rows.length ? rows : [emptyState(t('info.procs.empty'))]));
@@ -1508,7 +1557,9 @@ function syncInfoPanel() {
   clearInterval(infoElapsedClock);
   clearInterval(infoAgentsClock);
   infoLocalExpanded = false;
+  infoCommandsExpanded = false;
   drawSubagents([]);
+  drawCommands([]);
   procsFailed = false;
   $('info-procs-end').disabled = true;
   $('info-procs-list').replaceChildren();
@@ -1525,10 +1576,16 @@ function syncInfoPanel() {
     if (polling) return;
     polling = true;
     try {
-      const agents = await deck.subagents(chat.id, chat.cwd);
-      if (generation === infoGeneration) drawSubagents(agents);
+      const [agents, commands] = await Promise.all([deck.subagents(chat.id, chat.cwd), deck.commands(chat.id, chat.cwd)]);
+      if (generation === infoGeneration) {
+        drawSubagents(agents);
+        drawCommands(commands);
+      }
     } catch {
-      if (generation === infoGeneration) drawSubagents([]);
+      if (generation === infoGeneration) {
+        drawSubagents([]);
+        drawCommands([]);
+      }
     } finally {
       polling = false;
     }
@@ -5645,7 +5702,7 @@ async function openTasks() {
   if (local.length) {
     const fold = node('details', 'info-panel__local');
     const summary = document.createElement('summary');
-    summary.append(tp('tasks.local-heading', local.length), ' ', node('span', 'info-panel__muted', String(local.length)));
+    summary.append(tp('tasks.local-heading', local.length), ' ', node('span', 'info-panel__muted', String(local.length)), disclosure());
     fold.append(summary, ...local.map(taskRow));
     rows.push(fold);
   }

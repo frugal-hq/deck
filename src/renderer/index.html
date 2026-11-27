@@ -39,6 +39,11 @@
   <symbol id="i-update" viewBox="0 0 16 16"><path d="M8 2.5v7.5m-3-3 3 3 3-3M3 13.5h10"/></symbol>
   <symbol id="i-bug" viewBox="0 0 16 16"><rect x="4.5" y="4.5" width="7" height="9" rx="3.5"/><path d="M6 4.5a2 2 0 0 1 4 0M4.5 9H2m11.5 0H11M4.8 6.5 3 5m8.2 1.5L13 5m-8.2 6L3 12.5m8.2-1.5 1.8 1.5"/></symbol>
   <symbol id="i-terminal" viewBox="0 0 16 16"><rect x="1.75" y="2.5" width="12.5" height="11" rx="2.5"/><path d="m4.5 6 2 2-2 2m4 .5h3"/></symbol>
+  <symbol id="i-chat" viewBox="0 0 16 16"><path d="M3.5 2.5h9a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2H7.5l-3.5 2.5v-2.5h-.5a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2z"/></symbol>
+  <symbol id="i-cpu" viewBox="0 0 16 16"><rect x="4" y="4" width="8" height="8" rx="1.5"/><path d="M6.5 1.75V4m3-2.25V4m-3 8v2.25m3-2.25v2.25M1.75 6.5H4m-2.25 3H4m8-3h2.25M12 9.5h2.25"/></symbol>
+  <symbol id="i-gauge" viewBox="0 0 16 16"><path d="M2.5 12a5.5 5.5 0 1 1 11 0"/><path d="M8 12l2.5-3.25"/></symbol>
+  <symbol id="i-memory" viewBox="0 0 16 16"><rect x="1.75" y="4.5" width="12.5" height="6" rx="1"/><path d="M4.5 10.5v2.5m2.33-2.5v2.5m2.34-2.5v2.5m2.33-2.5v2.5M4.75 6.75v1.5m3.25-1.5v1.5m3.25-1.5v1.5"/></symbol>
+  <symbol id="i-gpu" viewBox="0 0 16 16"><rect x="1.75" y="3.5" width="12.5" height="8" rx="1.5"/><circle cx="10" cy="7.5" r="2"/><path d="M4.5 6h1.5m-1.5 3h1.5M3.5 11.5v2"/></symbol>
   <symbol id="i-menu" viewBox="0 0 16 16"><path d="M2.5 4.5h11M2.5 8h11M2.5 11.5h11"/></symbol>
   <symbol id="i-more" viewBox="0 0 16 16"><path d="M3.5 8h.01M8 8h.01M12.5 8h.01" stroke-width="2"/></symbol>
   <symbol id="i-link" viewBox="0 0 16 16"><rect x="2" y="5" width="5" height="6" rx="2"/><rect x="9" y="5" width="5" height="6" rx="2"/><path d="M7 8h2"/></symbol>
@@ -106,20 +111,27 @@
 </main>
 <aside id="info-panel" class="info-panel" aria-label="Chat details" hidden data-i18n-aria-label="info.title">
   <section aria-labelledby="info-heading">
-    <h2 id="info-heading" data-i18n="task.chat">Chat</h2>
+    <h2 id="info-heading" data-i18n="task.chat"><svg class="icon" aria-hidden="true"><use href="#i-chat"/></svg>Chat</h2>
     <dl id="info-details"></dl>
   </section>
   <section id="info-subagents" aria-labelledby="info-subagents-heading" hidden>
-    <h2 id="info-subagents-heading" data-i18n="menu.tasks">Tasks</h2>
+    <h2 id="info-subagents-heading" data-i18n="menu.tasks"><svg class="icon" aria-hidden="true"><use href="#i-tasks"/></svg>Tasks</h2>
     <div id="info-tasks-list"></div>
     <button id="info-tasks-more" class="btn is-linked" type="button" aria-controls="info-tasks-list" aria-expanded="false" hidden></button>
   </section>
+  <section id="info-commands" aria-labelledby="info-commands-heading" hidden>
+    <h2 id="info-commands-heading" data-i18n="info.commands.label"><svg class="icon" aria-hidden="true"><use href="#i-terminal"/></svg>Commands</h2>
+    <div id="info-commands-list"></div>
+    <button id="info-commands-more" class="btn is-linked" type="button" aria-controls="info-commands-list" aria-expanded="false" hidden></button>
+  </section>
   <details id="info-procs">
-    <summary data-i18n="info.procs.label">Processes <span id="info-procs-count" class="info-panel__muted"></span></summary>
-    <div class="info-panel__actions">
-      <button id="info-procs-end" class="btn" type="button" disabled data-i18n="info.procs.background.action">End background processes…</button>
-      <p id="info-procs-status" class="sort__status" role="status" hidden></p>
+    <summary data-i18n="info.procs.label"><svg class="icon" aria-hidden="true"><use href="#i-cpu"/></svg>Processes<svg class="icon disclosure" aria-hidden="true"><use href="#i-chevron"/></svg></summary>
+    <div class="info-panel__subhead">
+      <h3 id="info-procs-resources" data-i18n="info.procs.resources">Resources</h3>
+      <button id="info-procs-end" class="btn btn--icon is-linked" type="button" disabled aria-label="End background processes…" data-i18n-aria-label="info.procs.background.action"><svg class="icon" aria-hidden="true"><use href="#i-trash"/></svg></button>
     </div>
+    <div id="info-procs-count" class="info-panel__usage" aria-labelledby="info-procs-resources" role="group"></div>
+    <p id="info-procs-status" class="sort__status" role="status" hidden></p>
     <div id="info-procs-list"></div>
   </details>
 </aside>
@@ -302,7 +314,7 @@
     <p id="sort-status" class="sort__status" role="status" hidden></p>
     <progress id="sort-progress" class="sort__progress" aria-label="Sorting progress" hidden data-i18n-aria-label="sort.progress.label"></progress>
     <details id="sort-more" class="sort__more">
-      <summary data-i18n="sort.more.label">More tools</summary>
+      <summary data-i18n="sort.more.label">More tools<svg class="icon disclosure" aria-hidden="true"><use href="#i-chevron"/></svg></summary>
       <div id="join-row" class="sort__joins" hidden><p id="join-text" class="organize__text"></p><button id="join-run" class="btn" type="button" data-tip="Let Claude choose the origin of these sessions" data-i18n-tip="sort.join.tip" data-i18n="sort.join.label">Resolve with Claude</button></div>
       <div class="sort__undo">
         <button id="sort-restore" class="btn" type="button" data-tip="Put back the original session titles" data-i18n-tip="sort.restore.tip" data-i18n="sort.restore.label">Restore titles</button>
@@ -839,7 +851,7 @@
               <tbody></tbody>
             </table>
             <details id="clean-copies-more" hidden>
-              <summary data-i18n="clean.copies.label">Old plugin copies <span id="clean-copies-count" class="settings__hint"></span></summary>
+              <summary data-i18n="clean.copies.label">Old plugin copies <span id="clean-copies-count" class="settings__hint"></span><svg class="icon disclosure" aria-hidden="true"><use href="#i-chevron"/></svg></summary>
               <table id="clean-copies" class="inventory">
                 <thead><tr><th scope="col" data-i18n="clean.col.account">Account</th><th scope="col" data-i18n="clean.col.plugin">Plugin</th><th scope="col" data-i18n="clean.col.version">Version</th><th scope="col" data-i18n="clean.col.action">Action</th></tr></thead>
                 <tbody></tbody>
