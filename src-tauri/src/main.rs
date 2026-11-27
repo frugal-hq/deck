@@ -17,6 +17,7 @@ mod organizer;
 mod plugins;
 mod os;
 mod procs;
+mod recorder;
 mod statusline;
 mod tasks;
 mod update;
@@ -272,6 +273,15 @@ fn main() {
             voice::voice_status,
             voice::voice_prepare,
             voice::voice_transcribe,
+            recorder::recorder_sources,
+            recorder::recorder_snapshot,
+            recorder::recorder_start,
+            recorder::recorder_stop,
+            recorder::recorder_state,
+            recorder::recorder_list,
+            recorder::recorder_delete,
+            recorder::recorder_reveal,
+            recorder::recorder_for_chat,
             window_action,
             os::files_pick,
             os::folder_pick,

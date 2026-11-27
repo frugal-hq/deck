@@ -208,6 +208,34 @@ fn transcribe(dir: &Path, options: &Value) -> Result<String> {
     Ok(text)
 }
 
+// whisper-cli's timestamped lines, "[00:00:01.240 --> 00:00:03.900]   text", as (start ms, end ms, text).
+fn segments(output: &str) -> Vec<(u64, u64, String)> {
+    let ms = |s: &str| -> Option<u64> {
+        let (hms, ms) = s.trim().split_once('.')?;
+        let mut parts = hms.split(':').map(|p| p.parse::<u64>().ok());
+        let (h, m, s) = (parts.next()??, parts.next()??, parts.next()??);
+        Some(((h * 60 + m) * 60 + s) * 1000 + ms.parse::<u64>().ok()?)
+    };
+    output.lines().filter_map(|line| {
+        let (times, text) = line.trim().strip_prefix('[')?.split_once(']')?;
+        let (start, end) = times.split_once("-->")?;
+        let text = normalize(text);
+        // [BLANK_AUDIO], [Music] and the like are not speech.
+        if text.is_empty() || (text.starts_with('[') && text.ends_with(']')) { return None; }
+        Some((ms(start)?, ms(end)?, text))
+    }).collect()
+}
+
+pub fn transcribe_segments(app: &AppHandle, wav: &Path, model: &str, language: &str) -> Result<Vec<(u64, u64, String)>> {
+    let dir = directory(app)?;
+    if model_info(model).is_err() || !matches!(language, "es" | "en" | "auto") { return Err(crate::i18n::t("error.unknown-voice-model-or-language", &[])); }
+    if !cli(&dir).exists() || !model_file(&dir, model).exists() { return Err(crate::i18n::t("error.voice-model-not-downloaded", &[])); }
+    let threads = thread::available_parallelism().map_err(|e| e.to_string())?.get().min(12).to_string();
+    let stdout = run(command(cli(&dir)).arg("-m").arg(model_file(&dir, model)).arg("-f").arg(wav)
+        .args(["-l", language, "-t", &threads, "-np"]), Some(Duration::from_secs(1800)), |_| {})?;
+    Ok(segments(&String::from_utf8_lossy(&stdout)))
+}
+
 pub fn anthropic_voice() -> bool { ANTHROPIC_VOICE.load(Ordering::Relaxed) }
 
 #[tauri::command]
@@ -302,6 +330,13 @@ mod tests {
         wav.truncate(45);
         assert_eq!(transcribe(&dir, &json!({"audio": wav, "model": "../small", "language": "es"})).unwrap_err(), "Unknown voice model or language.");
         assert_eq!(transcribe(&dir, &json!({"audio": wav, "model": "small", "language": "fr"})).unwrap_err(), "Unknown voice model or language.");
+    }
+
+    #[test]
+    fn timestamped_segments() {
+        let output = "\n[00:00:00.000 --> 00:00:01.240]   [BLANK_AUDIO]\n[00:00:01.240 --> 00:00:03.900]   Hola  mundo\n[00:00:04.000 --> 00:00:05.000]  \n[01:02:03.004 --> 01:02:04.500]  (risas) fin\nwhisper_print_timings: total\n";
+        assert_eq!(segments(output), vec![(1240, 3900, "Hola mundo".to_owned()), (3723004, 3724500, "(risas) fin".to_owned())]);
+        assert!(segments("[bad --> 00:00:01.000] x").is_empty());
     }
 
     #[test]
