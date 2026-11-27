@@ -4153,9 +4153,9 @@ for (const radio of viewRadios) {
 }
 const debugConsole = $('debug-console');
 const DEBUG_KEEP = 2000;
-// Settings, MCP servers and Plugins share one layout: a nav of tabs and one section shown at a time.
+// Settings and MCP servers share one layout: a nav of tabs and one section shown at a time.
 function showSection(dialog, name) {
-  const sections = [...dialog.querySelectorAll('.settings__section')];
+  const sections = [...dialog.querySelectorAll('.settings__section:not(.settings__section .settings__section)')];
   if (!sections.some((section) => section.dataset.section === name)) name = sections[0].dataset.section;
   for (const tab of dialog.querySelectorAll('.settings__tab')) {
     if (tab.dataset.section === name) tab.setAttribute('aria-current', 'page');
@@ -4172,18 +4172,27 @@ for (const dialog of document.querySelectorAll('dialog.settings')) {
     else showSection(dialog, tab.dataset.section);
   };
 }
+// Tabs merged into one section each; also maps tabs saved before the merge.
+const SETTINGS_MOVED = { appearance: 'general', permissions: 'general', handoff: 'chats', recorder: 'voice', privacy: 'system', performance: 'system', updates: 'system', activity: 'debug' };
 function showSettingsSection(name) {
-  name = showSection(settingsDialog, name);
+  name = showSection(settingsDialog, SETTINGS_MOVED[name] ?? name);
   if (name === 'accounts' && settingsDialog.open) {
     loadAccounts(true);
     loadOrder();
     loadTraining();
   }
+  if (settingsDialog.open) loadSettingsPanel(name);
   if (name === 'debug') debugConsole.scrollTop = debugConsole.scrollHeight;
-  if (name === 'updates' && !updatesBusy) loadUpdates();
-  if (name === 'performance' && !perfTimer && !perfWrite) loadPerf();
+  if (name === 'system' && !updatesBusy) loadUpdates();
+  if (name === 'system' && !perfTimer && !perfWrite) loadPerf();
   localStorage.setItem('settingsSection', name);
   return name;
+}
+// MCP servers, Plugins and Delegate tasks load when their section shows in the open dialog.
+function loadSettingsPanel(name) {
+  if (name === 'mcp') openMcpDialog({ global: true });
+  if (name === 'plugins') openPlugins();
+  if (name === 'debug') openTasks();
 }
 
 const PERF_SAVE_MS = 400;
@@ -4402,6 +4411,7 @@ function updateExternalCount() {
 }
 
 async function openSettings(section = localStorage.getItem('settingsSection')) {
+  const group = section;
   section = showSettingsSection(section);
   $('settings-confirm-close').checked = confirmsClose();
   $('settings-always-trust').checked = alwaysTrusts();
@@ -4439,6 +4449,8 @@ async function openSettings(section = localStorage.getItem('settingsSection')) {
       loadAccounts(true);
       loadOrder();
     }
+    loadSettingsPanel(section);
+    settingsDialog.querySelector(`[data-group="${group}"]`)?.scrollIntoView();
   }
   debugConsole.scrollTop = debugConsole.scrollHeight;
   loadActivity();
@@ -4761,7 +4773,7 @@ function refreshMcp() {
   mcpCache.clear();
   const scope = mcpScope;
   const saving = mcpSaving;
-  if (scope && $('mcp-dialog').open) saving.then(() => fetchMcp(scope, 0)).then((result) => { if (mcpScope === scope && mcpSaving === saving && $('mcp-dialog').open) drawMcp(result); });
+  if (scope && mcpOpen()) saving.then(() => fetchMcp(scope, 0)).then((result) => { if (mcpScope === scope && mcpSaving === saving && mcpOpen()) drawMcp(result); });
 }
 
 // An MCP sign-in in a window over the Deck: Claude Code on the chosen account opens /mcp, and closing the window ends it.
@@ -4924,7 +4936,7 @@ function drawMcp(result) {
     $(tab).hidden = !count;
     $(tab).querySelector('.settings__count').textContent = count;
   }
-  if ($('mcp-dialog').querySelector('.settings__tab[aria-current][hidden]')) showSection($('mcp-dialog'), 'servers');
+  if (mcpScope?.global || $('mcp-dialog').querySelector('.settings__tab[aria-current][hidden]')) showMcpSection('servers');
   const names = [...rows.map((row) => row.name), ...deckServers.map(([name]) => name)].map((name) => name.toLowerCase());
   drawMcpSuggestions(MCP_RECOMMENDED.filter((server) => !names.some((name) => name.includes(server.name))));
 }
@@ -4947,16 +4959,26 @@ function drawMcpSuggestions(servers) {
   $('mcp-add-section').hidden = false;
 }
 
+// Global servers show stacked in Settings > MCP servers; a folder, group or workspace borrows the same body in its own dialog.
+const mcpBody = $('mcp-dialog').querySelector('.settings__body');
+const mcpFooter = $('mcp-dialog').querySelector('.settings__footer');
+const mcpOpen = () => (mcpScope?.global ? settingsDialog : $('mcp-dialog')).open;
+function showMcpSection(name) {
+  if (!mcpScope?.global) return showSection($('mcp-dialog'), name);
+  for (const section of mcpBody.children) section.hidden = Boolean($(`mcp-tab-${section.dataset.section}`)?.hidden);
+}
+
 async function openMcpDialog(scope) {
   await mcpSaving; // Queued saves read the rows shown now.
   mcpScope = scope;
   mcpShown = null;
 
   $('mcp-folder').textContent = $('mcp-folder').title = scope.global ? t('mcp.scope.all') : scope.workspace ?? groupLabel(scope.group) ?? scope.folder;
-  showSection($('mcp-dialog'), 'servers');
+  (scope.global ? $('settings-mcp') : $('mcp-dialog').querySelector('.settings__pane')).append(mcpBody, mcpFooter);
   mcpAccess.clear();
   for (const id of ['mcp-failing', 'mcp-removed']) $(id).replaceChildren();
   $('mcp-tab-failing').hidden = $('mcp-tab-removed').hidden = true;
+  showMcpSection('servers');
   const signIn = t('mcp.scope.sign-in');
   $('mcp-note').textContent = scope.global
     ? t('mcp.scope.global-note', { signIn })
@@ -4970,7 +4992,7 @@ async function openMcpDialog(scope) {
   syncMcpAsk();
   $('mcp-list').replaceChildren(emptyState(t('common.loading')));
   $('mcp-error').hidden = true;
-  $('mcp-dialog').showModal();
+  if (!scope.global) $('mcp-dialog').showModal();
   const saving = mcpSaving;
   const known = mcpCache.get(mcpKey(scope));
   const fresh = fetchMcp(scope, 30_000);
@@ -4994,11 +5016,11 @@ function showMcpForm(server) {
   $('mcp-new-target').value = server.target;
   syncMcpTarget();
   $('mcp-new').hidden = false;
-  showSection($('mcp-dialog'), 'add');
+  showMcpSection('add');
   (server.name ? $('mcp-new-add') : $('mcp-new-name')).focus();
 }
 
-$('mcp-dialog').onchange = ({ target }) => {
+mcpBody.onchange = ({ target }) => {
   if (!target.matches('input[data-name]')) return;
   const checked = target.checked;
   saveMcp('mcp-error', () => { if (target.checked === checked) target.checked = !checked; });
@@ -5049,10 +5071,10 @@ $('mcp-new-add').onclick = async () => {
   $('mcp-new').hidden = true;
   const section = $('mcp-deck');
   section?.querySelector('.mcp__empty')?.remove();
-  for (const input of $('mcp-dialog').querySelectorAll(`input[data-name="${CSS.escape(server.name)}"]`)) input.closest('.row').remove();
+  for (const input of mcpBody.querySelectorAll(`input[data-name="${CSS.escape(server.name)}"]`)) input.closest('.row').remove();
   const row = mcpRow(deckRow(server.name, server.transport === 'stdio' ? { type: 'stdio' } : { url: server.target }, true));
   section?.append(row);
-  showSection($('mcp-dialog'), 'servers');
+  showMcpSection('servers');
   $('mcp-suggest').querySelector(`[data-name="${CSS.escape(server.name)}"]`)?.remove();
   // On here at once; a failed save leaves it in the Deck, unchecked.
   saveMcp('mcp-error', () => { row.querySelector('input').checked = false; }, t('mcp.add.added', { name: server.name }));
@@ -5067,7 +5089,7 @@ function saveMcp(status, revert, text = t('common.saved')) {
 async function writeMcp() {
   if (!mcpScope || !mcpShown) return null;
   // Only the difference from the global list is kept, and names this list did not show stay as they were.
-  const inputs = [...$('mcp-dialog').querySelectorAll('.row input[data-name]')];
+  const inputs = [...mcpBody.querySelectorAll('.row input[data-name]')];
   const shown = new Set(inputs.map((input) => input.dataset.name));
   const kept = (names) => new Set((names ?? []).filter((name) => !shown.has(name)));
   const global = new Set(mcpShown.global ?? []);
@@ -5172,7 +5194,7 @@ function pluginStates() {
   return states;
 }
 
-async function openPluginsDialog() {
+async function openPlugins() {
   await pluginsSaving; // Queued saves read the rows shown now.
   const visit = ++pluginsVisit;
   pluginsShown = null;
@@ -5181,8 +5203,6 @@ async function openPluginsDialog() {
   $('plugins-error').hidden = true;
   $('plugins-request').value = '';
   $('plugins-task').value = '';
-  showSection($('plugins-dialog'), 'installed');
-  $('plugins-dialog').showModal();
   await loadPlugins(visit);
 }
 
@@ -5283,12 +5303,12 @@ async function openCleanDialog() {
   }
 }
 
-$('plugins-open').onclick = openPluginsDialog;
-for (const [button, dialog] of [['plugins-clean', 'plugins-dialog'], ['mcp-clean', 'mcp-dialog']]) {
-  $(button).onclick = () => { $(dialog).close(); openCleanDialog(); };
+$('plugins-open').onclick = () => openSettings('plugins');
+for (const button of ['plugins-clean', 'mcp-clean']) {
+  $(button).onclick = () => { $('mcp-dialog').close(); settingsDialog.close(); openCleanDialog(); };
 }
 $('clean-cancel').onclick = () => $('clean-dialog').close();
-for (const id of ['mcp', 'plugins', 'clean']) $(id + '-close').onclick = () => $(id + '-dialog').close();
+for (const id of ['mcp', 'settings', 'clean']) $(id + '-close').onclick = () => $(id + '-dialog').close();
 $('clean-recommended').onclick = () => { for (const { item, select } of cleanChoices) select.value = item.action; };
 $('clean-keep').onclick = () => { for (const { select } of cleanChoices) select.value = 'keep'; };
 $('clean-apply').onclick = async () => {
@@ -5338,7 +5358,7 @@ $('plugins-find').onclick = async () => {
   pluginSuggestion = null;
   try {
     const result = await deck.pluginFind(request);
-    if (visit !== pluginsVisit || !$('plugins-dialog').open) return;
+    if (visit !== pluginsVisit || !settingsDialog.open) return;
     if (result.none) { $('plugins-error').textContent = result.none; $('plugins-error').hidden = false; return; }
     pluginSuggestion = result.id;
     $('plugins-suggestion').textContent = t('plugins.install.suggestion', { id: result.id, why: result.why });
@@ -5355,9 +5375,8 @@ $('plugins-install').onclick = async () => {
   try {
     const output = await deck.pluginInstall(pluginSuggestion);
     const result = await deck.pluginsList();
-    if (visit !== pluginsVisit || !$('plugins-dialog').open) return;
+    if (visit !== pluginsVisit || !settingsDialog.open) return;
     drawPlugins(result, pluginStates());
-    showSection($('plugins-dialog'), 'installed');
     pluginSuggestion = null;
     $('plugins-confirm').hidden = true;
     $('plugins-error').textContent = output;
@@ -5388,11 +5407,11 @@ for (const prefix of ['mcp', 'plugins']) {
     button.disabled = true;
     try {
       const reply = await deck.recommend(task);
-      if (!$(prefix + '-dialog').open || (prefix === 'mcp' ? scope !== mcpScope : visit !== pluginsVisit)) return;
+      if (!(prefix === 'mcp' ? mcpOpen() : settingsDialog.open) || (prefix === 'mcp' ? scope !== mcpScope : visit !== pluginsVisit)) return;
       // Applied and saved at once; a failed save puts back each choice nobody changed since.
       const undo = [];
       if (prefix === 'mcp') {
-        for (const input of $('mcp-dialog').querySelectorAll('.row input[data-name]')) {
+        for (const input of mcpBody.querySelectorAll('.row input[data-name]')) {
           const suggestion = reply.mcp[input.dataset.name];
           if (!suggestion || input.disabled) continue;
           const checked = input.checked;
@@ -5419,7 +5438,7 @@ for (const prefix of ['mcp', 'plugins']) {
           row.dataset.tip = suggestion.why;
         }
       }
-      showSection($(prefix + '-dialog'), prefix === 'mcp' ? 'servers' : 'installed');
+      if (prefix === 'mcp') showMcpSection('servers');
       const revert = () => { for (const step of undo) step(); };
       if (prefix === 'mcp') saveMcp('mcp-error', revert, t('common.suggestions-applied'));
       else savePlugins(revert, t('common.suggestions-applied'));
@@ -6205,9 +6224,8 @@ async function openTasks() {
   $('tasks-retry').hidden = true;
   summary.classList.remove('empty');
   summary.textContent = t('tasks.loading');
-  if (!$('tasks-dialog').open) $('tasks-dialog').showModal();
   const tasks = await deck.allTasks().catch(() => null);
-  if (load !== tasksLoad || !$('tasks-dialog').open) return;
+  if (load !== tasksLoad || !settingsDialog.open) return;
   if (!tasks) {
     summary.classList.add('empty');
     summary.textContent = t('tasks.error');

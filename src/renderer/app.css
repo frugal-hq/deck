@@ -536,7 +536,6 @@ meter::-webkit-meter-even-less-good-value { background: var(--color-bad); border
 .update__list:empty { display: none; }
 #settings-updates .row { padding-inline: 0; }
 #update-status:empty { display: none; }
-.tasks { width: min(var(--dialog-md), 90vw); }
 .tasks__list { max-height: 60vh; overflow-y: auto; scrollbar-width: thin; }
 .organize__check input { appearance: none; display: grid; place-content: center; width: 16px; height: 16px; margin: 0; border: 0; border-radius: var(--radius-sm); background: var(--color-paper-3); cursor: pointer; transition: background-color var(--dur-micro) var(--ease-out); }
 .organize__check input::before { content: ""; width: var(--icon-sm); height: var(--icon-sm); background: var(--color-accent-ink); mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='black' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m3.5 8.5 3 3 6-7'/%3E%3C/svg%3E") center / contain no-repeat; scale: 0.5; opacity: 0; transition: scale var(--dur-micro) var(--ease-out), opacity var(--dur-micro) var(--ease-out); }
@@ -932,7 +931,10 @@ body { transition: opacity var(--dur-short) var(--ease-out); }
 .settings__message[hidden] { display: block; visibility: hidden; }
 /* The inline-end padding clears the close button, so nothing scrolls under it. */
 .settings__body { overflow-y: auto; margin: var(--space-xs) var(--space-2xs) var(--space-xs) 0; padding: calc(var(--space-md) - var(--space-xs)) calc(var(--space-sm) + var(--size-control)) calc(var(--space-lg) - var(--space-xs)) var(--space-lg); scrollbar-width: thin; }
-.settings__section { display: grid; gap: var(--space-sm); }
+.settings__section, .settings__group { display: grid; gap: var(--space-sm); }
+.settings__section:has(> .settings__group), .settings__group > .settings__body { gap: var(--space-xl); }
+.settings__group > .settings__body { display: grid; overflow: visible; margin: 0; padding: 0; }
+.settings__section .settings__footer { padding: 0; border-top: 0; }
 .settings__section[hidden] { display: none; }
 .settings__title { margin: 0; padding-bottom: var(--space-sm); border-bottom: var(--rule-hair) solid var(--color-rule); font-size: var(--text-sm); font-weight: 500; max-width: none; }
 .settings__title + .settings__row { padding-top: 0; border-top: 0; }
