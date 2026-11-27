@@ -955,7 +955,7 @@ body { transition: opacity var(--dur-short) var(--ease-out); }
 .term-mic[data-state="listening"] .term-mic__wave { display: block; }
 .term-mic__text:empty { display: none; }
 /* Settings: sections on the left, their options on the right. */
-.settings { width: min(var(--dialog-lg), 94vw); height: min(34rem, 86vh); margin-block-start: 8vh; padding: 0; overflow: hidden; }
+.settings { width: min(var(--dialog-xl), 94vw); height: min(48rem, 90vh); margin: auto; padding: 0; overflow: hidden; }
 .settings :is(form, .settings__frame) { position: relative; display: grid; grid-template-columns: 12rem minmax(0, 1fr); gap: 0; height: 100%; }
 .settings__nav { display: flex; flex-direction: column; gap: var(--space-3xs); padding: var(--space-md) var(--space-xs); border-right: var(--rule-hair) solid var(--color-rule); background: var(--color-paper); overflow-y: auto; }
 .settings .dialog__title { margin: 0 0 var(--space-sm); padding-inline: var(--space-xs); }
