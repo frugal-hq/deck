@@ -660,16 +660,18 @@ fn join_frugal_pool(a: &Value, file: &Path) -> Result<()> {
     })
 }
 // The plugin's delegation order; `order` is kept in recommended mode so custom mode restores it.
+// A mode switch keeps the saved order: the list on screen is then the other mode's ranking.
 fn set_frugal_order(file: &Path, mode: &str, ids: &Value) -> Result<bool> {
     if !matches!(mode, "recommended" | "custom") || !ids.is_array() { return Ok(false); }
     with_frugal_lock(file, || {
         let mut data = read_strict(file, Value::Null)?;
+        let switching = data["order_mode"].as_str() != Some(mode) && !array(&data["order"]).is_empty();
         let known = array(&data["accounts"]);
         let mut order: Vec<Value> = Vec::new();
         for id in array(ids) { if id.is_string() && !order.contains(id) && known.iter().any(|e| e["id"] == *id) { order.push(id.clone()); } }
         let map = object(&mut data);
         map.insert("order_mode".into(), json!(mode));
-        map.insert("order".into(), json!(order));
+        if !switching { map.insert("order".into(), json!(order)); }
         write_json(file, &data)?;
         Ok(true)
     })
@@ -1236,6 +1238,20 @@ pub fn mcp_set(app: AppHandle, accounts: State<Mutex<Accounts>>, scope: Value, n
 pub(crate) mod tests {
     use super::*;
     use std::io::Write;
+
+    #[test]
+    fn order_survives_mode_switch() {
+        let file = std::env::temp_dir().join(format!("deck-order-{}.json", std::process::id()));
+        fs::write(&file, r#"{"accounts":[{"id":"a"},{"id":"b"},{"id":"c"}],"order_mode":"custom","order":["c","a","b"]}"#).unwrap();
+        let ids = |v: &[&str]| json!(v);
+        let order = || read_strict(&file, Value::Null).unwrap()["order"].clone();
+        assert!(set_frugal_order(&file, "recommended", &ids(&["c", "a", "b"])).unwrap());
+        assert!(set_frugal_order(&file, "custom", &ids(&["a", "b", "c"])).unwrap());
+        assert_eq!(order(), json!(["c", "a", "b"]));
+        assert!(set_frugal_order(&file, "custom", &ids(&["b", "c", "a"])).unwrap());
+        assert_eq!(order(), json!(["b", "c", "a"]));
+        let _ = fs::remove_file(&file);
+    }
 
     #[test]
     fn valid_cli_gemini_gone() {
