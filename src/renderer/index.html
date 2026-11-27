@@ -97,48 +97,24 @@
     </div>
   </section>
 </main>
-<aside id="info-panel" class="info-panel" aria-labelledby="info-heading" hidden>
-  <h2 id="info-heading" data-i18n="info.title">Chat details</h2>
-  <dl id="info-details"></dl>
+<aside id="info-panel" class="info-panel" aria-label="Chat details" hidden data-i18n-aria-label="info.title">
+  <section aria-labelledby="info-heading">
+    <h2 id="info-heading" data-i18n="task.chat">Chat</h2>
+    <dl id="info-details"></dl>
+  </section>
+  <section id="info-subagents" aria-labelledby="info-subagents-heading" hidden>
+    <h2 id="info-subagents-heading" data-i18n="menu.tasks">Tasks</h2>
+    <div id="info-tasks-list"></div>
+    <button id="info-tasks-more" class="btn is-linked" type="button" aria-controls="info-tasks-list" aria-expanded="false" hidden></button>
+  </section>
   <details id="info-procs">
     <summary data-i18n="info.procs.label">Processes <span id="info-procs-count" class="info-panel__muted"></span></summary>
-    <p id="info-procs-status" class="sort__status" role="status" hidden></p>
+    <div class="info-panel__actions">
+      <button id="info-procs-end" class="btn" type="button" disabled data-i18n="info.procs.background.action">End background processes…</button>
+      <p id="info-procs-status" class="sort__status" role="status" hidden></p>
+    </div>
     <div id="info-procs-list"></div>
   </details>
-  <section id="info-subagents" aria-labelledby="info-subagents-heading" hidden>
-    <div id="info-running">
-      <h2 id="info-subagents-heading" data-i18n="info.running.title">In progress</h2>
-      <div id="info-running-list"></div>
-      <details class="info-panel__local" id="info-running-local" hidden>
-        <summary data-i18n="info.local.label">Local <span id="info-running-local-count" class="info-panel__muted"></span></summary>
-        <div id="info-running-local-list"></div>
-      </details>
-    </div>
-    <details id="info-failed" hidden>
-      <summary data-i18n="info.failed.label">Failed <span id="info-failed-count" class="info-panel__muted"></span></summary>
-      <div id="info-failed-list"></div>
-      <details class="info-panel__local" id="info-failed-local" hidden>
-        <summary data-i18n="info.local.label">Local <span id="info-failed-local-count" class="info-panel__muted"></span></summary>
-        <div id="info-failed-local-list"></div>
-      </details>
-    </details>
-    <details id="info-cancelled" hidden>
-      <summary data-i18n="info.cancelled.label">Cancelled <span id="info-cancelled-count" class="info-panel__muted"></span></summary>
-      <div id="info-cancelled-list"></div>
-      <details class="info-panel__local" id="info-cancelled-local" hidden>
-        <summary data-i18n="info.local.label">Local <span id="info-cancelled-local-count" class="info-panel__muted"></span></summary>
-        <div id="info-cancelled-local-list"></div>
-      </details>
-    </details>
-    <details id="info-done">
-      <summary data-i18n="info.done.label">Done <span id="info-done-count" class="info-panel__muted"></span></summary>
-      <div id="info-done-list"></div>
-      <details class="info-panel__local" id="info-done-local" hidden>
-        <summary data-i18n="info.local.label">Local <span id="info-done-local-count" class="info-panel__muted"></span></summary>
-        <div id="info-done-local-list"></div>
-      </details>
-    </details>
-  </section>
 </aside>
 <div id="info-resize" class="sidebar__resize info-panel__resize" role="separator" aria-orientation="vertical" aria-label="Resize the details panel" tabindex="0" data-tip="Drag to resize. Double-click to reset" hidden data-i18n-aria-label="info.resize.label" data-i18n-tip="common.resize.tip"></div>
 <footer id="readout" class="readout" hidden>

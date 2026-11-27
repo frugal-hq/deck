@@ -189,18 +189,24 @@ body:has(.info-panel:not([hidden])) { grid-template-columns: var(--sidebar-width
 }
 
 .info-panel { grid-column: 3; grid-row: 2; }
-.info-panel h2 { padding: var(--space-xs); color: var(--color-ink-2); font-size: var(--text-sm); font-weight: 500; line-height: 1.2; }
-.info-panel dl { margin: 0 0 var(--space-sm); }
+.info-panel > :not([hidden]) ~ :not([hidden]) { margin-block-start: var(--space-md); }
+.info-panel :is(h2, summary) { padding: var(--space-xs); color: var(--color-ink-2); font-size: var(--text-xs); font-weight: 500; line-height: 1.2; }
+.info-panel dl { margin: 0; }
 .info-panel__row { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: baseline; gap: var(--space-xs); padding: var(--space-2xs) var(--space-xs); font-size: var(--text-sm); }
 .info-panel dt, .info-panel__muted { color: var(--color-muted); }
 .info-panel dd { margin: 0; color: var(--color-ink-2); text-align: end; overflow-wrap: anywhere; white-space: pre-line; font-variant-numeric: tabular-nums; }
-.info-panel__status { flex: none; color: var(--color-muted); font-size: var(--text-xs); }
+.info-panel__status { display: flex; flex: none; color: var(--color-muted); }
+.info-panel__status .icon { width: var(--icon-sm); height: var(--icon-sm); }
 .info-panel__status.is-running { color: var(--color-cool); }
-.info-panel__status.is-failed, .info-panel__status.is-not-delegated { color: var(--color-bad); }
-.info-panel summary { padding: var(--space-xs); color: var(--color-ink-2); font-size: var(--text-sm); font-weight: 500; cursor: pointer; }
+.info-panel__status.is-failed { color: var(--color-bad); }
+.info-panel summary { cursor: pointer; }
 .info-panel summary:hover { color: var(--color-ink); }
-#info-subagents > :not([hidden]) ~ :not([hidden]) { border-block-start: var(--rule-hair) solid var(--color-rule); }
-.info-panel__local > summary { padding: var(--space-2xs) var(--space-xs); color: var(--color-muted); font-size: var(--text-xs); font-weight: 500; cursor: pointer; }
+.info-panel__task > * { flex: none; }
+.info-panel__task > .row__name { flex: 1 1 0; }
+.info-panel__task > .row__meta--path { flex: 0 1 auto; max-width: 40%; }
+.info-panel__task.is-local { color: var(--color-ink-2); }
+#info-tasks-more { min-height: var(--size-row); }
+.info-panel__actions { display: flex; flex-wrap: wrap; align-items: center; gap: var(--space-xs); padding: var(--space-2xs) var(--space-xs); }
 
 .sidebar__status {
   padding: var(--space-xs) var(--space-md);

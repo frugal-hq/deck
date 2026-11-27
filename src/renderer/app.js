@@ -929,10 +929,9 @@ const isFailed = (task) => task.status === 'failed' || task.status === 'not dele
 const checkFailed = (task) => task.status === 'failed' && task.kind === 'edit' && task.cause === 'brief';
 const taskStatus = (task) => (checkFailed(task) ? t('task.check-failed') : TASK_STATUS[task.status] ?? task.status);
 const TASK_CAUSES = ['account', 'env', 'brief', 'code', 'frugal'];
-function taskCauseRank(task) {
-  const index = TASK_CAUSES.indexOf(task.cause);
-  return index < 0 ? TASK_CAUSES.length : index;
-}
+const taskState = (task) => (task.running ? 'running' : isFailed(task) ? 'failed' : task.status === 'cancelled' ? 'cancelled' : 'done');
+const TASK_MARK = { failed: 'x', cancelled: 'more', done: 'replied' };
+const TASK_RANK = { running: 0, failed: 1, cancelled: 2, done: 2 };
 
 function taskCauseChip(cause) {
   return TASK_CAUSES.includes(cause) ? node('span', 'tag tag--cause', failureLabels.causes[cause]) : null;
@@ -959,22 +958,24 @@ function whyFailed(task) {
 
 function taskRow(task) {
   // A button only so the details tooltip is reachable by keyboard; it has no click action.
-  const row = node('button', 'row row--interactive');
+  const local = isLocal(task);
+  const row = node('button', `row row--interactive info-panel__task${local ? ' is-local' : ''}`);
   row.type = 'button';
-  const main = node('div', 'row__main');
-  const controls = node('div', 'row__controls');
+  const state = taskState(task);
+  const mark = node('span', `info-panel__status is-${state}`);
+  mark.append(state === 'running' ? statusIcon('working') : icon(TASK_MARK[state]));
+  mark.setAttribute('role', 'img');
+  mark.setAttribute('aria-label', TASK_STATUS[state]);
+  mark.dataset.tip = TASK_STATUS[state];
+  row.append(mark);
+  const account = taskAccount(task);
+  if (local) row.append(node('span', 'tag tag--cause', t('info.local.label')));
+  else if (account) row.append(node('span', 'row__meta row__meta--path', account));
   const title = task.check ? commandTitle(task.check) : task.description || task.name;
-  const status = node('span', `info-panel__status is-${checkFailed(task) ? 'check-failed' : task.status.replace(' ', '-')}`, taskStatus(task));
-  const cause = isFailed(task) && taskCauseChip(task.cause);
-  if (cause) status.prepend(cause, ' ');
-  main.append(node('span', 'row__name', title));
-  controls.append(status);
-  row.append(main, controls);
+  const seconds = task.running ? Math.round((Date.now() - task.updatedAt) / 1000) : task.seconds;
+  row.append(node('span', 'row__name', title), node('span', 'row__meta', taskSpan(seconds)));
   const cost = task.cost != null && t('common.cost-usd', { amount: task.cost.toFixed(2) });
   const tokens = task.tokens && tp('task.tokens', task.tokens, { count: compact.format(task.tokens) });
-  const seconds = task.running ? Math.round((Date.now() - task.updatedAt) / 1000) : task.seconds;
-  const meta = [taskAccount(task), task.model, task.level, taskSpan(seconds), tokens, cost].filter(Boolean).join(' · ');
-  if (meta) main.append(node('span', 'row__meta', meta));
   const chat = task.chat && currentIndex?.sessions?.find((s) => s.id === task.chat)?.title;
   const label = (name, value) => (value ? t('common.label-value', { label: name, value }) : '');
   const details = [
@@ -1001,27 +1002,28 @@ function taskRow(task) {
   return row;
 }
 
-// Delegate jobs and subagents of the active chat: running ones first, then the last 20 that ended, folded by how they ended.
-// Delegated rows first, the chat's own (local) folded under them.
-function drawTaskGroup(name, tasks) {
-  const local = tasks.filter(isLocal);
-  $(`info-${name}`).hidden = !tasks.length;
-  const count = $(`info-${name}-count`);
-  if (count) count.textContent = tasks.length;
-  $(`info-${name}-list`).replaceChildren(...tasks.filter((task) => !isLocal(task)).map(taskRow));
-  $(`info-${name}-local`).hidden = !local.length;
-  $(`info-${name}-local-count`).textContent = local.length;
-  $(`info-${name}-local-list`).replaceChildren(...local.map(taskRow));
-}
+// Delegate jobs and subagents of the active chat: running ones, then the last 20 that ended, failed before done and cancelled, newest first.
+// Delegated rows first, then the chat's own (local) ones, LOCAL_SHOWN of them until expanded.
+const LOCAL_SHOWN = 5;
+let infoTasks = [];
+let infoLocalExpanded = false;
 function drawSubagents(tasks) {
+  infoTasks = tasks;
   tasks.sort((a, b) => b.updatedAt - a.updatedAt);
-  const ended = tasks.filter((task) => !task.running).slice(0, 20);
-  $('info-subagents').hidden = !tasks.length;
-  drawTaskGroup('running', tasks.filter((task) => task.running));
-  drawTaskGroup('failed', ended.filter(isFailed).sort((a, b) => taskCauseRank(a) - taskCauseRank(b)));
-  drawTaskGroup('cancelled', ended.filter((task) => task.status === 'cancelled'));
-  drawTaskGroup('done', ended.filter((task) => !isFailed(task) && task.status !== 'cancelled'));
+  const shown = [...tasks.filter((task) => task.running), ...tasks.filter((task) => !task.running).slice(0, 20)]
+    .sort((a, b) => TASK_RANK[taskState(a)] - TASK_RANK[taskState(b)]);
+  const local = shown.filter(isLocal);
+  $('info-subagents').hidden = !shown.length;
+  $('info-tasks-list').replaceChildren(...shown.filter((task) => !isLocal(task)).map(taskRow), ...local.slice(0, infoLocalExpanded ? local.length : LOCAL_SHOWN).map(taskRow));
+  const more = $('info-tasks-more');
+  more.hidden = local.length <= LOCAL_SHOWN;
+  more.textContent = infoLocalExpanded ? t('sidebar.show-less') : tp('info.tasks.more', local.length - LOCAL_SHOWN);
+  more.setAttribute('aria-expanded', String(infoLocalExpanded));
 }
+$('info-tasks-more').onclick = () => {
+  infoLocalExpanded = !infoLocalExpanded;
+  drawSubagents(infoTasks);
+};
 
 function procRow(chat, proc) {
   const row = node('div', 'row');
@@ -1047,7 +1049,29 @@ function procRow(chat, proc) {
   row.append(main, controls);
   return row;
 }
+const SHELL = /^(bash|sh|cmd|powershell|pwsh)\.exe$/i;
+const CLAUDE = /^claude(\.exe)?$/i;
+// What tool calls started: shells and all under them. Kept: the chat, Claude, conhost, MCP servers (what Claude starts that is not a shell) and all under those, delegated work included.
+function backgroundProcs(processes) {
+  const byPid = new Map(processes.map((proc) => [proc.pid, proc]));
+  const underMcp = (proc) => {
+    for (const seen = new Set(); proc && !seen.has(proc.pid); proc = byPid.get(proc.ppid)) {
+      seen.add(proc.pid);
+      // The chat's root counts as Claude: an npm install runs it as node.exe.
+      const parent = byPid.get(proc.ppid);
+      if (!SHELL.test(proc.name) && parent && (parent.is_chat || CLAUDE.test(parent.name))) return true;
+    }
+    return false;
+  };
+  return processes.filter((proc) => !proc.is_chat && !CLAUDE.test(proc.name) && !/^conhost\.exe$/i.test(proc.name) && !underMcp(proc));
+}
 function drawProcs(chat, { processes, totals }) {
+  const background = backgroundProcs(processes);
+  const end = $('info-procs-end');
+  end.disabled = !background.length || end.getAttribute('aria-busy') === 'true';
+  if (background.length) delete end.dataset.tip;
+  else end.dataset.tip = t('info.procs.background.none');
+  end.onclick = () => endBackground(chat, background);
   const list = $('info-procs-list');
   const summary = [processes.length, t('info.procs.cpu', { percent: Math.round(totals.cpu_pct) }), sizeText(totals.ram_bytes, 1024)];
   if (totals.gpu_pct != null) summary.push(t('info.procs.gpu', { percent: Math.round(totals.gpu_pct) }));
@@ -1078,6 +1102,7 @@ async function refreshProcs(chat, generation) {
   } catch (error) {
     if (!procsVisible(generation) || $('confirm-dialog').open) return;
     procsFailed = true;
+    $('info-procs-end').disabled = true;
     $('info-procs-count').textContent = '';
     list.replaceChildren(emptyState(t('info.procs.error', { error }), () => {
       procsFailed = false;
@@ -1090,16 +1115,32 @@ async function refreshProcs(chat, generation) {
 }
 async function endProcess(chat, proc) {
   const text = t('info.procs.end.text', { name: proc.name, pid: proc.pid });
-  if (!await askConfirm(t('info.procs.end.title', { name: proc.name }), text, t('info.procs.end.action'), true)) return;
+  if (await askConfirm(t('info.procs.end.title', { name: proc.name }), text, t('info.procs.end.action'), true)) endProcesses(chat, [proc]);
+}
+async function endBackground(chat, procs) {
+  const text = tp('info.procs.background.text', procs.length);
+  if (!await askConfirm(t('info.procs.background.title'), text, t('info.procs.background.confirm'), true)) return;
+  const end = $('info-procs-end');
+  end.disabled = true;
+  end.setAttribute('aria-busy', 'true');
+  await endProcesses(chat, procs, true);
+  end.removeAttribute('aria-busy');
+}
+// The kill refuses the chat's root and rechecks each pid and start time, so a reused pid is never ended.
+async function endProcesses(chat, procs, report = false) {
   const generation = infoGeneration;
   let failure = '';
-  try {
-    await deck.processKill(chat.id, proc.pid, proc.started_ms);
-  } catch (error) {
-    failure = t('info.procs.end.failed', { name: proc.name, error });
+  let ended = 0;
+  for (const proc of procs) {
+    try {
+      await deck.processKill(chat.id, proc.pid, proc.started_ms);
+      ended++;
+    } catch (error) {
+      failure ||= t('info.procs.end.failed', { name: proc.name, error });
+    }
   }
   if (infoChatId === chat.id && generation === infoGeneration) {
-    showStatus('info-procs-status', failure, Boolean(failure));
+    showStatus('info-procs-status', failure || (report ? tp('info.procs.background.done', ended) : ''), Boolean(failure));
     refreshProcs(chat, generation);
   }
 }
@@ -1124,8 +1165,10 @@ function syncInfoPanel() {
   const generation = ++infoGeneration;
   clearInterval(infoElapsedClock);
   clearInterval(infoAgentsClock);
+  infoLocalExpanded = false;
   drawSubagents([]);
   procsFailed = false;
+  $('info-procs-end').disabled = true;
   $('info-procs-list').replaceChildren();
   $('info-procs-count').textContent = '';
   showStatus('info-procs-status', '');
