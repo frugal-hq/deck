@@ -607,16 +607,18 @@ button.row--interactive:active:not(:disabled) { filter: brightness(0.92); scale:
 
 /* Selects stay native; base-select opens their button and list to CSS. */
 select, ::picker(select) { appearance: base-select; }
-select { align-items: center; min-height: var(--size-control-sm); padding-inline: var(--space-xs); border: 0; border-radius: var(--radius-pill); background: var(--color-paper-3); color: var(--color-ink); cursor: pointer; transition: background-color var(--dur-micro) var(--ease-out); }
-select:hover:not(:disabled) { background: var(--color-paper); }
-select:open { background: var(--color-paper); }
-select::picker-icon { content: ""; width: var(--icon-sm); height: var(--icon-sm); background: var(--color-muted); mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='black' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 3.5 4.5 4.5L6 12.5'/%3E%3C/svg%3E") center / contain no-repeat; rotate: 90deg; transition: rotate var(--dur-micro) var(--ease-out); }
+/* Styled like .btn: control fill, top highlight, brightness on hover and while open. */
+select, select.settings__select { align-items: center; gap: var(--space-xs); min-height: var(--size-control-sm); padding-block: 0; padding-inline: var(--space-sm) var(--space-xs); border: 0; border-radius: var(--radius-pill); background: linear-gradient(180deg, var(--color-control), var(--color-control-2)); box-shadow: inset 0 1px 0 var(--color-highlight); color: var(--color-ink); font-size: var(--text-sm); line-height: 1.2; cursor: pointer; transition: filter var(--dur-micro) var(--ease-out); }
+select:is(:hover:not(:disabled), :open) { filter: brightness(1.14); }
+/* In dialog forms a select sits among text inputs and keeps their fill. */
+.organize__field select { background: var(--color-paper-3); box-shadow: none; }
+select::picker-icon { content: ""; width: var(--icon-sm); height: var(--icon-sm); background: var(--color-ink-2); mask: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='black' stroke-width='1.5' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpath d='m6 3.5 4.5 4.5L6 12.5'/%3E%3C/svg%3E") center / contain no-repeat; rotate: 90deg; transition: rotate var(--dur-micro) var(--ease-out); }
 select:open::picker-icon { rotate: -90deg; }
 ::picker(select), .menu { padding: var(--space-2xs); border: 0; border-radius: var(--radius-pill); background: var(--color-control-2); box-shadow: var(--shadow-float); color: var(--color-ink); }
-::picker(select) { margin-block: var(--space-2xs); opacity: 0; translate: 0 -4px; transition: opacity var(--dur-micro) var(--ease-out), translate var(--dur-micro) var(--ease-out), display var(--dur-micro) allow-discrete, overlay var(--dur-micro) allow-discrete; }
+::picker(select) { min-width: anchor-size(width); margin-block: var(--space-2xs); opacity: 0; translate: 0 -4px; transition: opacity var(--dur-micro) var(--ease-out), translate var(--dur-micro) var(--ease-out), display var(--dur-micro) allow-discrete, overlay var(--dur-micro) allow-discrete; }
 ::picker(select):popover-open { opacity: 1; translate: 0 0; }
 @starting-style { ::picker(select):popover-open { opacity: 0; translate: 0 -4px; } }
-option, .menu__item { display: flex; align-items: center; min-height: var(--size-row); padding-inline: var(--space-sm) var(--space-xs); border-radius: var(--radius-pill); color: var(--color-ink-2); font-size: var(--text-sm); cursor: pointer; transition: background-color var(--dur-micro) var(--ease-out), color var(--dur-micro) var(--ease-out); }
+option, .menu__item { display: flex; align-items: center; gap: var(--space-xs); line-height: 1.2; min-height: var(--size-row); padding-inline: var(--space-sm) var(--space-xs); border-radius: var(--radius-pill); color: var(--color-ink-2); font-size: var(--text-sm); cursor: pointer; transition: background-color var(--dur-micro) var(--ease-out), color var(--dur-micro) var(--ease-out); }
 option:hover:not(:disabled):not(:checked), .menu__item:hover:not(:disabled):not([aria-selected="true"]) { background: var(--color-highlight); color: var(--color-ink); }
 option:checked, .menu__item[aria-selected="true"] { background: var(--color-accent-soft); color: var(--color-ink); }
 option:focus-visible, .menu__item:focus-visible { outline-offset: -2px; }
