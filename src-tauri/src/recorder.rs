@@ -541,7 +541,9 @@ impl Recorder {
     fn key_frame(&mut self, start: Instant) {
         let (shared, keys) = (&self.shared, &mut self.keys);
         let now = shared.origin.elapsed().as_millis() as u64;
-        if keys.saved >= MAX_KEY_FRAMES || (self.game && keys.saved > 0) || (keys.saved > 0 && now < keys.last_check + 500) { return; }
+        // Past the first frames a long recording keeps one every 10 s at most, so key frames cover its end too.
+        let spaced = keys.saved < MAX_KEY_FRAMES || now >= keys.last_saved + 10_000;
+        if keys.saved >= MAX_KEY_FRAMES * 5 || !spaced || (self.game && keys.saved > 0) || (keys.saved > 0 && now < keys.last_check + 500) { return; }
         keys.last_check = now;
         let (tw, th) = (self.target.0 as usize, self.target.1 as usize);
         let signature = signature(&self.buffer, tw, th);
