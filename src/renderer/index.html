@@ -64,6 +64,7 @@
   <symbol id="i-coin" viewBox="0 0 16 16"><circle cx="8" cy="8" r="5.75"/><path d="M9.75 5.75H7.4a1.15 1.15 0 0 0 0 2.3h1.2a1.15 1.15 0 0 1 0 2.3H6.25M8 4.5v1.25m0 4.5v1.25"/></symbol>
   <symbol id="i-attach" viewBox="0 0 16 16"><path d="m13 7.5-5.2 5.2a3 3 0 0 1-4.3-4.3l5.6-5.6a2 2 0 0 1 2.8 2.8L6.3 11.2a1 1 0 0 1-1.4-1.4l5-5"/></symbol>
   <symbol id="i-mic" viewBox="0 0 16 16"><rect x="5.75" y="1.75" width="4.5" height="8" rx="2.25"/><path d="M3.5 7.5a4.5 4.5 0 0 0 9 0M8 12v2.25"/></symbol>
+  <symbol id="i-record" viewBox="0 0 16 16"><circle cx="8" cy="8" r="5.75"/><circle cx="8" cy="8" r="2.5" fill="currentColor" stroke="none"/></symbol>
   <symbol id="i-mic-off" viewBox="0 0 16 16"><rect x="5.75" y="1.75" width="4.5" height="8" rx="2.25"/><path d="M3.5 7.5a4.5 4.5 0 0 0 9 0M8 12v2.25M2.5 2.5l11 11"/></symbol>
   <!-- AI brand marks: Lobe Icons (lobehub/lobe-icons), MIT License -->
   <symbol id="i-kind-claude" viewBox="0 0 24 24" fill="currentColor" fill-rule="evenodd"><path d="M4.709 15.955l4.72-2.647.08-.23-.08-.128H9.2l-.79-.048-2.698-.073-2.339-.097-2.266-.122-.571-.121L0 11.784l.055-.352.48-.321.686.06 1.52.103 2.278.158 1.652.097 2.449.255h.389l.055-.157-.134-.098-.103-.097-2.358-1.596-2.552-1.688-1.336-.972-.724-.491-.364-.462-.158-1.008.656-.722.881.06.225.061.893.686 1.908 1.476 2.491 1.833.365.304.145-.103.019-.073-.164-.274-1.355-2.446-1.446-2.49-.644-1.032-.17-.619a2.97 2.97 0 01-.104-.729L6.283.134 6.696 0l.996.134.42.364.62 1.414 1.002 2.229 1.555 3.03.456.898.243.832.091.255h.158V9.01l.128-1.706.237-2.095.23-2.695.08-.76.376-.91.747-.492.584.28.48.685-.067.444-.286 1.851-.559 2.903-.364 1.942h.212l.243-.242.985-1.306 1.652-2.064.73-.82.85-.904.547-.431h1.033l.76 1.129-.34 1.166-1.064 1.347-.881 1.142-1.264 1.7-.79 1.36.073.11.188-.02 2.856-.606 1.543-.28 1.841-.315.833.388.091.395-.328.807-1.969.486-2.309.462-3.439.813-.042.03.049.061 1.549.146.662.036h1.622l3.02.225.79.522.474.638-.079.485-1.215.62-1.64-.389-3.829-.91-1.312-.329h-.182v.11l1.093 1.068 2.006 1.81 2.509 2.33.127.578-.322.455-.34-.049-2.205-1.657-.851-.747-1.926-1.62h-.128v.17l.444.649 2.345 3.521.122 1.08-.17.353-.608.213-.668-.122-1.374-1.925-1.415-2.167-1.143-1.943-.14.08-.674 7.254-.316.37-.729.28-.607-.461-.322-.747.322-1.476.389-1.924.315-1.53.286-1.9.17-.632-.012-.042-.14.018-1.434 1.967-2.18 2.945-1.726 1.845-.414.164-.717-.37.067-.662.401-.589 2.388-3.036 1.44-1.882.93-1.086-.006-.158h-.055L4.132 18.56l-1.13.146-.487-.456.061-.746.231-.243 1.908-1.312-.006.006z"></path></symbol>
@@ -152,6 +153,7 @@
   <svg class="icon" aria-hidden="true"><use href="#i-folder"/></svg>
   <span id="path" class="measured readout__path"></span>
   <button id="chat-history" class="btn btn--bar" type="button" hidden><svg class="icon" aria-hidden="true"><use href="#i-topic"/></svg><span class="measured"></span></button>
+  <button id="record" class="btn btn--bar btn--icon" type="button" aria-label="Record screen" data-tip="Record a screen, window or area to show Claude what happens" hidden data-i18n-aria-label="recorder.button.label" data-i18n-tip="recorder.button.tip"><svg class="icon" aria-hidden="true"><use href="#i-record"/></svg><span id="record-time" class="measured" hidden></span></button>
   <button id="attach" class="btn btn--bar btn--icon" type="button" aria-label="Attach files" data-tip="Attach files to this chat. You can also drop files and folders on it" hidden data-i18n-aria-label="readout.attach.label" data-i18n-tip="readout.attach.tip"><svg class="icon" aria-hidden="true"><use href="#i-attach"/></svg></button>
   <button id="link-chat" class="btn btn--bar" type="button" hidden><svg class="icon" aria-hidden="true"><use href="#i-link"/></svg><span></span></button>
   <button id="usage-open" class="btn is-linked" type="button" popovertarget="usage" hidden>Usage</button>
@@ -385,6 +387,7 @@
       <button class="settings__tab" type="button" data-section="permissions" data-i18n="settings.permissions.title"><svg class="icon" aria-hidden="true"><use href="#i-shield"/></svg>Permissions</button>
       <button class="settings__tab" type="button" data-section="accounts" data-i18n="settings.accounts.title"><svg class="icon" aria-hidden="true"><use href="#i-user"/></svg>Accounts</button>
       <button class="settings__tab" type="button" data-section="voice" data-i18n="settings.voice.title"><svg class="icon" aria-hidden="true"><use href="#i-mic"/></svg>Voice</button>
+      <button class="settings__tab" type="button" data-section="recorder" data-i18n="settings.recorder.title"><svg class="icon" aria-hidden="true"><use href="#i-record"/></svg>Recorder</button>
       <button class="settings__tab" type="button" data-section="privacy" data-i18n="settings.privacy.title"><svg class="icon" aria-hidden="true"><use href="#i-lock"/></svg>Privacy</button>
       <button class="settings__tab" type="button" data-section="activity" data-i18n="settings.activity.title"><svg class="icon" aria-hidden="true"><use href="#i-tasks"/></svg>Activity</button>
       <button class="settings__tab" type="button" data-section="performance" data-i18n="settings.performance.title"><svg class="icon" aria-hidden="true"><use href="#i-working"/></svg>Performance</button>
@@ -580,6 +583,16 @@
             </select>
           </label>
           <p class="settings__hint" data-i18n="settings.voice.language.hint">The language you speak in.</p>
+        </div>
+      </section>
+      <section class="settings__section" data-section="recorder" hidden>
+        <h3 class="settings__title" data-i18n="settings.recorder.title">Recorder</h3>
+        <div class="settings__row" data-tip="Adds a record button to the toolbar" data-i18n-tip="settings.recorder.enable.tip">
+          <label class="organize__check" data-i18n="settings.recorder.enable.label"><input id="settings-recorder" type="checkbox"> Screen recorder</label>
+          <p class="settings__hint" data-i18n="settings.recorder.enable.hint">Records a screen, a window or an area with sound. Recordings go to Videos\Frugal Deck.</p>
+        </div>
+        <div class="settings__row">
+          <div class="debug__actions"><button id="settings-recordings" class="btn" type="button" data-i18n="settings.recorder.open">Open recordings</button></div>
         </div>
       </section>
       <section class="settings__section" data-section="privacy" hidden>
@@ -907,6 +920,68 @@
     <div class="organize__actions">
       <button class="btn" type="submit" value="cancel" autofocus data-tip="Keep asking for each folder" data-i18n-tip="dialog.trust.cancel.tip" data-i18n="common.cancel">Cancel</button>
       <button class="btn btn--primary" type="submit" value="trust" data-tip="Skip the trust check in every folder" data-i18n-tip="dialog.trust.confirm.tip" data-i18n="dialog.trust.confirm.label">Always trust</button>
+    </div>
+  </form>
+</dialog>
+<dialog id="record-dialog" class="organize recorder" closedby="any" aria-labelledby="record-title">
+  <form id="record-form" method="dialog">
+    <h2 id="record-title" class="dialog__title" data-i18n="recorder.dialog.title">Record screen</h2>
+    <div id="record-state"></div>
+    <div id="record-fields" class="recorder__fields" hidden>
+      <div class="recorder__group">
+        <span id="record-kind-label" class="recorder__label" data-i18n="recorder.source.label">Record</span>
+        <div class="segmented" role="radiogroup" aria-labelledby="record-kind-label">
+          <label data-i18n="recorder.source.screen"><input type="radio" name="record-kind" value="monitor" checked>Screen</label>
+          <label data-i18n="recorder.source.window"><input type="radio" name="record-kind" value="window">Window</label>
+          <label data-i18n="recorder.source.area"><input type="radio" name="record-kind" value="region">Area</label>
+        </div>
+        <div class="organize__field"><select id="record-monitor" aria-label="Screen" data-i18n-aria-label="recorder.source.screen"></select></div>
+        <div id="record-window-row" class="organize__field">
+          <select id="record-window" aria-label="Window" data-i18n-aria-label="recorder.source.window"></select>
+          <p id="record-window-empty" class="organize__text" data-i18n="recorder.window.empty">No windows to record.</p>
+        </div>
+        <div id="record-area-row" class="recorder__line">
+          <button id="record-area" class="btn" type="button" data-i18n="recorder.area.select">Select area…</button>
+          <span id="record-area-size" class="organize__text"></span>
+        </div>
+      </div>
+      <div class="recorder__group" role="group" aria-labelledby="record-audio-label">
+        <span id="record-audio-label" class="recorder__label" data-i18n="recorder.audio.label">Sound</span>
+        <label class="organize__check" data-i18n="recorder.audio.mic"><input id="record-mic" type="checkbox"> Microphone</label>
+        <div class="organize__field"><select id="record-mic-device" aria-label="Microphone" data-i18n-aria-label="recorder.audio.mic"></select></div>
+        <label class="organize__check" data-i18n="recorder.audio.system"><input id="record-system" type="checkbox"> System sound</label>
+      </div>
+      <div class="organize__pair">
+        <label class="organize__field" data-i18n="recorder.quality.label">Quality<select id="record-height"><option value="720">720p</option><option value="1080" selected>1080p</option></select></label>
+        <label class="organize__field" data-i18n="recorder.fps.label">Frame rate<select id="record-fps"><option value="30" selected>30 fps</option><option value="60">60 fps</option></select></label>
+      </div>
+    </div>
+    <p id="record-error" class="sort__status" data-failed="true" role="alert" hidden></p>
+    <div class="organize__actions">
+      <button id="record-recordings" class="btn sort__restore" type="button" data-i18n="recordings.title">Recordings</button>
+      <button id="record-cancel" class="btn" type="button" data-i18n="common.cancel">Cancel</button>
+      <button id="record-start" class="btn btn--primary" type="button" disabled data-i18n="recorder.start">Start recording</button>
+    </div>
+  </form>
+</dialog>
+<dialog id="area-dialog" class="organize area" closedby="any" aria-labelledby="area-title" aria-describedby="area-hint">
+  <form method="dialog">
+    <h2 id="area-title" class="dialog__title" data-i18n="recorder.area.title">Select area</h2>
+    <p id="area-hint" class="organize__text" data-i18n="recorder.area.hint">Drag over the screen to mark the area to record.</p>
+    <div id="area-state"></div>
+    <div id="area-stage" class="area__stage" hidden><img id="area-image" alt="" draggable="false"><div id="area-mark" class="area__mark" hidden></div></div>
+    <div class="organize__actions">
+      <button id="area-cancel" class="btn" type="button" data-i18n="common.cancel">Cancel</button>
+      <button id="area-use" class="btn btn--primary" type="button" disabled data-i18n="recorder.area.use">Use area</button>
+    </div>
+  </form>
+</dialog>
+<dialog id="recordings-dialog" class="organize recordings" closedby="any" aria-labelledby="recordings-title">
+  <form method="dialog">
+    <h2 id="recordings-title" class="dialog__title" data-i18n="recordings.title">Recordings</h2>
+    <div id="recordings-list" class="recordings__list"></div>
+    <div class="organize__actions">
+      <button id="recordings-close" class="btn" type="submit" data-i18n="common.close">Close</button>
     </div>
   </form>
 </dialog>

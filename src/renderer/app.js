@@ -186,7 +186,7 @@ function render() {
 
   const chat = chats.get(activeId);
   $('empty').hidden = Boolean(chat);
-  $('readout').hidden = !chat;
+  $('readout').hidden = !chat && $('record').getAttribute('aria-pressed') !== 'true';
   syncInfoPanel();
   $('notice').hidden = !chat?.error;
   $('notice').textContent = chat?.error ?? '';
@@ -272,11 +272,11 @@ function resetNode(tag, className, limit) {
 }
 
 // The `.empty` pattern for a panel's loading, empty and error states; an error passes retry to get a Retry button.
-function emptyState(text, retry) {
+function emptyState(text, retry, retryLabel = t('common.retry')) {
   const box = node('div', 'empty');
   box.append(node('p', '', text));
   if (retry) {
-    const button = node('button', 'btn', t('common.retry'));
+    const button = node('button', 'btn', retryLabel);
     button.type = 'button';
     button.onclick = retry;
     box.append(button);
@@ -3690,9 +3690,11 @@ window.addEventListener('keydown', (event) => {
 }, true);
 
 let undoAction = null;
-function showUndo(text, undo = null) {
+// status: a message with nothing to undo, so the bar shows no Undo button.
+function showUndo(text, undo = null, status = false) {
   undoAction = undo;
   $('undo-text').textContent = text;
+  $('undo-run').hidden = status;
   $('undo-bar').hidden = false;
 }
 
@@ -4439,6 +4441,7 @@ async function openSettings(section = localStorage.getItem('settingsSection')) {
   $('settings-accent').querySelector(`[value="${accentHue()}"]`).checked = true;
   $('settings-tooltips').value = tooltipPlacement();
   $('settings-reopen').checked = reopensChats();
+  $('settings-recorder').checked = recorderOn();
   $('settings-volume').value = notifyVolume();
   $('settings-volume-value').value = t('common.percent', { percent: notifyVolume() });
   $('settings-group-limit').value = groupLimit();
@@ -5611,6 +5614,312 @@ $('undo-run').onclick = () => {
 $('undo-close').onclick = () => {
   $('undo-bar').hidden = true;
 };
+
+// Screen recorder (Settings > Recorder, off by default): the toolbar button records and stops, Recordings sends one to the chat.
+const recorderOn = () => localStorage.getItem('recorder') === 'true';
+const recordDialog = $('record-dialog');
+const areaDialog = $('area-dialog');
+const recordingsDialog = $('recordings-dialog');
+const settle = (call) => call.catch((error) => ({ error: String(error) }));
+const clock = (ms) => `${Math.floor(ms / 60000)}:${String(Math.floor(ms / 1000) % 60).padStart(2, '0')}`;
+let recorder = { recording: false, started: null };
+let recorderTimer = null;
+let recordSources = null;
+let recordArea = null;
+let areaShot = null;
+let areaDraft = null;
+for (const option of $('record-fps').options) option.textContent = t('recorder.fps.value', { fps: option.value });
+
+function drawRecorder() {
+  const button = $('record');
+  const on = recorder.recording;
+  // Turned off mid-recording, the button stays until the recording stops.
+  button.hidden = !recorderOn() && !on;
+  button.classList.toggle('btn--icon', !on);
+  if (on) button.setAttribute('aria-pressed', 'true');
+  else button.removeAttribute('aria-pressed');
+  button.setAttribute('aria-label', t(on ? 'recorder.stop.label' : 'recorder.button.label'));
+  button.dataset.tip = t(on ? 'recorder.stop.tip' : 'recorder.button.tip');
+  $('settings-recordings').disabled = !recorderOn();
+  // A recording can outlive every chat, so its stop button keeps the readout open.
+  $('readout').hidden = !chats.get(activeId) && !on;
+  clearInterval(recorderTimer);
+  const time = $('record-time');
+  time.hidden = !on;
+  if (!on) return;
+  const tick = () => { time.textContent = clock(Math.max(0, Date.now() - (recorder.started ?? Date.now()))).padStart(5, '0'); };
+  tick();
+  recorderTimer = setInterval(tick, 1000);
+}
+
+settle(deck.recorderState()).then((state) => {
+  if (!state.error) recorder = state;
+  drawRecorder();
+});
+deck.onRecorderState((state) => {
+  recorder = state;
+  drawRecorder();
+  if (!state.closed) return;
+  showUndo(t('recorder.source-closed'), null, true);
+  openRecordings();
+});
+
+$('record').onclick = async () => {
+  if (!recorder.recording) return openRecord();
+  const button = $('record');
+  button.disabled = true;
+  const result = await settle(deck.recorderStop());
+  button.disabled = false;
+  if (result.error) return showUndo(t('recorder.stop-failed', { error: result.error }), null, true);
+  recorder = { recording: false, started: null };
+  drawRecorder();
+  openRecordings();
+};
+
+$('settings-recorder').onchange = (event) => {
+  localStorage.setItem('recorder', event.target.checked);
+  drawRecorder();
+};
+$('settings-recordings').onclick = () => openRecordings();
+
+function savedRecordOptions() {
+  try {
+    return JSON.parse(localStorage.getItem('recorderOptions')) ?? {};
+  } catch {
+    return {};
+  }
+}
+
+const recordKind = () => $('record-form').elements['record-kind'].value;
+const pickOption = (select, value) => {
+  select.value = value ?? '';
+  if (select.selectedIndex < 0) select.selectedIndex = 0;
+};
+
+function openRecord() {
+  $('record-error').hidden = true;
+  recordDialog.showModal();
+  loadSources();
+}
+
+async function loadSources() {
+  recordSources = null;
+  $('record-fields').hidden = true;
+  drawRecordForm();
+  $('record-state').replaceChildren(emptyState(t('recordings.loading')));
+  const result = await settle(deck.recorderSources());
+  if (!recordDialog.open) return;
+  if (result.error) return $('record-state').replaceChildren(emptyState(t('recorder.sources-failed', { error: result.error }), loadSources, t('recordings.retry')));
+  recordSources = result;
+  $('record-state').replaceChildren();
+  const saved = savedRecordOptions();
+  $('record-monitor').replaceChildren(...result.monitors.map((monitor) => new Option(`${monitor.name} — ${monitor.width}×${monitor.height}`, monitor.index)));
+  $('record-window').replaceChildren(...result.windows.map((window) => new Option(`${window.title} — ${window.process}`, window.hwnd)));
+  $('record-mic-device').replaceChildren(new Option(t('recorder.audio.default-mic'), ''), ...result.mics.map((mic) => new Option(mic.name, mic.id)));
+  $('record-form').elements['record-kind'].value = ['monitor', 'window', 'region'].includes(saved.kind) ? saved.kind : 'monitor';
+  pickOption($('record-monitor'), saved.monitor);
+  pickOption($('record-window'), saved.hwnd);
+  pickOption($('record-mic-device'), saved.micDevice);
+  pickOption($('record-height'), saved.height ?? 1080);
+  pickOption($('record-fps'), saved.fps ?? 30);
+  $('record-mic').checked = saved.mic === true;
+  $('record-system').checked = saved.system === true;
+  $('record-fields').hidden = false;
+  drawRecordForm();
+}
+
+function drawRecordForm() {
+  const kind = recordKind();
+  const windows = $('record-window').options.length > 0;
+  $('record-monitor').parentElement.hidden = kind === 'window';
+  $('record-window-row').hidden = kind !== 'window';
+  $('record-window').hidden = !windows;
+  $('record-window-empty').hidden = windows;
+  $('record-area-row').hidden = kind !== 'region';
+  $('record-area').disabled = !$('record-monitor').options.length;
+  $('record-area-size').textContent = recordArea ? t('recorder.area.size', { width: recordArea.width, height: recordArea.height }) : t('recorder.area.none');
+  $('record-mic-device').disabled = !$('record-mic').checked;
+  $('record-start').disabled = !recordSources || (kind === 'window' ? !windows : !$('record-monitor').options.length || (kind === 'region' && !recordArea));
+}
+
+$('record-form').onchange = (event) => {
+  if (event.target.id === 'record-monitor') recordArea = null;
+  drawRecordForm();
+};
+$('record-cancel').onclick = () => recordDialog.close();
+$('record-recordings').onclick = () => {
+  recordDialog.close();
+  openRecordings();
+};
+
+$('record-start').onclick = async () => {
+  const kind = recordKind();
+  const options = { kind, mic: $('record-mic').checked, micDevice: $('record-mic-device').value || null, system: $('record-system').checked, fps: Number($('record-fps').value), height: Number($('record-height').value) };
+  if (kind === 'window') options.hwnd = Number($('record-window').value);
+  else options.monitor = Number($('record-monitor').value);
+  if (kind === 'region') options.rect = recordArea;
+  localStorage.setItem('recorderOptions', JSON.stringify(options));
+  const start = $('record-start');
+  start.disabled = true;
+  start.setAttribute('aria-busy', 'true');
+  start.textContent = t('recorder.starting');
+  $('record-error').hidden = true;
+  const result = await settle(deck.recorderStart(options));
+  start.removeAttribute('aria-busy');
+  start.textContent = t('recorder.start');
+  drawRecordForm();
+  if (result.error) {
+    $('record-error').textContent = t('recorder.start-failed', { error: result.error });
+    $('record-error').hidden = false;
+    return;
+  }
+  if (!recorder.recording) recorder = { recording: true, started: Date.now() };
+  drawRecorder();
+  recordDialog.close();
+};
+
+// Area: a snapshot of the monitor; the drawn rectangle is converted to monitor pixels.
+function drawAreaMark(from, to, box, done) {
+  const mark = $('area-mark');
+  const left = Math.min(from.x, to.x);
+  const top = Math.min(from.y, to.y);
+  const width = Math.abs(to.x - from.x);
+  const height = Math.abs(to.y - from.y);
+  Object.assign(mark.style, { left: `${left}px`, top: `${top}px`, width: `${width}px`, height: `${height}px` });
+  mark.hidden = false;
+  if (!done) return;
+  const scale = $('area-image').naturalWidth / box.width;
+  const rect = { x: Math.round(left * scale), y: Math.round(top * scale), width: Math.round(width * scale), height: Math.round(height * scale) };
+  areaDraft = rect.width < 16 || rect.height < 16 ? null : rect;
+  mark.hidden = !areaDraft;
+  $('area-use').disabled = !areaDraft;
+}
+
+$('area-stage').onpointerdown = (event) => {
+  if (event.button !== 0 || !areaShot) return;
+  const stage = event.currentTarget;
+  const box = $('area-image').getBoundingClientRect();
+  const at = (pointer) => ({ x: Math.min(Math.max(pointer.clientX - box.left, 0), box.width), y: Math.min(Math.max(pointer.clientY - box.top, 0), box.height) });
+  const from = at(event);
+  event.preventDefault();
+  stage.setPointerCapture(event.pointerId);
+  stage.onpointermove = (move) => drawAreaMark(from, at(move), box, false);
+  stage.onpointerup = stage.onpointercancel = (up) => {
+    stage.onpointermove = stage.onpointerup = stage.onpointercancel = null;
+    drawAreaMark(from, at(up), box, true);
+  };
+};
+
+async function loadArea() {
+  const monitor = Number($('record-monitor').value);
+  areaShot = null;
+  areaDraft = null;
+  $('area-use').disabled = true;
+  $('area-mark').hidden = true;
+  $('area-stage').hidden = true;
+  $('area-state').replaceChildren(emptyState(t('recordings.loading')));
+  const shot = await settle(deck.recorderSnapshot(monitor));
+  if (!areaDialog.open) return;
+  // frugal: no locale key names a failed snapshot yet, so the host's message shows alone.
+  if (shot.error) return $('area-state').replaceChildren(emptyState(shot.error, loadArea, t('recordings.retry')));
+  const image = $('area-image');
+  image.src = `data:image/png;base64,${shot.png}`;
+  try {
+    await image.decode();
+  } catch (error) {
+    return $('area-state').replaceChildren(emptyState(String(error), loadArea, t('recordings.retry')));
+  }
+  areaShot = shot;
+  $('area-state').replaceChildren();
+  $('area-stage').hidden = false;
+}
+
+$('record-area').onclick = () => {
+  areaDialog.showModal();
+  loadArea();
+};
+$('area-cancel').onclick = () => areaDialog.close();
+$('area-use').onclick = () => {
+  recordArea = areaDraft;
+  areaDialog.close();
+  drawRecordForm();
+};
+
+// Recordings: newest first; Send attaches the timeline and key frames to the open chat.
+function openRecordings() {
+  if (!recordingsDialog.open) recordingsDialog.showModal();
+  loadRecordings();
+}
+
+async function loadRecordings() {
+  const list = $('recordings-list');
+  list.replaceChildren(emptyState(t('recordings.loading')));
+  const result = await settle(deck.recorderList());
+  if (!recordingsDialog.open) return;
+  if (result.error) return list.replaceChildren(emptyState(t('recordings.error', { error: result.error }), loadRecordings, t('recordings.retry')));
+  list.replaceChildren(...(result.recordings.length ? result.recordings.map(recordingRow) : [emptyState(t('recordings.empty'))]));
+}
+
+function recordingRow(item) {
+  const row = node('div', 'row');
+  const thumb = node('img', 'recording__thumb');
+  thumb.alt = '';
+  if (item.thumbnail) thumb.src = item.thumbnail;
+  const main = node('div', 'row__main');
+  const date = new Date(item.started).toLocaleString(currentLanguage(), { dateStyle: 'short', timeStyle: 'short' });
+  const error = node('p', 'sort__status');
+  error.dataset.failed = 'true';
+  error.setAttribute('role', 'alert');
+  error.hidden = true;
+  main.append(node('span', 'row__name', t('recordings.meta', { date, duration: clock(item.duration), size: sizeText(item.size) })), error);
+  const controls = node('div', 'row__controls');
+  const action = (text, className = 'btn') => Object.assign(node('button', className, text), { type: 'button' });
+  const fail = (text) => {
+    error.textContent = text;
+    error.hidden = false;
+  };
+  const chat = chats.get(activeId);
+  const send = action(t('recordings.send'));
+  send.disabled = chat?.state !== 'running';
+  send.dataset.tip = t(send.disabled ? 'recordings.no-chat' : 'recordings.send.tip');
+  send.onclick = async () => {
+    error.hidden = true;
+    send.disabled = true;
+    send.setAttribute('aria-busy', 'true');
+    send.textContent = t('recordings.sending');
+    const status = voiceMode() === 'local' ? await settle(deck.voiceStatus(voiceModel())) : null;
+    const local = Boolean(status && !status.error && status.needs === 0);
+    const result = await settle(deck.recorderForChat(item.id, local ? voiceModel() : null, local ? voiceLanguage() : null));
+    send.removeAttribute('aria-busy');
+    send.textContent = t('recordings.send');
+    send.disabled = false;
+    if (result.error) return fail(t('recordings.send-failed', { error: result.error }));
+    recordingsDialog.close();
+    if (settingsDialog.open) settingsDialog.close();
+    attach(chat, result.files);
+    if (!result.transcript) showUndo(t('recordings.no-transcript'), null, true);
+  };
+  const reveal = action(t('recordings.reveal'));
+  reveal.onclick = () => deck.recorderReveal(item.id);
+  const remove = action(t('recordings.delete'), 'btn btn--danger');
+  remove.onclick = async () => {
+    if (!await askConfirm(t('recordings.delete.title'), t('recordings.delete.message'), t('recordings.delete.confirm'), true)) return;
+    error.hidden = true;
+    remove.disabled = true;
+    remove.setAttribute('aria-busy', 'true');
+    const result = await settle(deck.recorderDelete(item.id));
+    remove.removeAttribute('aria-busy');
+    remove.disabled = false;
+    if (result.error) return fail(t('recordings.delete-failed', { error: result.error }));
+    const next = (row.nextElementSibling ?? row.previousElementSibling)?.querySelector('button:not(:disabled)');
+    row.remove();
+    if (!$('recordings-list').children.length) $('recordings-list').replaceChildren(emptyState(t('recordings.empty')));
+    (next ?? $('recordings-close')).focus();
+  };
+  controls.append(send, reveal, remove);
+  row.append(thumb, main, controls);
+  return row;
+}
 $('sort-restore').onclick = () => {
   deck.restoreTitles();
   sortStatus(t('sort.restore.done'));

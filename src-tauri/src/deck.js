@@ -17,7 +17,7 @@
       return '?';
     }
   };
-  const quietCalls = new Set(['chat:input', 'chat:resize', 'perf:suggest', 'ui:save', 'files:thumbnail', 'window:attention', 'debug:set', 'debug:lines', 'debug:clear', 'debug:reveal']);
+  const quietCalls = new Set(['chat:input', 'chat:resize', 'perf:suggest', 'ui:save', 'files:thumbnail', 'window:attention', 'debug:set', 'debug:lines', 'debug:clear', 'debug:reveal', 'recorder:state']);
   const quietEvents = new Set(['chat:meters', 'debug:line', 'voice:progress', 'topics:progress']);
   // frugal: a call logs when it settles, so one that never returns leaves no line; log the start too if hangs need finding.
   const invoke = (channel, args) => {
@@ -168,6 +168,16 @@
     voicePrepare: (model) => invoke('voice:prepare', { model }),
     voiceTranscribe: (options) => invoke('voice:transcribe', { options: { ...options, audio: options?.audio instanceof ArrayBuffer ? Array.from(new Uint8Array(options.audio)) : options?.audio } }),
     onVoiceProgress: (callback) => on('voice:progress', callback),
+    recorderSources: () => invoke('recorder:sources'),
+    recorderSnapshot: (monitor) => invoke('recorder:snapshot', { monitor }),
+    recorderStart: (options) => invoke('recorder:start', { options }),
+    recorderStop: () => invoke('recorder:stop'),
+    recorderState: () => invoke('recorder:state'),
+    onRecorderState: (callback) => on('recorder:state', callback),
+    recorderList: () => invoke('recorder:list'),
+    recorderDelete: (id) => invoke('recorder:delete', { id }),
+    recorderReveal: (id) => send('recorder:reveal', { id }),
+    recorderForChat: (id, model, language) => invoke('recorder:for-chat', { id, model, language }),
     setAttention: (count) => send('window:attention', { count }),
     login: (options) => invoke('accounts:login', { options, output: output(options.id) }),
     accountCli: (args, stdin = null) => invoke('account:cli', { args, stdin }),

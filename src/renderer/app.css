@@ -732,6 +732,22 @@ body { transition: opacity var(--dur-short) var(--ease-out); }
 }
 #undo-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 24ch; color: var(--color-ink); font-size: var(--text-sm); }
 #sort-dialog { width: min(var(--dialog-sm), 92vw); overflow-y: auto; }
+/* A status with nothing to undo shows in full. */
+.undo-bar:has(#undo-run[hidden]) #undo-text { max-width: none; white-space: normal; }
+/* Screen recorder: the toolbar button, the record, area and recordings dialogs. */
+#record[aria-pressed="true"] .icon { color: var(--color-bad); }
+#record-dialog { width: min(var(--dialog-md), 90vw); }
+.recorder__fields, .recorder__group { display: grid; gap: var(--space-sm); }
+.recorder__group { gap: var(--space-2xs); }
+.recorder__label { color: var(--color-muted); font-size: var(--text-sm); }
+.recorder__line { display: flex; align-items: center; gap: var(--space-sm); }
+#area-dialog { width: min(var(--dialog-xl), 96vw); }
+.area__stage { position: relative; justify-self: center; max-width: 100%; cursor: crosshair; touch-action: none; user-select: none; }
+.area__stage img { display: block; max-width: 100%; max-height: 64vh; border-radius: var(--radius-card); }
+.area__mark { position: absolute; outline: 2px solid var(--color-accent); background: var(--color-highlight); pointer-events: none; }
+#recordings-dialog { width: min(var(--dialog-lg), 94vw); }
+.recordings__list { display: grid; gap: var(--space-2xs); max-height: 60vh; overflow-y: auto; }
+.recording__thumb { flex: none; width: var(--size-thumb); aspect-ratio: 16 / 9; border-radius: var(--radius-sm); background: var(--color-paper-3); object-fit: cover; }
 #sort-dialog form { gap: var(--space-md); }
 .sort__head { display: flex; align-items: center; justify-content: space-between; gap: var(--space-sm); }
 .sort__head .segmented { flex: 0 0 12rem; }
