@@ -204,6 +204,8 @@ body:has(.info-panel:not([hidden])) { grid-template-columns: var(--sidebar-width
 .info-panel dt, .info-panel__muted { color: var(--color-muted); }
 .info-panel dt { display: flex; align-items: center; gap: var(--space-2xs); }
 .info-panel dt .icon { flex: none; width: var(--icon-sm); height: var(--icon-sm); }
+.info-panel dd .btn--icon { width: var(--size-control-xs); min-height: var(--size-control-xs); margin-inline-start: var(--space-2xs); vertical-align: middle; }
+.info-panel dd .btn--icon .icon { width: var(--icon-sm); height: var(--icon-sm); }
 .info-panel dd { margin: 0; color: var(--color-ink-2); text-align: end; overflow-wrap: anywhere; white-space: pre-line; font-variant-numeric: tabular-nums; }
 .info-panel__status { display: flex; flex: none; color: var(--color-muted); }
 .info-panel__status .icon { width: var(--icon-sm); height: var(--icon-sm); }
@@ -776,7 +778,7 @@ body { transition: opacity var(--dur-short) var(--ease-out); }
 .sort__undo { display: flex; flex-wrap: wrap; gap: var(--space-xs); }
 .sort__joins { display: flex; align-items: center; gap: var(--space-xs); }
 .sort__joins p { flex: 1; min-width: 0; }
-/* Sits over the chat badge, top right; slides in and out, and its bar runs the countdown. */
+/* Sits in the terminal pane's top-right corner; slides in and out, and its bar runs the countdown. */
 .handoff {
   position: absolute;
   top: var(--space-md);
@@ -837,53 +839,6 @@ body { transition: opacity var(--dur-short) var(--ease-out); }
 .prompt-edit__text { min-height: 12lh; max-height: 60vh; padding: var(--space-xs) var(--space-md); border: 0; border-radius: var(--radius-card); background: var(--color-paper-3); color: var(--color-ink); font: var(--text-sm) / 1.5 var(--font-body); resize: vertical; }
 .prompt-edit__actions { display: flex; align-items: center; justify-content: flex-end; gap: var(--space-xs); }
 .prompt-edit__text:focus-visible { outline: 2px solid var(--color-focus); outline-offset: -1px; }
-
-/* The chat info badge: model, effort, context and cost in the terminal pane's corner. */
-.term-badge {
-  position: absolute;
-  top: var(--space-2xs);
-  right: var(--space-2xs);
-  z-index: calc(var(--z-raised) + var(--z-base));
-  display: flex;
-  align-items: center;
-  gap: var(--space-xs);
-  max-width: calc(100% - var(--space-md));
-  padding: var(--space-3xs) var(--space-2xs);
-  border: 0;
-  border-radius: var(--radius-pill);
-  background: var(--color-control-2);
-  box-shadow: var(--shadow-float);
-  font-size: var(--text-sm);
-}
-.term-badge.is-collapsed { padding: var(--space-3xs) var(--space-md); background: none; box-shadow: none; }
-.term-badge.is-collapsed .term-badge__info, .term-badge.is-collapsed .term-badge__action { display: none; }
-.term-badge.is-bypass .term-badge__dot { color: var(--color-accent); }
-.term-badge__action {
-  flex: none;
-  border: 0;
-  background: none;
-  color: var(--color-muted);
-  font: inherit;
-  cursor: pointer;
-  transition: color var(--dur-micro) var(--ease-out);
-}
-.term-badge__action:hover:not(:disabled) { background: var(--color-highlight); color: var(--color-ink); }
-.term-badge__action:active:not(:disabled) { filter: brightness(0.92); scale: 0.97; }
-.term-badge__dot {
-  display: grid;
-  place-items: center;
-  border: 0;
-  background: none;
-  color: var(--color-ink-2);
-  cursor: pointer;
-  transition: color var(--dur-micro) var(--ease-out);
-}
-.term-badge__dot .icon { width: var(--icon); height: var(--icon); }
-.term-badge.is-collapsed .term-badge__dot { padding: var(--space-2xs); border-radius: var(--radius-pill); background: var(--color-control-2); box-shadow: var(--shadow-float); }
-.term-badge__dot:hover:not(:disabled) { color: var(--color-ink); }
-.term-badge__dot:focus-visible { outline-offset: -1px; }
-.term-badge__info { overflow: hidden; color: var(--color-ink-2); text-overflow: ellipsis; white-space: nowrap; }
-.term-badge__info:empty { display: none; }
 
 /* The voice control in the terminal pane's bottom corner: the record button, which shows its state and the live
    spectrum while it records, and an arrow for the voice options. */
@@ -1014,6 +969,6 @@ body { transition: opacity var(--dur-short) var(--ease-out); }
 .switch__list { display: grid; gap: var(--space-3xs); max-height: 40vh; overflow-y: auto; }
 .tab--busy { border-radius: var(--radius-pill); box-shadow: inset 0 0 0 2px var(--color-bad); }
 
-:is(.session, .tab__open, .tab__close, option, .menu__item, .term-badge__dot, .settings__tab, select, textarea, input[type="text"], input[type="search"], input[type="password"], input[type="email"], input[type="url"], input[type="number"], input[type="range"], input:not([type])):is(:disabled, :disabled:hover) { color: var(--color-muted); cursor: not-allowed; filter: none; }
+:is(.session, .tab__open, .tab__close, option, .menu__item, .settings__tab, select, textarea, input[type="text"], input[type="search"], input[type="password"], input[type="email"], input[type="url"], input[type="number"], input[type="range"], input:not([type])):is(:disabled, :disabled:hover) { color: var(--color-muted); cursor: not-allowed; filter: none; }
 :is(.sort__chip, .access__choice, .segmented label):is(:has(:disabled), :has(:disabled):hover) { color: var(--color-muted); cursor: not-allowed; }
-:is(.window-control, .prompt-edit__remove, .term-badge__action, .term-dock__btn, .term-mic__record, .term-mic__more, button.row--interactive):is(:disabled, :disabled:hover, :disabled:active) { background: var(--color-paper-3); box-shadow: none; color: var(--color-muted); cursor: not-allowed; filter: none; scale: 1; }
+:is(.window-control, .prompt-edit__remove, .term-dock__btn, .term-mic__record, .term-mic__more, button.row--interactive):is(:disabled, :disabled:hover, :disabled:active) { background: var(--color-paper-3); box-shadow: none; color: var(--color-muted); cursor: not-allowed; filter: none; scale: 1; }

@@ -2,7 +2,6 @@
   "account.empty": "Aún no hay cuentas de Claude. Selecciona Añadir cuenta para empezar.",
   "account.remove.text": "Frugal deja de delegarle tareas. Su carpeta de inicio de sesión se conserva, así que al volver a añadirla vuelve a iniciar sesión.",
   "account.title": "Añadir cuenta",
-  "badge.details.empty": "Muestra el modelo, esfuerzo, contexto y coste una vez que el chat envía una línea de estado",
   "common.add": "Añadir",
   "dialog.trust.warning": "Frugal Deck aceptará la verificación de confianza de Claude Code por ti en todas las carpetas que abras aquí. Claude Code podrá leer, editar y ejecutar archivos ahí, y la configuración y los hooks de una carpeta pueden ejecutar comandos en cuanto el chat empiece. Una carpeta que descargaste o no escribiste podría dañar tu ordenador o exponer tus archivos y credenciales.",
   "error.mcp-no-account-owns-server": "Ninguna cuenta tiene {name} como servidor propio aquí. Quítalo donde se añadió.",

@@ -172,7 +172,7 @@ function render() {
   // Tabs persist between renders: rebuilding them would replay the fade-in on every state change.
   for (const chat of chats.values()) {
     chat.name = currentIndex?.sessions?.find((s) => s.id === chat.id)?.title ?? chat.name;
-    drawBadge(chat);
+    drawChat(chat);
     chat.tab ??= $('tabs').appendChild(tabElement(chat));
     const [open, close] = chat.tab.children;
     open.querySelector('.tab__label').textContent = chat.name;
@@ -312,7 +312,7 @@ function report(result) {
   if (result?.error) ask({ title: t('clean.col.account'), text: result.error, action: t('common.close'), run: () => {} });
 }
 
-// Voice: the badge records here, whisper.cpp transcribes in the main process, and the text lands at the cursor unsent.
+// Voice: the dock's mic records here, whisper.cpp transcribes in the main process, and the text lands at the cursor unsent.
 const VOICE_RATE = 16000;
 const voiceMode = () => localStorage.getItem('voiceMode') ?? 'off';
 const voiceModel = () => localStorage.getItem('voiceModel') ?? 'medium';
@@ -360,13 +360,13 @@ async function checkVoice() {
   deck.setVoiceMode(voiceMode());
   const status = voiceMode() === 'local' ? await deck.voiceStatus(voiceModel()) : null;
   voiceReady = status ? !status.error && status.needs === 0 : null;
-  for (const chat of chats.values()) drawBadge(chat);
+  for (const chat of chats.values()) drawChat(chat);
 }
 
 function setVoice(chat, state, percent) {
   chat.voice = state;
   chat.voicePercent = percent;
-  drawBadge(chat);
+  drawChat(chat);
   const mic = chat.editPanel?.querySelector('.prompt-edit__mic');
   if (!mic) return;
   mic.setAttribute('aria-pressed', String(state === 'listening' && recording?.area?.form === chat.editPanel));
@@ -1222,20 +1222,6 @@ function handleTerminalKey(chat, event) {
 
 const folderName = (cwd) => cwd.split(/[\\/]/).filter(Boolean).pop() ?? cwd;
 
-// One collapse state for every chat badge, so the readout stays the place for the full picture.
-let infoCollapsed = false;
-try {
-  infoCollapsed = localStorage.getItem('chatInfoCollapsed') === 'true';
-} catch {}
-
-function setInfoCollapsed(value) {
-  infoCollapsed = value;
-  try {
-    localStorage.setItem('chatInfoCollapsed', value);
-  } catch {}
-  for (const chat of chats.values()) drawBadge(chat);
-}
-
 let infoPanelOpen = false;
 try {
   infoPanelOpen = localStorage.getItem('infoPanel') === 'open';
@@ -1258,6 +1244,18 @@ function drawInfo(chat) {
   const context = [chat.context != null ? t('common.percent', { percent: Math.round(chat.context) }) : '', chat.contextTokens != null && chat.contextSize != null ? t('usage.context.ratio', { used: compact.format(chat.contextTokens), total: compact.format(chat.contextSize) }) : ''].filter(Boolean).join(' \u00b7 ');
   const tokens = chat.inputTokens != null || chat.outputTokens != null ? t('info.tokens.in-out', { input: compact.format(chat.inputTokens ?? 0), output: compact.format(chat.outputTokens ?? 0) }) : '';
   const title = chat.title?.replace(/^[^\p{L}\p{N}\s] /u, ''); // Without the spinner mark (isBusyTitle).
+  const canSwitch = (chat.state === 'running' || chat.state === 'starting') && chat.account;
+  const permissions = [chat.adminOn && t('badge.admin.label'), chat.bypassOn && t('info.permissions.bypass')].filter(Boolean).join(' \u00b7 ') || t('info.permissions.default');
+  const permissionActions = [
+    canSwitch && !chat.bypassOn && !bypassOn() && infoAction('shield', t('badge.bypass.tip'), () => toggleBypass(chat)),
+    canSwitch && !chat.adminOn && !adminOn() && infoAction('lock', t('badge.admin.tip'), () => toggleAdmin(chat)),
+  ].filter(Boolean);
+  const frugalActions = canSwitch && !chat.frugal ? [infoAction('plus', t('badge.frugal.tip'), () => {
+    chat.term.paste('/frugal:frugal ');
+    chat.term.focus();
+    chat.frugal = true;
+    drawChat(chat);
+  })] : [];
   const rows = [
     ['topic', t('info.task'), [chat.name, title !== chat.name && title].filter(Boolean).join('\n')],
     ['activity', t('info.state'), STATE_LABEL[chat.state](chat)],
@@ -1265,6 +1263,8 @@ function drawInfo(chat) {
     ['user', t('clean.col.account'), account?.name ?? chat.account],
     ['sparkle', t('account.model.label'), chat.model],
     ['gauge', t('sort.effort.label'), chat.effort],
+    ['shield', t('settings.permissions.title'), permissions, null, permissionActions],
+    ['logo', 'Frugal', chat.frugal ? t('plugins.state.on') : t('settings.voice.input.off'), null, frugalActions],
     ['clock', t('info.elapsed'), elapsed(chat), 'info-elapsed'],
     ['context', t('usage.context.label'), context],
     ['hash', t('info.tokens'), tokens],
@@ -1273,14 +1273,25 @@ function drawInfo(chat) {
   $('info-details').replaceChildren(...rows.filter(([, , value]) => value != null && value !== '').map((row) => infoRow(...row)));
 }
 // A key-value row of the details panel: icon and label at the start, value at the end.
-function infoRow(name, label, value, id) {
+function infoRow(name, label, value, id, actions = []) {
   const row = node('div', 'info-panel__row');
   const term = node('dt', '', label);
   term.prepend(icon(name));
   const detail = node('dd', '', value);
   if (id) detail.id = id;
+  detail.append(...actions);
   row.append(term, detail);
   return row;
+}
+// A small icon action at the end of a details row.
+function infoAction(name, tip, run) {
+  const button = node('button', 'btn btn--icon');
+  button.type = 'button';
+  button.append(icon(name));
+  button.dataset.tip = tip;
+  button.setAttribute('aria-label', tip);
+  button.onclick = run;
+  return button;
 }
 
 const TASK_STATUS = { running: t('chat.state.running'), retrying: t('info.status.retrying'), done: t('info.done.label'), failed: t('info.failed.label'), changed: t('info.status.changed'), timeout: t('info.status.timeout'), cancelled: t('info.cancelled.label'), interrupted: t('info.status.interrupted'), background: t('info.status.background'), 'not delegated': t('task.not-delegated') };
@@ -1629,33 +1640,8 @@ $('info-toggle').onclick = () => {
 };
 syncInfoPanel();
 
-// Sits over the top-right corner of the terminal pane and only reads what the status line already sent.
-function makeBadge(chat) {
-  const badge = node('div', 'term-badge');
-  const dot = node('button', 'term-badge__dot');
-  dot.type = 'button';
-  dot.append(icon('more'));
-  dot.dataset.tip = t('badge.details.tip');
-  const info = node('span', 'term-badge__info');
-  const frugal = node('button', 'term-badge__action term-badge__frugal', 'Frugal');
-  frugal.type = 'button';
-  frugal.dataset.tip = t('badge.frugal.tip');
-  frugal.onclick = () => {
-    chat.term.paste('/frugal:frugal ');
-    chat.term.focus();
-    chat.frugal = true;
-    drawBadge(chat);
-  };
-  const bypass = node('button', 'term-badge__action term-badge__bypass', t('badge.bypass.label'));
-  bypass.type = 'button';
-  bypass.dataset.tip = t('badge.bypass.tip');
-  bypass.onclick = () => toggleBypass(chat);
-  const admin = node('button', 'term-badge__action term-badge__admin', t('badge.admin.label'));
-  admin.type = 'button';
-  admin.dataset.tip = t('badge.admin.tip');
-  admin.onclick = () => toggleAdmin(chat);
-  badge.append(dot, info, frugal, bypass, admin);
-  dot.onclick = () => setInfoCollapsed(!infoCollapsed);
+// The terminal pane's dock: edit, send and the mic.
+function makeDock(chat) {
   const mic = node('div', 'term-mic');
   const record = node('button', 'term-mic__record');
   record.type = 'button';
@@ -1690,11 +1676,10 @@ function makeBadge(chat) {
   }, 'term-dock__edit');
   const send = dockButton('send', t('prompt.send.tip'), () => deck.input(chat.id, '\r'), 'term-dock__send');
   dock.append(edit, send, mic);
-  chat.badge = badge;
   chat.mic = mic;
   chat.dock = dock;
-  chat.el.append(badge, dock);
-  drawBadge(chat);
+  chat.el.append(dock);
+  drawChat(chat);
 }
 
 async function toggleBypass(chat) {
@@ -1702,7 +1687,7 @@ async function toggleBypass(chat) {
   if (!chat.bypassOn && chat.adminOn && !await acceptBoth()) return;
   const previous = chat.bypassOn;
   chat.bypassOn = !previous;
-  drawBadge(chat);
+  drawChat(chat);
   const result = await deck.switchAccount({ id: chat.id, accountId: chat.account, cols: chat.cols, rows: chat.rows, bypass: chat.bypassOn, admin: chat.adminOn });
   if (result.error) {
     chat.bypassOn = previous;
@@ -1720,7 +1705,7 @@ async function toggleBypass(chat) {
 async function toggleAdmin(chat) {
   if (!await askAdmin() || (chat.bypassOn && !await acceptBoth())) return;
   chat.adminOn = true;
-  drawBadge(chat);
+  drawChat(chat);
   const result = await deck.switchAccount({ id: chat.id, accountId: chat.account, cols: chat.cols, rows: chat.rows, bypass: chat.bypassOn, admin: true });
   if (result.error) {
     chat.adminOn = false;
@@ -1735,25 +1720,9 @@ async function toggleAdmin(chat) {
   }
 }
 
-function drawBadge(chat) {
+function drawChat(chat) {
   drawInfo(chat);
-  if (!chat.badge) return;
-  const running = chat.state === 'running' || chat.state === 'starting';
-  const parts = [chat.model, chat.effort && t('badge.effort', { effort: chat.effort }), chat.context != null && t('badge.context', { percent: Math.round(chat.context) }), chat.cost > 0 && t('common.cost-usd', { amount: chat.cost.toFixed(2) })].filter(Boolean);
-  const text = parts.join(' · ');
-  const info = chat.badge.querySelector('.term-badge__info');
-  info.textContent = text;
-  let tip = text || t('badge.details.empty');
-  if (chat.bypassOn) tip = t('badge.details.bypass', { details: tip });
-  info.dataset.tip = chat.adminOn ? t('badge.details.admin', { details: tip }) : tip;
-  // Once on, here or for every chat, there is nothing left to turn on: the dot's color and tip say it is on.
-  chat.badge.querySelector('.term-badge__bypass').hidden = !running || !chat.account || chat.bypassOn === true || bypassOn();
-  chat.badge.querySelector('.term-badge__frugal').hidden = !running || !chat.account || chat.frugal === true;
-  drawMic(chat, running);
-  chat.badge.querySelector('.term-badge__admin').hidden = !running || !chat.account || chat.adminOn === true || adminOn();
-  chat.badge.classList.toggle('is-bypass', chat.bypassOn === true);
-  chat.badge.classList.toggle('is-admin', chat.adminOn === true);
-  chat.badge.classList.toggle('is-collapsed', infoCollapsed);
+  if (chat.mic) drawMic(chat, chat.state === 'running' || chat.state === 'starting');
 }
 
 const VOICE_MODES = [['off', t('voice.off')], ['local', t('settings.voice.input.local')], ['anthropic', t('voice.anthropic')]];
@@ -2342,7 +2311,7 @@ async function openChat({ id, cwd, name, resume, group, login, accountId, handof
   term.onTitleChange((title) => onTitle(chat, title));
   term.attachCustomKeyEventHandler((event) => handleTerminalKey(chat, event));
   term.registerLinkProvider(linkProvider(chat));
-  makeBadge(chat);
+  makeDock(chat);
 
   const size = { id, cols: term.cols, rows: term.rows };
   chat.bypassOn = !login && chatBypass(chat, handoff);
@@ -2594,7 +2563,7 @@ const linkProvider = (chat) => ({
     callback(links.length ? links : undefined);
   },
 });
-// One flag per chat: what it was launched with, or what its badge toggle asked for.
+// One flag per chat: what it was launched with, or what its details toggle asked for.
 const chatBypass = (chat, handoff) => bypassOn() || (handoff ? Boolean(chats.get(handoff.from)?.bypassOn) : Boolean(chat?.bypassOn));
 const chatAdmin = (chat, handoff) => adminOn() || (handoff ? Boolean(chats.get(handoff.from)?.adminOn) : Boolean(chat?.adminOn));
 
@@ -2831,7 +2800,7 @@ deck.onMeters((id, meters) => {
     for (const key of ['contextTokens', 'contextSize', 'inputTokens', 'outputTokens', 'model', 'effort', 'cost']) {
       if (meters[key] != null) chat[key] = meters[key];
     }
-    drawBadge(chat);
+    drawChat(chat);
   }
   if (chats.has(activeId)) drawMeters();
 });
@@ -4572,7 +4541,7 @@ $('settings-bypass').onchange = async (event) => {
   }
   setBypass(event.target.checked);
   if (!event.target.checked) localStorage.removeItem(BOTH_ACCEPTED);
-  for (const chat of chats.values()) drawBadge(chat);
+  for (const chat of chats.values()) drawChat(chat);
 };
 // A folder ({ folder }), or a sidebar group or workspace ({ group | workspace, folder }) whose servers go off on top of each chat's folder.
 // Only connected servers and the ones turned off are listed; the rest wait in the Add menu.
@@ -5465,7 +5434,7 @@ $('settings-admin').onchange = async (event) => {
   }
   localStorage.setItem('runAsAdmin', event.target.checked);
   if (!event.target.checked) localStorage.removeItem(BOTH_ACCEPTED);
-  for (const chat of chats.values()) drawBadge(chat);
+  for (const chat of chats.values()) drawChat(chat);
 };
 $('settings-roles').onchange = (event) => deck.setRoles(event.target.checked);
 for (const [id, key] of [['settings-mic', 'allowMic'], ['settings-clipboard', 'allowClipboard']]) {
