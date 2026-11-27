@@ -1262,6 +1262,8 @@
   "recordings.retry": "Opnieuw proberen",
   "recordings.send": "Naar chat sturen",
   "recordings.send.tip": "Voegt keyframes en wat je zei, op volgorde, toe aan de geopende chat",
+  "recordings.send-summary": "Verzenden en samenvatten",
+  "recordings.send-summary.tip": "Vraagt Claude ook om een samenvatting van de opname, wat meer tokens kost",
   "recordings.sending": "Voorbereiden…",
   "recordings.send-failed": "De opname kon niet worden voorbereid. {error}",
   "recordings.no-chat": "Open een chat om de opname te sturen.",

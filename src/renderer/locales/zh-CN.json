@@ -1212,6 +1212,8 @@
   "recordings.retry": "重试",
   "recordings.send": "发送到聊天",
   "recordings.send.tip": "按顺序将关键帧和你说的话添加到当前打开的聊天",
+  "recordings.send-summary": "发送并总结",
+  "recordings.send-summary.tip": "同时请 Claude 总结这段录制，会消耗更多 token",
   "recordings.sending": "准备中…",
   "recordings.send-failed": "无法准备录制。{error}",
   "recordings.no-chat": "打开一个聊天以发送录制。",

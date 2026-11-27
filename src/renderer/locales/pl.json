@@ -1362,6 +1362,8 @@
   "recordings.retry": "Ponów próbę",
   "recordings.send": "Wyślij do czatu",
   "recordings.send.tip": "Dodaje do otwartego czatu kluczowe klatki i to, co powiedziano, po kolei",
+  "recordings.send-summary": "Wyślij i podsumuj",
+  "recordings.send-summary.tip": "Prosi też Claude o podsumowanie nagrania, co zużywa więcej tokenów",
   "recordings.sending": "Przygotowywanie…",
   "recordings.send-failed": "Nie udało się przygotować nagrania. {error}",
   "recordings.no-chat": "Otwórz czat, aby wysłać nagranie.",

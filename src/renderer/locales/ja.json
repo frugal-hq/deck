@@ -1212,6 +1212,8 @@
   "recordings.retry": "再試行",
   "recordings.send": "チャットに送信",
   "recordings.send.tip": "主要なフレームと話した内容を順番に、開いているチャットへ追加します",
+  "recordings.send-summary": "送信して要約",
+  "recordings.send-summary.tip": "録画の要約も Claude に依頼します。トークンを多く使います",
   "recordings.sending": "準備中…",
   "recordings.send-failed": "録画を準備できませんでした。{error}",
   "recordings.no-chat": "録画を送信するにはチャットを開いてください。",

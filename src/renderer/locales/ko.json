@@ -1212,6 +1212,8 @@
   "recordings.retry": "다시 시도",
   "recordings.send": "채팅으로 보내기",
   "recordings.send.tip": "주요 프레임과 말한 내용을 순서대로 열려 있는 채팅에 추가합니다",
+  "recordings.send-summary": "보내고 요약",
+  "recordings.send-summary.tip": "녹화 요약도 Claude에게 요청하며, 토큰을 더 사용합니다",
   "recordings.sending": "준비하는 중…",
   "recordings.send-failed": "녹화를 준비하지 못했습니다. {error}",
   "recordings.no-chat": "녹화를 보내려면 채팅을 여세요.",

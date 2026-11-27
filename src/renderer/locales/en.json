@@ -1263,6 +1263,8 @@
   "recordings.retry": "Retry",
   "recordings.send": "Send to chat",
   "recordings.send.tip": "Adds key frames and what you said, in order, to the open chat",
+  "recordings.send-summary": "Send and summarize",
+  "recordings.send-summary.tip": "Also asks Claude for a summary of the recording, which uses more tokens",
   "recordings.sending": "Preparing…",
   "recordings.send-failed": "Could not prepare the recording. {error}",
   "recordings.no-chat": "Open a chat to send the recording.",

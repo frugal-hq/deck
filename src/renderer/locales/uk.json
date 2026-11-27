@@ -1362,6 +1362,8 @@
   "recordings.retry": "Повторити спробу",
   "recordings.send": "Надіслати в чат",
   "recordings.send.tip": "Додає у відкритий чат ключові кадри та сказане вами, по порядку",
+  "recordings.send-summary": "Надіслати й підсумувати",
+  "recordings.send-summary.tip": "Також просить Claude підсумувати запис, що витрачає більше токенів",
   "recordings.sending": "Підготовка…",
   "recordings.send-failed": "Не вдалося підготувати запис. {error}",
   "recordings.no-chat": "Відкрийте чат, щоб надіслати запис.",

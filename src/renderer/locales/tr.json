@@ -1262,6 +1262,8 @@
   "recordings.retry": "Yeniden dene",
   "recordings.send": "Sohbete gönder",
   "recordings.send.tip": "Açık sohbete önemli kareleri ve söylediklerinizi sırayla ekler",
+  "recordings.send-summary": "Gönder ve özetle",
+  "recordings.send-summary.tip": "Claude'dan kaydın özetini de ister, bu daha fazla token kullanır",
   "recordings.sending": "Hazırlanıyor…",
   "recordings.send-failed": "Kayıt hazırlanamadı. {error}",
   "recordings.no-chat": "Kaydı göndermek için bir sohbet açın.",

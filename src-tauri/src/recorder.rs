@@ -347,12 +347,21 @@ fn select_frames(frames: &[KeyFrame]) -> Vec<usize> {
 
 fn file_name(file: &str) -> &str { Path::new(file).file_name().and_then(|n| n.to_str()).unwrap_or(file) }
 
-fn timeline(recorded: &str, duration: u64, frames: &[&KeyFrame], speech: &[(u64, u64, String)]) -> String {
-    let mut out = format!("# Screen recording\n\nRecorded {recorded}, {} long. The attached images are its key frames, in this order. Speech is the user's microphone, transcribed locally.\n\n", clock(duration));
-    if speech.is_empty() { out.push_str("No speech transcript.\n"); }
+// "User says" and "Audio says" lines, in time order.
+fn said_lines(speech: &[(u64, u64, String)], audio: &[(u64, u64, String)]) -> Vec<(u64, String)> {
+    let mut lines: Vec<(u64, String)> = [("User", speech), ("Audio", audio)].into_iter()
+        .flat_map(|(who, list)| list.iter().map(move |(start, end, said)| (*start, format!("[{}-{}] {who} says: {said}", clock(*start), clock(*end)))))
+        .collect();
+    lines.sort_by_key(|(ms, _)| *ms);
+    lines
+}
+
+fn timeline(recorded: &str, duration: u64, frames: &[&KeyFrame], speech: &[(u64, u64, String)], audio: &[(u64, u64, String)], links: &str) -> String {
+    let mut out = format!("# Screen recording\n\nRecorded {recorded}, {} long. The attached images are its key frames, in this order. \"User says\" lines are the user's microphone and \"Audio says\" lines are the computer's sound.\n\n{links}", clock(duration));
+    if speech.is_empty() && audio.is_empty() { out.push_str("No speech transcript.\n"); }
     let mut events: Vec<(u64, String)> = frames.iter().enumerate()
         .map(|(n, f)| (f.ms, format!("[{}] Image {} ({}): {}", clock(f.ms), n + 1, f.reason, file_name(&f.file)))).collect();
-    events.extend(speech.iter().map(|(start, end, said)| (*start, format!("[{}-{}] User says: {said}", clock(*start), clock(*end)))));
+    events.extend(said_lines(speech, audio));
     events.sort_by_key(|(ms, _)| *ms);
     for (_, line) in events { out.push_str(&line); out.push('\n'); }
     out
@@ -937,15 +946,29 @@ fn for_chat(app: &AppHandle, id: &str, model: Option<String>, language: Option<S
     let meta: Value = fs::read(folder.join("meta.json")).ok().and_then(|b| serde_json::from_slice(&b).ok()).ok_or_else(|| t("error.recorder-not-found"))?;
     let frames: Vec<KeyFrame> = serde_json::from_slice(&fs::read(folder.join("frames.json")).map_err(|_| t("error.recorder-not-found"))?).map_err(text)?;
     let chosen: Vec<&KeyFrame> = select_frames(&frames).into_iter().map(|i| &frames[i]).collect();
-    let wav = folder.join("mic.wav");
-    let (transcribed, speech) = match (model, language) {
-        (Some(model), Some(language)) if wav.exists() => (true, crate::voice::transcribe_segments(app, &wav, &model, &language)?),
-        _ => (false, Vec::new()),
+    let whisper = |name: &str| -> Result<Option<Vec<(u64, u64, String)>>> {
+        let wav = folder.join(name);
+        match (&model, &language) {
+            (Some(model), Some(language)) if wav.exists() => crate::voice::transcribe_segments(app, &wav, model, language).map(Some),
+            _ => Ok(None),
+        }
     };
+    let speech = match fs::read(folder.join("voice.json")) {
+        Ok(bytes) => Some(serde_json::from_slice(&bytes).map_err(text)?),
+        Err(_) => whisper("mic.wav")?,
+    };
+    let audio = whisper("system.wav")?;
+    let transcribed = speech.is_some() || audio.is_some();
+    let (speech, audio) = (speech.unwrap_or_default(), audio.unwrap_or_default());
     // The id is the local start time, "YYYY-MM-DD HH-MM-SS".
     let recorded = id.split_once(' ').map_or(id.to_owned(), |(day, time)| format!("{day} {}", time.replace('-', ":")));
+    let transcript = folder.join("transcript.md");
+    let lines: Vec<String> = said_lines(&speech, &audio).into_iter().map(|(_, line)| line).collect();
+    let said = if lines.is_empty() { "No speech transcript.".to_owned() } else { lines.join("\n") };
+    fs::write(&transcript, format!("# Transcript\n\nScreen recording of {recorded}.\n\n{said}\n")).map_err(text)?;
+    let links = format!("Full transcript: {}\nAll {} key frames: {}\n\n", transcript.display(), frames.len(), folder.join("frames").display());
     let file = folder.join("timeline.md");
-    fs::write(&file, timeline(&recorded, meta["duration"].as_u64().unwrap_or(0), &chosen, &speech)).map_err(text)?;
+    fs::write(&file, timeline(&recorded, meta["duration"].as_u64().unwrap_or(0), &chosen, &speech, &audio, &links)).map_err(text)?;
     let mut files = vec![file];
     files.extend(chosen.iter().map(|f| folder.join("frames").join(file_name(&f.file))));
     Ok(json!({"files": files, "transcript": transcribed}))
@@ -1094,10 +1117,21 @@ mod tests {
     #[test]
     fn timeline_render() {
         let (a, b) = (frame(0, "start"), frame(75_500, "click"));
-        let text = timeline("2026-11-27 14:03:05", 125_000, &[&a, &b], &[(1240, 3900, "Open the menu".into())]);
-        assert_eq!(text, "# Screen recording\n\nRecorded 2026-11-27 14:03:05, 2:05 long. The attached images are its key frames, in this order. Speech is the user's microphone, transcribed locally.\n\n[0:00] Image 1 (start): 00000000.png\n[0:01-0:03] User says: Open the menu\n[1:15] Image 2 (click): 00075500.png\n");
-        let text = timeline("x", 0, &[&a], &[]);
-        assert!(text.ends_with("locally.\n\nNo speech transcript.\n[0:00] Image 1 (start): 00000000.png\n"));
+        let text = timeline("2026-11-27 14:03:05", 125_000, &[&a, &b], &[(1240, 3900, "Open the menu".into())], &[], "");
+        assert_eq!(text, "# Screen recording\n\nRecorded 2026-11-27 14:03:05, 2:05 long. The attached images are its key frames, in this order. \"User says\" lines are the user's microphone and \"Audio says\" lines are the computer's sound.\n\n[0:00] Image 1 (start): 00000000.png\n[0:01-0:03] User says: Open the menu\n[1:15] Image 2 (click): 00075500.png\n");
+        let text = timeline("x", 0, &[&a], &[], &[], "Links\n\n");
+        assert!(text.ends_with("sound.\n\nLinks\n\nNo speech transcript.\n[0:00] Image 1 (start): 00000000.png\n"));
+        let text = timeline("x", 0, &[&a, &b], &[], &[(30_000, 32_000, "Welcome back".into())], "");
+        assert!(text.ends_with("sound.\n\n[0:00] Image 1 (start): 00000000.png\n[0:30-0:32] Audio says: Welcome back\n[1:15] Image 2 (click): 00075500.png\n"));
+    }
+
+    #[test]
+    fn voice_segments_validation() {
+        let segments = json!([{"start": 1_000_500, "end": 1_002_000, "text": " Open the menu "}, {"start": 999_000, "end": 1_000_100, "text": "Hi"}]);
+        assert_eq!(voice_segments(&segments, 1_000_000).unwrap(), [(500, 2000, "Open the menu".into()), (0, 100, "Hi".to_owned())]);
+        for bad in [json!([{"start": 5, "end": 4, "text": "x"}]), json!({"start": 1, "end": 2, "text": "x"}), json!([{"start": 1, "end": 2, "text": " "}])] {
+            assert_eq!(voice_segments(&bad, 0).unwrap_err(), "Invalid request.", "{bad}");
+        }
     }
 
     #[test]

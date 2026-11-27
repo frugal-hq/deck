@@ -1262,6 +1262,8 @@
   "recordings.retry": "Reintentar",
   "recordings.send": "Enviar al chat",
   "recordings.send.tip": "Agrega al chat abierto los fotogramas clave y lo que dijiste, en orden",
+  "recordings.send-summary": "Enviar y resumir",
+  "recordings.send-summary.tip": "También pide a Claude un resumen de la grabación, lo que usa más tokens",
   "recordings.sending": "Preparando…",
   "recordings.send-failed": "No se pudo preparar la grabación. {error}",
   "recordings.no-chat": "Abre un chat para enviar la grabación.",

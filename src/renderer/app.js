@@ -6083,10 +6083,14 @@ function recordingRow(item) {
     error.hidden = false;
   };
   const chat = chats.get(activeId);
-  const send = action(t('recordings.send'));
-  send.disabled = chat?.state !== 'running';
-  send.dataset.tip = t(send.disabled ? 'recordings.no-chat' : 'recordings.send.tip');
-  send.onclick = async () => {
+  const sender = (label, summary) => {
+    const send = action(t(label));
+    send.disabled = chat?.state !== 'running';
+    send.dataset.tip = t(send.disabled ? 'recordings.no-chat' : `${label}.tip`);
+    send.onclick = () => sendRecording(send, label, summary);
+    return send;
+  };
+  const sendRecording = async (send, label, summary) => {
     error.hidden = true;
     send.disabled = true;
     send.setAttribute('aria-busy', 'true');
@@ -6096,12 +6100,14 @@ function recordingRow(item) {
     const local = Boolean(status && !status.error && status.needs === 0);
     const result = await settle(deck.recorderForChat(item.id, local ? voiceModel() : null, local ? voiceLanguage() : null));
     send.removeAttribute('aria-busy');
-    send.textContent = t('recordings.send');
+    send.textContent = t(label);
     send.disabled = false;
     if (result.error) return fail(t('recordings.send-failed', { error: result.error }));
     recordingsDialog.close();
     if (settingsDialog.open) settingsDialog.close();
     attach(chat, result.files);
+    // Typed, not sent: the user can still add to it before pressing Enter.
+    if (summary) chat.term.paste('Summarize this screen recording from its timeline and key frames: what happens on screen and every point I make, in order. ');
     if (!result.transcript) showUndo(t('recordings.no-transcript'), null, true);
   };
   const reveal = action(t('recordings.reveal'));
@@ -6121,7 +6127,7 @@ function recordingRow(item) {
     if (!$('recordings-list').children.length) $('recordings-list').replaceChildren(emptyState(t('recordings.empty')));
     (next ?? $('recordings-close')).focus();
   };
-  controls.append(send, reveal, remove);
+  controls.append(sender('recordings.send', false), sender('recordings.send-summary', true), reveal, remove);
   row.append(thumb, main, controls);
   return row;
 }

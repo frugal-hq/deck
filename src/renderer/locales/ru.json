@@ -1362,6 +1362,8 @@
   "recordings.retry": "Повторить",
   "recordings.send": "Отправить в чат",
   "recordings.send.tip": "Добавляет в открытый чат ключевые кадры и то, что вы сказали, по порядку",
+  "recordings.send-summary": "Отправить и кратко изложить",
+  "recordings.send-summary.tip": "Также просит Claude кратко изложить запись, что расходует больше токенов",
   "recordings.sending": "Подготовка…",
   "recordings.send-failed": "Не удалось подготовить запись. {error}",
   "recordings.no-chat": "Откройте чат, чтобы отправить запись.",
