@@ -3,7 +3,7 @@ import { FitAddon } from '../../node_modules/@xterm/addon-fit/lib/addon-fit.mjs'
 import { matchSessions } from './palette.mjs';
 import { groupChats, buildTree } from './chats.mjs';
 import { trustPromptKey } from './trust.mjs';
-import { trimSilence, encodeWav, joinChunks } from './voice.mjs';
+import { trimSilence, encodeWav, joinChunks, dictatedText } from './voice.mjs';
 import { loadLocale, applyI18n, t, tp, languages, currentLanguage } from './i18n.mjs';
 
 await loadLocale();
@@ -5661,6 +5661,7 @@ deck.onRecorderState((state) => {
   recorder = state;
   drawRecorder();
   if (!state.closed) return;
+  stopListener(state.id ?? null);
   showUndo(t('recorder.source-closed'), null, true);
   openRecordings();
 });
@@ -5674,6 +5675,7 @@ $('record').onclick = async () => {
   if (result.error) return showUndo(t('recorder.stop-failed', { error: result.error }), null, true);
   recorder = { recording: false, started: null };
   drawRecorder();
+  stopListener(result.id);
   openRecordings();
 };
 
@@ -5701,6 +5703,155 @@ function openRecord() {
   $('record-error').hidden = true;
   recordDialog.showModal();
   loadSources();
+  startListener();
+}
+recordDialog.addEventListener('close', () => {
+  if (!recorder.recording) stopListener(null);
+});
+
+// Anthropic voice for the recorder's mic: a hidden Claude Code holds Space while recording and its prompt is read after each phrase.
+// frugal: Claude Code records the Windows default mic, so a different recorder mic is not what it hears.
+let listener = null;
+let voiceSaving = null;
+const listenWait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+const promptReady = (rows) => rows.some((row, i) => i > 0 && row.trimStart().startsWith('❯') && rows[i - 1].startsWith('─'));
+
+// Viewport rows from cells; dim cells (the prompt's placeholder) are left out unless asked for.
+function screenRows(term, dim = false) {
+  const buffer = term.buffer.active;
+  const cell = buffer.getNullCell();
+  return Array.from({ length: term.rows }, (_, row) => {
+    const line = buffer.getLine(buffer.viewportY + row);
+    let text = '';
+    for (let x = 0; line && x < line.length; x++) {
+      if (line.getCell(x, cell) && (dim || !cell.isDim())) text += cell.getChars() || (cell.getWidth() ? ' ' : '');
+    }
+    return text.trimEnd();
+  });
+}
+
+deck.onData((id, data) => {
+  const l = listener;
+  if (l?.id !== id) return;
+  l.term.write(data, () => {
+    // The trust screen's hints are dim, so it is read with them.
+    const key = trustPromptKey(screenRows(l.term, true).map((row) => row.trim()));
+    if (!key || Date.now() - (l.trustAt ?? 0) < TRUST_RETRY_MS) return;
+    l.trustAt = Date.now();
+    deck.input(id, key);
+  });
+});
+deck.onExit((id) => {
+  if (listener?.id !== id) return;
+  listener.dead = true;
+  clearInterval(listener.hold);
+});
+
+function startListener() {
+  if (listener || voiceMode() !== 'anthropic') return;
+  const l = (listener = { id: crypto.randomUUID(), term: new Terminal({ cols: 120, rows: 30 }), segments: [], mic: false });
+  // Claude Code waits for the terminal's replies (the cursor position query) before it draws.
+  l.term.onData((data) => deck.input(l.id, data));
+  l.starting = (async () => {
+    const result = await settle(deck.listen(l.id));
+    // Without a listener the Rust side falls back to whisper.
+    if (result?.error) {
+      deck.debugLog('voice', `listener failed: ${result.error}`);
+      l.dead = true;
+      return;
+    }
+    try {
+      l.stream = await navigator.mediaDevices.getUserMedia({ audio: { echoCancellation: false, noiseSuppression: true } });
+    } catch (error) {
+      deck.debugLog('voice', `listener mic failed: ${error}`);
+      l.dead = true;
+      return;
+    }
+    l.context = new AudioContext();
+    l.analyser = l.context.createAnalyser();
+    l.analyser.fftSize = 1024;
+    l.context.createMediaStreamSource(l.stream).connect(l.analyser);
+    l.samples = new Float32Array(l.analyser.fftSize);
+    l.tick = setInterval(() => listenTick(l), 50);
+    deck.debugLog('voice', 'listener ready');
+  })();
+}
+
+function listenTick(l) {
+  if (l.dead || l.collecting || !l.mic || !recorder.recording) return;
+  const now = Date.now();
+  if (!l.hold) {
+    if (!promptReady(screenRows(l.term))) {
+      if (now - (l.screenLogged ?? 0) > 10000) {
+        l.screenLogged = now;
+        deck.debugLog('voice', `waiting for the prompt: ${screenRows(l.term, true).filter(Boolean).join(' | ')}`);
+      }
+      return;
+    }
+    l.hold = setInterval(() => deck.input(l.id, ' '), HOLD_MS);
+    l.holdStart = now;
+    deck.debugLog('voice', 'hold');
+    l.speechStart = null;
+    return;
+  }
+  // The boost the user picked says the mic is quiet, so it lowers the gate too.
+  // frugal: a fixed RMS gate; an adaptive noise floor is the upgrade.
+  l.analyser.getFloatTimeDomainData(l.samples);
+  if (Math.sqrt(l.samples.reduce((sum, sample) => sum + sample * sample, 0) / l.samples.length) > 0.01 / (l.gain || 1)) {
+    l.speechStart ??= now;
+    l.lastSpeech = now;
+  }
+  if ((l.speechStart && now - l.lastSpeech > 800) || now - l.holdStart > 25000) releaseHold(l);
+}
+
+function releaseHold(l) {
+  clearInterval(l.hold);
+  l.hold = null;
+  // The gate can miss a quiet voice that /voice still heard, so every hold is read.
+  l.collecting = collectPhrase(l, l.speechStart ?? l.holdStart, l.speechStart ? l.lastSpeech : Date.now()).finally(() => { l.collecting = null; });
+}
+
+// The transcript is typed into the prompt: it is read once it stops changing, then cleared for the next phrase.
+async function collectPhrase(l, start, end) {
+  const begin = Date.now();
+  let text = '';
+  let since = begin;
+  while (Date.now() - begin < 10000) {
+    await listenWait(200);
+    // The listening meter (a block character) is not text.
+    const now = dictatedText(screenRows(l.term)).replace(/[\u2581-\u2588]/g, '').trim();
+    if (now !== text) {
+      text = now;
+      since = Date.now();
+    } else if (text ? Date.now() - since >= 1000 : Date.now() - begin >= 4000) break;
+  }
+  deck.debugLog('voice', `phrase ${text ? text.length : 'empty'}, ${l.speechStart ? 'speech' : 'no speech'} heard`);
+  if (text) l.segments.push({ start, end, text });
+  deck.input(l.id, '\x15');
+  await listenWait(300);
+}
+
+function stopListener(recordingId) {
+  const l = listener;
+  if (!l || l.stopping) return voiceSaving;
+  l.stopping = true;
+  voiceSaving = (async () => {
+    await l.starting;
+    clearInterval(l.tick);
+    if (l.hold && !l.dead) releaseHold(l);
+    else clearInterval(l.hold);
+    await l.collecting;
+    if (recordingId && l.segments.length) {
+      const result = await settle(deck.recorderVoice(recordingId, l.segments));
+      if (result?.error) deck.debugLog('voice', `segments failed: ${result.error}`);
+    }
+    deck.kill(l.id);
+    l.stream?.getTracks().forEach((track) => track.stop());
+    l.context?.close();
+    l.term.dispose();
+    if (listener === l) listener = null;
+  })();
+  return voiceSaving;
 }
 
 async function loadSources() {
@@ -5818,6 +5969,11 @@ $('record-start').onclick = async () => {
     return;
   }
   if (!recorder.recording) recorder = { recording: true, started: Date.now() };
+  if (listener) {
+    listener.mic = options.mic;
+    listener.gain = options.micGain;
+    if (!options.mic) stopListener(null);
+  }
   drawRecorder();
   recordDialog.close();
 };
@@ -5931,7 +6087,8 @@ function recordingRow(item) {
     send.disabled = true;
     send.setAttribute('aria-busy', 'true');
     send.textContent = t('recordings.sending');
-    const status = voiceMode() === 'local' ? await settle(deck.voiceStatus(voiceModel())) : null;
+    await voiceSaving;
+    const status = voiceMode() !== 'off' ? await settle(deck.voiceStatus(voiceModel())) : null;
     const local = Boolean(status && !status.error && status.needs === 0);
     const result = await settle(deck.recorderForChat(item.id, local ? voiceModel() : null, local ? voiceLanguage() : null));
     send.removeAttribute('aria-busy');

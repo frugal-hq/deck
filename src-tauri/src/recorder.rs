@@ -350,6 +350,17 @@ fn timeline(recorded: &str, duration: u64, frames: &[&KeyFrame], speech: &[(u64,
     out
 }
 
+// Mic speech transcribed elsewhere, in epoch ms, into video time.
+fn voice_segments(segments: &Value, video_start: u64) -> Result<Vec<(u64, u64, String)>> {
+    let invalid = || t("error.invalid-request");
+    let list = segments.as_array().filter(|l| l.len() <= 5000).ok_or_else(invalid)?;
+    list.iter().map(|s| {
+        let (Some(start), Some(end), Some(said)) = (s["start"].as_u64(), s["end"].as_u64(), s["text"].as_str()) else { return Err(invalid()) };
+        if start > end || said.trim().is_empty() || said.chars().count() > 4000 { return Err(invalid()); }
+        Ok((start.saturating_sub(video_start), end.saturating_sub(video_start), said.trim().to_owned()))
+    }).collect()
+}
+
 // 16 kHz mono 16-bit PCM, what whisper-cli reads.
 fn wav_header(data: u32) -> Vec<u8> {
     [b"RIFF".as_slice(), &(36 + data).to_le_bytes(), b"WAVEfmt ", &16u32.to_le_bytes(), &1u16.to_le_bytes(), &1u16.to_le_bytes(),
@@ -590,8 +601,11 @@ fn ended(shared: &Arc<Shared>) {
     let shared = shared.clone();
     thread::spawn(move || {
         if let Some(result) = stop(Some(&shared)) {
-            if let Err(error) = result { crate::debug_log!("recorder", "Stopping failed: {error}"); }
-            let _ = shared.app.emit("recorder:state", [json!({"recording": false, "started": null, "closed": true})]);
+            let id = match result {
+                Ok(item) => item["id"].clone(),
+                Err(error) => { crate::debug_log!("recorder", "Stopping failed: {error}"); Value::Null }
+            };
+            let _ = shared.app.emit("recorder:state", [json!({"recording": false, "started": null, "closed": true, "id": id})]);
         }
     });
 }
@@ -996,6 +1010,17 @@ pub async fn recorder_reveal(app: AppHandle, id: String) -> Value {
 #[tauri::command]
 pub async fn recorder_for_chat(app: AppHandle, id: String, model: Option<String>, language: Option<String>) -> Value {
     blocking(move || for_chat(&app, &id, model, language)).await
+}
+
+#[tauri::command]
+pub async fn recorder_voice(id: String, segments: Value) -> Value {
+    blocking(move || {
+        let folder = folder_of(&root()?, &id)?;
+        let meta: Value = fs::read(folder.join("meta.json")).ok().and_then(|b| serde_json::from_slice(&b).ok()).ok_or_else(|| t("error.recorder-not-found"))?;
+        let video_start = meta["videoStart"].as_u64().or_else(|| meta["started"].as_u64()).unwrap_or(0);
+        fs::write(folder.join("voice.json"), serde_json::to_vec(&voice_segments(&segments, video_start)?).map_err(text)?).map_err(text)?;
+        Ok(json!({"ok": true}))
+    }).await
 }
 
 #[cfg(test)]

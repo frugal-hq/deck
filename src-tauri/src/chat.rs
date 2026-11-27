@@ -262,9 +262,14 @@ fn must_wait(indexed: bool, restart: bool, quiet: Duration) -> bool {
 // Outside the install folder: Program Files needs admin rights and an update or uninstall could remove it.
 #[tauri::command]
 pub fn folder_default(chats: tauri::State<Chats>) -> Result<PathBuf, String> {
+    let folder = sessions_folder()?;
+    chats.picked.lock().unwrap().insert(folder.clone());
+    Ok(folder)
+}
+
+fn sessions_folder() -> Result<PathBuf, String> {
     let folder = std::env::var_os("USERPROFILE").map(PathBuf::from).ok_or_else(|| crate::i18n::t("error.no-user-folder", &[]))?.join("Frugal Deck").join("Sessions");
     std::fs::create_dir_all(&folder).map_err(|error| error.to_string())?;
-    chats.picked.lock().unwrap().insert(folder.clone());
     Ok(folder)
 }
 
@@ -524,6 +529,41 @@ fn launch(app: &AppHandle, id: &str, place: &str, folder: PathBuf, size: (u16, u
 #[tauri::command]
 pub async fn chat_start(app: AppHandle, options: StartOptions, output: Channel<Value>) -> Value {
     tauri::async_runtime::spawn_blocking(move || start(&app, options, output)).await.unwrap_or_else(|error| json!({ "error": error.to_string() }))
+}
+
+// A hidden Claude Code used only for the recorder's dictation: the renderer holds Space in it and reads its prompt.
+// It is never sent a message, so it writes no transcript.
+#[tauri::command]
+pub async fn chat_listen(app: AppHandle, id: String, output: Channel<Value>) -> Value {
+    tauri::async_runtime::spawn_blocking(move || listen(&app, &id, output)).await.unwrap_or_else(|error| json!({ "error": error.to_string() }))
+}
+
+fn listen(app: &AppHandle, id: &str, output: Channel<Value>) -> Value {
+    if !is_uuid(id) {
+        return invalid();
+    }
+    let Some(claude) = find_claude() else {
+        return json!({ "error": no_claude() });
+    };
+    let accounts = app.state::<Mutex<Accounts>>();
+    let (account, env) = { let a = accounts.lock().unwrap(); let account = a.primary(); let env = account_env(&a, &account); (account, env) };
+    let prepared = (|| -> Result<_, Box<dyn std::error::Error>> {
+        let folder = sessions_folder()?;
+        if account["id"] != MAIN {
+            accounts::ensure_onboarded(Path::new(account["configDir"].as_str().unwrap_or_default()))?;
+        }
+        Ok(folder)
+    })();
+    let folder = match prepared {
+        Ok(folder) => folder,
+        Err(error) => return json!({ "error": crate::i18n::t("error.claude-start-failed", &[("error", &error)]) }),
+    };
+    let mut command = command(claude, env, &folder);
+    command.args(["--session-id", id, "--strict-mcp-config", "--settings", &json!({ "voice": { "enabled": true, "mode": "hold" } }).to_string()]);
+    match spawn(app, id, command, (120, 30), None, output, true, |_, _| {}) {
+        Ok(()) => json!({ "ok": true }),
+        Err(error) => error,
+    }
 }
 
 fn start(app: &AppHandle, options: StartOptions, output: Channel<Value>) -> Value {

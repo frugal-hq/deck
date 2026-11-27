@@ -52,3 +52,12 @@ export function joinChunks(chunks) {
   }
   return samples;
 }
+
+// Claude Code's prompt box: the '❯' row right under a '─' rule, plus its wrapped rows down to the closing rule.
+export function dictatedText(rows) {
+  const top = rows.findLastIndex((row, i) => i > 0 && row.trimStart().startsWith('❯') && rows[i - 1].startsWith('─'));
+  if (top === -1) return '';
+  const lines = [rows[top].trimStart().slice(1)];
+  for (let i = top + 1; i < rows.length && !rows[i].startsWith('─'); i++) lines.push(rows[i]);
+  return lines.join(' ').replace(/\s+/g, ' ').trim();
+}
