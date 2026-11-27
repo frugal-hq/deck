@@ -24,7 +24,7 @@ export function groupChats(sessions) {
 }
 
 // parents maps a workspace to the workspace that holds it; names match in any case, and a loop leaves its workspaces on top.
-export function buildTree(chats, keyOf, workspaces = {}, parents = {}) {
+export function buildTree(chats, keyOf, workspaces = {}, parents = {}, names = []) {
   const byName = new Map();
   const workspace = (name) => {
     const found = byName.get(name.toLowerCase());
@@ -58,6 +58,7 @@ export function buildTree(chats, keyOf, workspaces = {}, parents = {}) {
     }
     list.push(chat);
   }
+  for (const name of names) workspace(name);
   const parentOf = new Map(Object.entries(parents).filter(([, parent]) => parent).map(([name, parent]) => [name.toLowerCase(), parent]));
   const loops = (name) => {
     const seen = new Set();

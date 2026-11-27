@@ -2955,8 +2955,8 @@ function branchElements(spaces, groups, byTopic) {
 
 const workspaceCount = (workspace) => workspace.chats.length + workspace.groups.reduce((total, [, list]) => total + list.length, 0) + workspace.spaces.reduce((total, child) => total + workspaceCount(child), 0);
 
-// The workspace an element sits in: '' at the top of the list.
-const parentSpace = (element) => (element.parentElement?.classList.contains('group--workspace') ? element.parentElement.dataset.workspace : '');
+// The filtered list's top level is inside the selected workspace.
+const parentSpace = (element) => (element.parentElement?.classList.contains('group--workspace') ? element.parentElement.dataset.workspace : filteredWorkspace?.name ?? '');
 
 function placeGroup(key, workspace) {
   if (key.startsWith('workspace:')) deck.setWorkspaceParent(key.slice('workspace:'.length), workspace);
@@ -3396,14 +3396,38 @@ function withinSpace(name, space, index) {
   return false;
 }
 
-function drawSpaces(sessions, index) {
-  const names = [...new Set([...sessions.map((s) => s.space), ...Object.values(index.workspaces ?? {}), ...Object.values(index.workspaceParents ?? {})].filter(Boolean))].sort((a, b) => a.localeCompare(b, 'en-US'));
-  const select = $('space-filter');
-  const chosen = names.includes(select.value) ? select.value : '';
-  select.replaceChildren(new Option(t('sidebar.all-workspaces'), ''), ...names.map((name) => new Option(name, name)));
-  select.value = chosen;
-  select.hidden = !names.length;
-  spaceNames = names;
+function* workspaceEntries(spaces, depth = 0) {
+  for (const workspace of spaces.toSorted((a, b) => a.name.localeCompare(b.name, 'en-US'))) {
+    yield { workspace, depth };
+    yield* workspaceEntries(workspace.spaces, depth + 1);
+  }
+}
+
+function drawSpaces(chats, index, treeSpaces) {
+  const parents = index.workspaceParents ?? {};
+  const names = [
+    ...treeSpaces.map(({ name }) => name),
+    ...chats.map((chat) => chat.space),
+    ...Object.values(index.workspaces ?? {}),
+    ...Object.values(parents),
+    ...Object.keys(parents),
+  ].filter(Boolean);
+  spaceNames = [...new Set(names)].sort((a, b) => a.localeCompare(b, 'en-US'));
+  const { workspaces } = buildTree([], undefined, undefined, parents, names);
+  spaceOptions = [
+    { value: '', label: t('sidebar.all-workspaces'), icon: 'workspace' },
+    { value: null, label: t('organize.workspace.placeholder'), icon: 'inbox' },
+    ...Array.from(workspaceEntries(workspaces), ({ workspace, depth }) => ({
+      value: workspace.name.toLowerCase(), label: workspace.name, icon: 'workspace', depth, workspace,
+    })),
+  ];
+  const chosen = spaceOptions.find((option) => option.value === spaceFilter) ?? spaceOptions[0];
+  spaceFilter = chosen.value;
+  filteredWorkspace = chosen.workspace;
+  const caret = icon('chevron');
+  caret.classList.add('disclosure');
+  spaceFilterButton.replaceChildren(icon(chosen.icon), node('span', 'group__label', chosen.label), caret);
+  spaceFilterButton.hidden = !spaceNames.length;
 }
 
 function drawGroupNames(index) {
@@ -3411,7 +3435,11 @@ function drawGroupNames(index) {
 }
 
 let drawnView;
+const spaceFilterButton = $('space-filter');
+let spaceFilter = '';
+let filteredWorkspace;
 let spaceNames = [];
+let spaceOptions = [];
 let groupNames = [];
 
 function renderSessions(index) {
@@ -3441,7 +3469,7 @@ function renderSessions(index) {
   }
 
   // Transcripts change every second during a turn; rebuilding only when the list changes keeps focus and scroll.
-  const signature = `${sessionView}\n${index.indexing}\n${$('space-filter').value}\n${index.modelJoins}\n${index.modelWorkspaces}\n${JSON.stringify(index.workspaces ?? {})}\n${JSON.stringify(index.workspaceParents ?? {})}\n${index.ambiguous.length}\n${index.sessions.map((s) => `${s.id}\n${s.chatId}\n${s.title}\n${s.cwd}\n${shortDate.format(new Date(s.lastAt))}\n${s.pinned}\n${s.deck}\n${s.space}\n${s.tags}\n${s.topic}\n${s.userGroup ?? ''}`).join('\n')}`;
+  const signature = `${sessionView}\n${index.indexing}\n${index.modelJoins}\n${index.modelWorkspaces}\n${JSON.stringify(index.workspaces ?? {})}\n${JSON.stringify(index.workspaceParents ?? {})}\n${index.ambiguous.length}\n${index.sessions.map((s) => `${s.id}\n${s.chatId}\n${s.title}\n${s.cwd}\n${shortDate.format(new Date(s.lastAt))}\n${s.pinned}\n${s.deck}\n${s.space}\n${s.tags}\n${s.topic}\n${s.userGroup ?? ''}`).join('\n')}`;
   if (signature === drawnSignature) {
     updateExternalCount();
     return;
@@ -3454,24 +3482,33 @@ function renderSessions(index) {
   chatsById.clear();
   for (const chat of allChats) chatsById.set(chat.chatId, chat);
 
-  drawSpaces(allChats, index);
-  drawGroupNames(index);
-  if (sortDialog.open && !$('sort-groups').hidden) drawSortGroups();
   const byTopic = sessionView === 'topics';
   const keyOf = (chat) => (byTopic ? chat.topic ?? NO_TOPIC : chat.cwd);
-  const space = $('space-filter').value;
-  const visible = space ? allChats.filter((c) => withinSpace(c.space ?? index.workspaces?.[keyOf(c)], space, index)) : allChats;
-  const pinned = visible.filter((c) => c.pinned);
-  const tree = buildTree(visible.filter((c) => !c.pinned), keyOf, index.workspaces ?? {}, index.workspaceParents ?? {});
+  const tree = buildTree(allChats.filter((chat) => !chat.pinned), keyOf, index.workspaces, index.workspaceParents);
+  const treeSpaces = Array.from(workspaceEntries(tree.workspaces), ({ workspace }) => workspace);
+  drawSpaces(allChats, index, treeSpaces);
+  drawGroupNames(index);
+  if (sortDialog.open && !$('sort-groups').hidden) drawSortGroups();
+  const workspaceNames = filteredWorkspace && new Set(Array.from(workspaceEntries([filteredWorkspace]), ({ workspace }) => workspace.name.toLowerCase()));
+  const pinned = allChats.filter((chat) => {
+    if (!chat.pinned) return false;
+    if (spaceFilter === '') return true;
+    const name = chat.space ?? index.workspaces?.[keyOf(chat)];
+    return workspaceNames ? workspaceNames.has(name?.toLowerCase()) : !name;
+  });
+  const selected = filteredWorkspace && treeSpaces.find(({ name }) => name.toLowerCase() === spaceFilter);
+  const spaces = spaceFilter === '' ? tree.workspaces : selected?.spaces ?? [];
+  const groups = filteredWorkspace ? selected?.groups ?? [] : tree.groups;
   orderGroups(tree);
   const focused = document.activeElement?.dataset?.session;
   const list = $('groups');
   list.replaceChildren(
     ...(pinned.length ? [pinnedElement(pinned)] : []),
-    ...branchElements(tree.workspaces, tree.groups, byTopic),
+    ...branchElements(spaces, groups, byTopic),
+    ...(selected ? limitedChats(spaceKey(selected.name), selected.chats) : []),
   );
   // Only a change of view fades: the list also rebuilds while transcripts update.
-  const view = `${sessionView}\n${space}`;
+  const view = JSON.stringify([sessionView, spaceFilter]);
   if (view !== drawnView) {
     drawnView = view;
     list.classList.remove('fade-in');
@@ -3789,7 +3826,7 @@ function openMenu(x, y, items, source) {
   // A menu inside a modal must be its descendant to receive focus and clicks.
   const parent = source?.closest('dialog') ?? document.body;
   if (menu.parentElement !== parent) parent.append(menu);
-  menu.replaceChildren(...items.map(({ label, run, danger, checked, icon: glyph, separator }) => {
+  menu.replaceChildren(...items.map(({ label, run, danger, checked, icon: glyph, separator, depth }) => {
     if (separator) return Object.assign(node('div', 'menu__separator'), { role: 'separator' });
     const item = document.createElement('button');
     item.type = 'button';
@@ -3799,6 +3836,7 @@ function openMenu(x, y, items, source) {
     item.toggleAttribute('data-danger', Boolean(danger));
     item.textContent = label;
     if (glyph) item.prepend(icon(glyph));
+    if (depth) item.style.setProperty('--menu-depth', depth);
     item.onclick = () => {
       menu.hidePopover();
       run();
@@ -3973,7 +4011,20 @@ $('organize-unlink').onclick = () => {
   deck.link(organizing.id, null);
   showUndo(t('organize.unlinked'));
 };
-$('space-filter').onchange = () => renderSessions(currentIndex);
+spaceFilterButton.setAttribute('aria-description', t('sidebar.space-filter.label'));
+spaceFilterButton.onclick = () => {
+  if (spaceFilterButton.ariaExpanded === 'true') return menu.hidePopover();
+  const { left, bottom } = spaceFilterButton.getBoundingClientRect();
+  openMenu(left, bottom + 4, spaceOptions.map(({ value, label, icon, depth }) => ({
+    label, icon, depth, checked: value === spaceFilter,
+    run: () => {
+      if (value === spaceFilter) return;
+      spaceFilter = value;
+      drawnSignature = '';
+      renderSessions(currentIndex);
+    },
+  })), spaceFilterButton);
+};
 
 const viewRadios = document.querySelectorAll('input[name="session-view"]');
 const sortDialog = $('sort-dialog');
