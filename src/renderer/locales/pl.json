@@ -28,8 +28,6 @@
   "account.limits.title": "Limity dla {name}",
   "account.loading": "Wczytywanie danych o użyciu konta…",
   "account.log.label": "Wynik konfiguracji konta",
-  "account.meter.five-hour": "5 godz.",
-  "account.meter.weekly": "7 dni",
   "account.model.label": "Model",
   "account.name.label": "Nazwa",
   "account.no-reading.signed-in": "Brak odczytu. Otwórz czat na tym koncie, aby uzyskać odczyt.",

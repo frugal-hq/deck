@@ -26,8 +26,6 @@
   "account.limits.title": "Limits for {name}",
   "account.loading": "Loading account usage…",
   "account.log.label": "Account setup output",
-  "account.meter.five-hour": "5h",
-  "account.meter.weekly": "7d",
   "account.model.label": "Model",
   "account.name.label": "Name",
   "account.no-reading.signed-in": "No reading yet. Open a chat on this account to get a reading.",

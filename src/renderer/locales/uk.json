@@ -28,8 +28,6 @@
   "account.limits.title": "Ліміти для {name}",
   "account.loading": "Завантаження даних про використання облікового запису…",
   "account.log.label": "Журнал налаштування облікового запису",
-  "account.meter.five-hour": "5 год",
-  "account.meter.weekly": "7 дн",
   "account.model.label": "Модель",
   "account.name.label": "Ім’я",
   "account.no-reading.signed-in": "Даних ще немає. Відкрийте чат у цьому обліковому записі, щоб отримати дані.",

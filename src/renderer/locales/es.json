@@ -26,8 +26,6 @@
   "account.limits.title": "Límites de {name}",
   "account.loading": "Cargando uso de la cuenta…",
   "account.log.label": "Salida de configuración de la cuenta",
-  "account.meter.five-hour": "5 h",
-  "account.meter.weekly": "7 d",
   "account.model.label": "Modelo",
   "account.name.label": "Nombre",
   "account.no-reading.signed-in": "Aún sin lectura. Abre un chat en esta cuenta para obtener una lectura.",

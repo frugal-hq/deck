@@ -25,8 +25,6 @@
   "account.limits.title": "{name} 的限额",
   "account.loading": "正在加载账户用量…",
   "account.log.label": "账户设置输出",
-  "account.meter.five-hour": "5 小时",
-  "account.meter.weekly": "7 天",
   "account.model.label": "模型",
   "account.name.label": "名称",
   "account.no-reading.signed-in": "暂无读取。在此账户打开聊天以获取读取。",

@@ -25,8 +25,6 @@
   "account.limits.title": "{name} 한도",
   "account.loading": "계정 사용량 불러오는 중…",
   "account.log.label": "계정 설정 출력",
-  "account.meter.five-hour": "5시간",
-  "account.meter.weekly": "7일",
   "account.model.label": "모델",
   "account.name.label": "이름",
   "account.no-reading.signed-in": "아직 측정값이 없습니다. 측정값을 가져오려면 이 계정으로 채팅을 여십시오.",

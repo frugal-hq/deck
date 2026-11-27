@@ -573,8 +573,8 @@ function loginLines(account) {
 }
 
 const accountLimits = (account) => [
-  [t('usage.five-hour'), liveLimit(account.limits?.fiveHour), t('account.meter.five-hour')],
-  [t('usage.weekly'), liveLimit(account.limits?.sevenDay), t('account.meter.weekly')],
+  [t('usage.five-hour'), liveLimit(account.limits?.fiveHour)],
+  [t('usage.weekly'), liveLimit(account.limits?.sevenDay)],
 ];
 
 // One limit as a label, its reset and percent on a line, with a full-width bar under them.
@@ -585,16 +585,6 @@ function limitRow(label, limit) {
   used.classList.toggle('is-warn', limit.pct >= WARN_PCT);
   row.append(node('span', 'limit__label', label), resetNode('span', 'limit__reset', limit), used, usageMeter(label, limit));
   return row;
-}
-
-// One limit inside an account row: a short label, a bar and the percent; the full label and the reset are in its tooltip.
-function limitMeter(label, limit, short) {
-  const box = node('span', 'meter', short);
-  box.dataset.tip = limitTip(label, limit);
-  const used = node('span', 'measured', t('common.percent', { percent: Math.round(limit.pct) }));
-  used.classList.toggle('is-warn', limit.pct >= WARN_PCT);
-  box.append(usageMeter(label, limit), used);
-  return box;
 }
 
 // The slider and the number mirror each other; the Limits dialog saves the number.
@@ -715,9 +705,10 @@ function claudeNotes(account) {
   return notes;
 }
 
-// Settings shows one row per account: its name, a muted line on its state, its live limits and its actions.
+// Settings shows one block per account: its name, a muted line on its state and its actions, then one line per live limit.
 function accountRow(account, claude, featured) {
-  const row = node('div', 'row account-row');
+  const block = node('div', 'account-row');
+  const row = node('div', 'row');
   const main = node('div', 'row__main');
   const controls = node('div', 'row__controls');
   const age = account.limits?.at ? t('account.read-ago', { duration: spanText(Date.now() - account.limits.at) }) : '';
@@ -728,12 +719,12 @@ function accountRow(account, claude, featured) {
     meta.append(...notes.flatMap((note, index) => (index ? [' · ', note] : [note])));
     main.append(meta);
   }
-  for (const [label, limit, short] of accountLimits(account)) if (limit) controls.append(limitMeter(label, limit, short));
   if (account.id === accountState.primary) controls.append(node('span', 'tag tag--primary', t('account.primary')));
   if (claude && account.signedIn && (!featured || switchable(account).length)) controls.append(useButton(account));
-  controls.append(withMenu(row, account));
+  controls.append(withMenu(block, account));
   row.append(main, controls);
-  return row;
+  block.append(row, ...accountLimits(account).filter(([, limit]) => limit).map(([label, limit]) => limitRow(label, limit)));
+  return block;
 }
 
 // Settings lists accounts by kind in this order; the keys match the kind radios in the Add account dialog.
@@ -744,6 +735,7 @@ function kindSection(kind, rows) {
   const section = node('section', 'account-kind');
   const head = node('div', 'account-kind__head');
   const title = node('h4', 'account-kind__title', kindName(kind));
+  if ($(`i-kind-${kind}`)) title.prepend(icon(`kind-${kind}`));
   title.id = `settings-kind-${kind}`;
   section.setAttribute('aria-labelledby', title.id);
   head.append(title);

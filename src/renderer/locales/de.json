@@ -26,8 +26,6 @@
   "account.limits.title": "Limits für {name}",
   "account.loading": "Kontonutzung wird geladen…",
   "account.log.label": "Ausgabe der Kontoeinrichtung",
-  "account.meter.five-hour": "5 Std.",
-  "account.meter.weekly": "7 T.",
   "account.model.label": "Modell",
   "account.name.label": "Name",
   "account.no-reading.signed-in": "Noch keine Messung. Öffne einen Chat mit diesem Konto, um eine zu erhalten.",

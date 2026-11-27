@@ -26,8 +26,6 @@
   "account.limits.title": "Limiti di {name}",
   "account.loading": "Caricamento dei dati di utilizzo dell’account…",
   "account.log.label": "Output della configurazione dell’account",
-  "account.meter.five-hour": "5 h",
-  "account.meter.weekly": "7 g",
   "account.model.label": "Modello",
   "account.name.label": "Nome",
   "account.no-reading.signed-in": "Nessun dato disponibile. Apri una chat con questo account per rilevare l’utilizzo.",

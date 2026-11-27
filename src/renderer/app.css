@@ -190,7 +190,7 @@ body:has(.info-panel:not([hidden])) { grid-template-columns: var(--sidebar-width
 
 .info-panel { grid-column: 3; grid-row: 2; }
 .info-panel > :not([hidden]) ~ :not([hidden]) { margin-block-start: var(--space-md); }
-.info-panel :is(h2, summary), .account-kind__title { padding: var(--space-xs); color: var(--color-ink-2); font-size: var(--text-xs); font-weight: 500; line-height: 1.2; }
+.info-panel :is(h2, summary) { padding: var(--space-xs); color: var(--color-ink-2); font-size: var(--text-xs); font-weight: 500; line-height: 1.2; }
 .info-panel dl { margin: 0; }
 .info-panel__row { display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: baseline; gap: var(--space-xs); padding: var(--space-2xs) var(--space-xs); font-size: var(--text-sm); }
 .info-panel dt, .info-panel__muted { color: var(--color-muted); }
@@ -374,7 +374,7 @@ body:has(.info-panel:not([hidden])) { grid-template-columns: var(--sidebar-width
 .usage__delegates { display: flex; justify-content: space-between; gap: var(--space-xs); color: var(--color-muted); }
 .accounts { display: grid; gap: var(--space-xs); }
 .accounts:empty { display: none; }
-.accounts > .account + .account, .usage__delegates, .usage > .meter:not([hidden]) ~ .accounts { padding-block-start: var(--space-xs); border-block-start: var(--rule-hair) solid var(--color-rule); }
+.accounts > .account + .account, .account-row + .account-row, .usage__delegates, .usage > .meter:not([hidden]) ~ .accounts { padding-block-start: var(--space-xs); border-block-start: var(--rule-hair) solid var(--color-rule); }
 .accounts__actions { display: flex; align-items: center; gap: var(--space-sm); }
 /* The head row lines its name up with the limits under it. */
 .account > .row { padding-inline: 0; }
@@ -399,13 +399,16 @@ body:has(.info-panel:not([hidden])) { grid-template-columns: var(--sidebar-width
 .tag { padding-inline: var(--space-xs); border-radius: var(--radius-pill); font-size: var(--text-xs); white-space: nowrap; }
 .tag--primary { background: var(--color-accent-soft); color: var(--color-accent); }
 .tag--cause { background: var(--color-control); color: var(--color-ink-2); }
-.account .is-warn, .limit__pct.is-warn, .account-row .is-warn, .account-row .meter .measured.is-warn { color: var(--color-bad); }
+.account .is-warn, .limit__pct.is-warn, .account-row .is-warn { color: var(--color-bad); }
 .account-kinds { display: grid; gap: var(--space-sm); }
 .account-kinds:empty { display: none; }
 .account-kind { display: grid; gap: var(--space-3xs); }
 .account-kind__head { display: flex; align-items: center; justify-content: space-between; gap: var(--space-xs); padding-inline-end: var(--space-xs); }
-.account-kind__title { margin: 0; }
-.account-row .meter { font-size: var(--text-xs); }
+.account-kind__title { display: flex; align-items: center; gap: var(--space-xs); margin: 0; padding: var(--space-xs); color: var(--color-ink); font-size: var(--text-md); font-weight: 500; line-height: 1.2; }
+.account-kind__title .icon { fill: currentColor; stroke: none; color: var(--color-ink-2); }
+.account-row { display: grid; gap: var(--space-3xs); font-size: var(--text-sm); }
+/* Limits keep the row's inline padding, so they line up with the name and the More button. */
+.account-row > .limit { padding-inline: var(--space-xs); }
 /* One grid for every cap, so labels, sliders and numbers line up across rows. */
 .limits__caps { display: grid; grid-template-columns: max-content minmax(0, 1fr) 3.25rem; align-items: center; gap: var(--space-xs); color: var(--color-muted); font-size: var(--text-xs); }
 .limits__caps > .cap { display: contents; }

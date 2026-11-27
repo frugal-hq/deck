@@ -26,8 +26,6 @@
   "account.limits.title": "{name} için sınırlar",
   "account.loading": "Hesap kullanımı yükleniyor…",
   "account.log.label": "Hesap kurulum çıktısı",
-  "account.meter.five-hour": "5 sa",
-  "account.meter.weekly": "7 g",
   "account.model.label": "Model",
   "account.name.label": "Ad",
   "account.no-reading.signed-in": "Henüz okuma yok. Bu hesapta bir sohbet açın.",

@@ -25,8 +25,6 @@
   "account.limits.title": "{name} の上限",
   "account.loading": "アカウントの使用量を読み込み中…",
   "account.log.label": "アカウント設定の出力",
-  "account.meter.five-hour": "5時間",
-  "account.meter.weekly": "7日",
   "account.model.label": "モデル",
   "account.name.label": "名前",
   "account.no-reading.signed-in": "まだ測定値がありません。このアカウントでチャットを開くと測定値が取得できます。",

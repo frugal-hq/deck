@@ -26,8 +26,6 @@
   "account.limits.title": "Limieten voor {name}",
   "account.loading": "Accountgebruik laden…",
   "account.log.label": "Uitvoer van accountconfiguratie",
-  "account.meter.five-hour": "5 u",
-  "account.meter.weekly": "7 d",
   "account.model.label": "Model",
   "account.name.label": "Naam",
   "account.no-reading.signed-in": "Nog geen meting. Open een chat met dit account om een meting te krijgen.",

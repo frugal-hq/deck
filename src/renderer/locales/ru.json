@@ -28,8 +28,6 @@
   "account.limits.title": "Лимиты для {name}",
   "account.loading": "Загрузка данных об использовании аккаунтов…",
   "account.log.label": "Вывод настройки аккаунта",
-  "account.meter.five-hour": "5 ч",
-  "account.meter.weekly": "7 д",
   "account.model.label": "Модель",
   "account.name.label": "Название",
   "account.no-reading.signed-in": "Данных пока нет. Откройте чат в этом аккаунте, чтобы получить их.",
