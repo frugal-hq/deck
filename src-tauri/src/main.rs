@@ -262,6 +262,8 @@ fn main() {
             accounts::accounts_set_cap,
             accounts::accounts_set_primary,
             accounts::accounts_refresh,
+            accounts::accounts_order,
+            accounts::accounts_set_order,
             accounts::accounts_logout,
             accounts::accounts_remove,
             accounts::mcp_set,

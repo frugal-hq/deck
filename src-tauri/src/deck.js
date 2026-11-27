@@ -176,6 +176,8 @@
     removeAccount: (id) => invoke('accounts:remove', { id }),
     setPrimary: (id) => invoke('accounts:set-primary', { id }),
     getAccounts: () => invoke('accounts:get'),
+    accountsOrder: () => invoke('accounts:order'),
+    setAccountsOrder: (mode, ids) => invoke('accounts:set-order', { mode, ids }),
     mcpList: (scope) => invoke('mcp:list', { scope }),
     pluginsList: () => invoke('plugins:list'),
     pluginsSet: (states) => invoke('plugins:set', { states }),

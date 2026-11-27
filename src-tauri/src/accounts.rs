@@ -657,6 +657,21 @@ fn join_frugal_pool(a: &Value, file: &Path) -> Result<()> {
         write_json(file, &data)
     })
 }
+// The plugin's delegation order; `order` is kept in recommended mode so custom mode restores it.
+fn set_frugal_order(file: &Path, mode: &str, ids: &Value) -> Result<bool> {
+    if !matches!(mode, "recommended" | "custom") || !ids.is_array() { return Ok(false); }
+    with_frugal_lock(file, || {
+        let mut data = read_strict(file, Value::Null)?;
+        let known = array(&data["accounts"]);
+        let mut order: Vec<Value> = Vec::new();
+        for id in array(ids) { if id.is_string() && !order.contains(id) && known.iter().any(|e| e["id"] == *id) { order.push(id.clone()); } }
+        let map = object(&mut data);
+        map.insert("order_mode".into(), json!(mode));
+        map.insert("order".into(), json!(order));
+        write_json(file, &data)?;
+        Ok(true)
+    })
+}
 fn leave_frugal_pool(id: &str, file: &Path) -> Result<()> {
     with_frugal_lock(file, || {
         let mut data = read_strict(file, Value::Null)?;
@@ -954,15 +969,33 @@ fn valid_cli_args(args: &[String], stdin: Option<&str>) -> bool {
     valid && args.iter().all(|s| !s.contains('\0'))
 }
 
+fn frugal_script(app: &AppHandle) -> Result<PathBuf> {
+    let accounts = app.state::<Mutex<Accounts>>();
+    let a = accounts.lock().unwrap();
+    Ok(a.chat_frugal_dir(&a.primary()).ok_or_else(|| crate::i18n::t("error.install-frugal-first", &[]))?.join("accounts/server.py"))
+}
+
+#[tauri::command]
+pub async fn accounts_order(app: AppHandle) -> std::result::Result<Value, String> {
+    tauri::async_runtime::spawn_blocking(move || { (|| -> Result<Value> {
+        let mut command = Command::new("python");
+        command.arg("-u").arg(frugal_script(&app)?).arg("ranking");
+        let list: Value = serde_json::from_slice(&run(&mut command, Duration::from_secs(30))?)?;
+        if !list.is_array() { return Err(crate::i18n::t("error.invalid-request", &[]).into()); }
+        Ok(list)
+    })().map_err(|e| e.to_string()) }).await.map_err(|e| e.to_string())?
+}
+#[tauri::command]
+pub fn accounts_set_order(accounts: State<Mutex<Accounts>>, mode: String, ids: Value) -> std::result::Result<(), String> {
+    let file = accounts.lock().unwrap().frugal_file();
+    if set_frugal_order(&file, &mode, &ids).map_err(|e| e.to_string())? { Ok(()) } else { Err(crate::i18n::t("error.invalid-request", &[])) }
+}
+
 #[tauri::command]
 pub async fn account_cli(app: AppHandle, args: Vec<String>, stdin: Option<String>) -> std::result::Result<Value, String> {
     if !valid_cli_args(&args, stdin.as_deref()) { return Err(crate::i18n::t("error.invalid-request", &[]).into()); }
     tauri::async_runtime::spawn_blocking(move || { (|| -> Result<Value> {
-        let script = {
-            let accounts = app.state::<Mutex<Accounts>>();
-            let a = accounts.lock().unwrap();
-            a.chat_frugal_dir(&a.primary()).ok_or_else(|| crate::i18n::t("error.install-frugal-first", &[]))?.join("accounts/server.py")
-        };
+        let script = frugal_script(&app)?;
         // Old add commands opened an external terminal; reject those before registration.
         let source = fs::read_to_string(&script)?;
         if !source.contains("login-command") || !source.contains("status") {
@@ -1308,6 +1341,20 @@ pub(crate) mod tests {
         write_json(&pool, &json!({"accounts": [{"id": "new", "kind": "claude"}, {"id": "new", "kind": "grok"}]})).unwrap();
         leave_frugal_pool("new", &pool).unwrap();
         assert_eq!(read_strict(&pool, Value::Null).unwrap()["accounts"], json!([{"id": "new", "kind": "grok"}]), "only the Claude entry leaves");
+    }
+
+    #[test]
+    fn order_validates_mode_and_drops_unknown_ids() {
+        let dir = TempDir::new();
+        let pool = dir.0.join("frugal/accounts.json");
+        write_json(&pool, &json!({"keep": 1, "accounts": [{"id": "a"}, {"id": "b"}]})).unwrap();
+        assert!(!set_frugal_order(&pool, "best", &json!(["a"])).unwrap());
+        assert!(!set_frugal_order(&pool, "custom", &json!("a")).unwrap());
+        assert!(set_frugal_order(&pool, "custom", &json!(["b", 3, "x", "a", "b"])).unwrap());
+        assert_eq!(read_strict(&pool, Value::Null).unwrap(), json!({"keep": 1, "accounts": [{"id": "a"}, {"id": "b"}], "order_mode": "custom", "order": ["b", "a"]}));
+        assert!(set_frugal_order(&pool, "recommended", &json!(["b", "a"])).unwrap());
+        assert_eq!(read_strict(&pool, Value::Null).unwrap()["order"], json!(["b", "a"]), "recommended keeps the custom order");
+        assert!(!dir.0.join("frugal/files.lock").exists());
     }
 
     // accounts.js:554: the inline account-dir assertion, with home injected into a temp dir.
