@@ -1217,16 +1217,13 @@ $('info-tasks-more').onclick = () => {
 };
 
 function procRow(chat, proc) {
-  const row = node('div', 'row');
-  row.dataset.tip = proc.cmd || proc.name;
+  // One line like a task row; the command, PID and GPU go in the tooltip.
+  const row = node('div', 'row info-panel__task');
   row.dataset.process = `${proc.pid}:${proc.started_ms}`;
-  const main = node('div', 'row__main');
-  const name = node('span', 'row__name', proc.name);
-  name.append(' ', node('span', 'info-panel__muted', t('info.procs.pid', { pid: proc.pid })));
-  main.append(name);
   const usage = [t('info.procs.cpu', { percent: Math.round(proc.cpu_pct) }), sizeText(proc.ram_bytes, 1024)];
-  if (proc.gpu_pct != null) usage.push(t('info.procs.gpu', { percent: Math.round(proc.gpu_pct) }));
-  main.append(node('span', 'row__meta', usage.join(' · ')));
+  const gpu = proc.gpu_pct != null ? [t('info.procs.gpu', { percent: Math.round(proc.gpu_pct) })] : [];
+  row.dataset.tip = [proc.cmd || proc.name, t('info.procs.pid', { pid: proc.pid }), [...usage, ...gpu].join(' · ')].join('\n');
+  row.append(node('span', 'row__name', proc.name), node('span', 'row__meta', usage.join(' · ')));
   const controls = node('div', 'row__controls');
   if (!proc.is_chat && !/^claude\.exe$/i.test(proc.name) && proc.started_ms) {
     const end = node('button', 'btn btn--icon');
@@ -1237,7 +1234,7 @@ function procRow(chat, proc) {
     end.onclick = () => endProcess(chat, proc);
     controls.append(end);
   }
-  row.append(main, controls);
+  row.append(controls);
   return row;
 }
 function drawProcs(chat, { processes, totals }) {
@@ -1249,7 +1246,6 @@ function drawProcs(chat, { processes, totals }) {
   end.onclick = () => endBackground(chat, background);
   const list = $('info-procs-list');
   const summary = [processes.length, t('info.procs.cpu', { percent: Math.round(totals.cpu_pct) }), sizeText(totals.ram_bytes, 1024)];
-  if (totals.gpu_pct != null) summary.push(t('info.procs.gpu', { percent: Math.round(totals.gpu_pct) }));
   $('info-procs-count').textContent = summary.join(' · ');
   const focused = document.activeElement?.closest('[data-process]')?.dataset.process;
   const rows = processes.sort((a, b) => b.ram_bytes - a.ram_bytes).map((proc) => procRow(chat, proc));
