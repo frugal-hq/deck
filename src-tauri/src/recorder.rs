@@ -71,6 +71,154 @@ struct Shared {
     encoder: Mutex<Option<VideoEncoder>>,
     frames: Mutex<Vec<KeyFrame>>,
     writer: Mutex<Option<mpsc::Sender<Job>>>,
+    pointer: Mutex<Pointer>,
+    levels: u32,
+    game: bool,
+}
+
+const RING_MS: u64 = 450;
+
+#[derive(Clone, Copy, Debug, PartialEq)]
+struct Press {
+    button: &'static str,
+    at: (i32, i32),
+    ms: u64,
+}
+
+#[derive(Clone, Debug, PartialEq, serde::Serialize)]
+struct ClickEvent {
+    ms: u64,
+    button: &'static str,
+    x: i32,
+    y: i32,
+    up_ms: u64,
+    up_x: i32,
+    up_y: i32,
+    // The capture's screen top-left at the press.
+    #[serde(skip)]
+    origin: (i32, i32),
+}
+
+// Screen physical pixels, milliseconds since Shared::origin.
+#[derive(Default)]
+struct Pointer {
+    pos: (i32, i32),
+    // The capture's screen top-left, updated per frame.
+    origin: (i32, i32),
+    press: Option<Press>,
+    recent: Vec<Press>,
+    events: Vec<ClickEvent>,
+    // The last press, release, or tick with a button held.
+    active: Option<u64>,
+}
+
+impl Pointer {
+    // True on a new press.
+    fn update(&mut self, button: Option<&'static str>, now: u64) -> bool {
+        let (x, y) = self.pos;
+        if button.is_some() || self.press.is_some() { self.active = Some(now); }
+        match (self.press, button) {
+            (None, Some(button)) => {
+                let press = Press { button, at: (x, y), ms: now };
+                self.press = Some(press);
+                self.recent.retain(|p| now.saturating_sub(p.ms) < RING_MS);
+                self.recent.push(press);
+                self.events.push(ClickEvent { ms: now, button, x, y, up_ms: now, up_x: x, up_y: y, origin: self.origin });
+                true
+            }
+            (Some(_), None) => {
+                self.press = None;
+                if let Some(e) = self.events.last_mut() { (e.up_ms, e.up_x, e.up_y) = (now, x, y); }
+                false
+            }
+            _ => false,
+        }
+    }
+}
+
+// Into video time and target pixels.
+fn click_events(events: &[ClickEvent], start: u64, levels: u32) -> Vec<ClickEvent> {
+    events.iter().map(|e| {
+        let ((ox, oy), at) = (e.origin, |v: i32, o: i32| (v - o) >> levels);
+        ClickEvent { ms: e.ms.saturating_sub(start), up_ms: e.up_ms.saturating_sub(start), x: at(e.x, ox), y: at(e.y, oy), up_x: at(e.up_x, ox), up_y: at(e.up_y, oy), ..e.clone() }
+    }).collect()
+}
+
+fn color(button: &str) -> [u8; 3] { if button == "right" { [96, 165, 250] } else { [245, 184, 61] } }
+
+// Drawing on a BGRA image with rows bottom to top, at top-down (x, y).
+fn blend(bgra: &mut [u8], (w, h): (usize, usize), x: i32, y: i32, rgb: [u8; 3], alpha: f32) {
+    if x < 0 || y < 0 || x as usize >= w || y as usize >= h { return; }
+    let i = ((h - 1 - y as usize) * w + x as usize) * 4;
+    for (p, v) in bgra[i..i + 3].iter_mut().zip([rgb[2], rgb[1], rgb[0]]) {
+        *p = (f32::from(*p) * (1.0 - alpha) + f32::from(v) * alpha).round() as u8;
+    }
+}
+
+fn ring(bgra: &mut [u8], size: (usize, usize), (cx, cy): (i32, i32), radius: f32, width: f32, rgb: [u8; 3], alpha: f32) {
+    let r = (radius + width).ceil() as i32;
+    for dy in -r..=r {
+        for dx in -r..=r {
+            if ((dx as f32).hypot(dy as f32) - radius).abs() <= width / 2.0 { blend(bgra, size, cx + dx, cy + dy, rgb, alpha); }
+        }
+    }
+}
+
+fn rect(bgra: &mut [u8], size: (usize, usize), a: (i32, i32), b: (i32, i32), width: i32, rgb: [u8; 3], outline: f32, fill: f32) {
+    let (x0, x1, y0, y1) = (a.0.min(b.0), a.0.max(b.0), a.1.min(b.1), a.1.max(b.1));
+    for y in y0.max(0)..=y1.min(size.1 as i32 - 1) {
+        for x in x0.max(0)..=x1.min(size.0 as i32 - 1) {
+            let edge = x - x0 < width || x1 - x < width || y - y0 < width || y1 - y < width;
+            blend(bgra, size, x, y, rgb, if edge { outline } else { fill });
+        }
+    }
+}
+
+fn smooth(value: f32, target: f32, dt: f32, tau: f32) -> f32 { value + (target - value) * (1.0 - (-dt / tau).exp()) }
+
+// The crop's center on one axis, keeping a size/z crop inside the frame.
+fn clamp_center(center: f32, size: f32, z: f32) -> f32 { let half = size / z / 2.0; center.clamp(half, size - half) }
+
+// Bilinear: the (w/z x h/z) crop around a top-down center, stretched over the whole bottom-to-top image.
+fn zoom_frame(src: &[u8], out: &mut [u8], (w, h): (usize, usize), z: f32, (cx, cy): (f32, f32)) {
+    let (left, top) = (cx - w as f32 / z / 2.0, cy - h as f32 / z / 2.0);
+    let at = |x: usize, y: usize| ((h - 1 - y) * w + x) * 4;
+    let axis = |start: f32, o: usize, n: usize| {
+        let s = (start + (o as f32 + 0.5) / z - 0.5).clamp(0.0, (n - 1) as f32);
+        (s as usize, (s as usize + 1).min(n - 1), s.fract())
+    };
+    for oy in 0..h {
+        let (y0, y1, fy) = axis(top, oy, h);
+        for ox in 0..w {
+            let (x0, x1, fx) = axis(left, ox, w);
+            let (a, b, c, d, o) = (at(x0, y0), at(x1, y0), at(x0, y1), at(x1, y1), at(ox, oy));
+            for i in 0..4 {
+                let p = |k: usize| f32::from(src[k + i]);
+                out[o + i] = ((p(a) * (1.0 - fx) + p(b) * fx) * (1.0 - fy) + (p(c) * (1.0 - fx) + p(d) * fx) * fy).round() as u8;
+            }
+        }
+    }
+}
+
+struct Zoom {
+    z: f32,
+    center: (f32, f32),
+    last: Option<Instant>,
+    copy: Vec<u8>,
+}
+
+fn monitor_origin(monitor: &Monitor) -> (i32, i32) {
+    use windows::Win32::Graphics::Gdi::{GetMonitorInfoW, HMONITOR, MONITORINFO};
+    let mut info = MONITORINFO { cbSize: size_of::<MONITORINFO>() as u32, ..Default::default() };
+    let _ = unsafe { GetMonitorInfoW(HMONITOR(monitor.as_raw_hmonitor()), &mut info) };
+    (info.rcMonitor.left, info.rcMonitor.top)
+}
+
+fn window_origin(hwnd: isize) -> Option<(i32, i32)> {
+    use windows::Win32::Graphics::Dwm::{DwmGetWindowAttribute, DWMWA_EXTENDED_FRAME_BOUNDS};
+    let mut rect = windows::Win32::Foundation::RECT::default();
+    unsafe { DwmGetWindowAttribute(HWND(hwnd as _), DWMWA_EXTENDED_FRAME_BOUNDS, &mut rect as *mut _ as _, size_of_val(&rect) as u32) }.ok()?;
+    Some((rect.left, rect.top))
 }
 
 #[derive(Clone, Debug, PartialEq, serde::Serialize, serde::Deserialize)]
@@ -95,13 +243,23 @@ struct Options {
     system: bool,
     fps: u32,
     height: u32,
+    clicks: bool,
+    zoom: bool,
+    game: bool,
+    app: Option<u32>,
 }
 
 fn parse_options(options: &Value, monitors: &[(u32, u32)], window_exists: impl Fn(isize) -> bool) -> Result<Options> {
     let invalid = || t("error.invalid-request");
     let fps = options["fps"].as_u64().filter(|f| matches!(f, 30 | 60)).ok_or_else(invalid)? as u32;
-    let height = options["height"].as_u64().filter(|h| matches!(h, 720 | 1080)).ok_or_else(invalid)? as u32;
+    let height = options["height"].as_u64().filter(|h| matches!(h, 720 | 1080 | 1440 | 2160)).ok_or_else(invalid)? as u32;
     let (Some(mic), Some(system)) = (options["mic"].as_bool(), options["system"].as_bool()) else { return Err(invalid()) };
+    let flag = |key: &str| match &options[key] { Value::Null => Ok(false), Value::Bool(on) => Ok(*on), _ => Err(invalid()) };
+    let (clicks, zoom, game) = (flag("clicks")?, flag("zoom")?, flag("game")?);
+    let app = match &options["app"] {
+        Value::Null => None,
+        pid => Some(pid.as_u64().filter(|&p| p > 0).and_then(|p| u32::try_from(p).ok()).ok_or_else(invalid)?),
+    };
     let mic_device = match &options["micDevice"] {
         Value::Null => None,
         Value::String(id) if !id.is_empty() => Some(id.clone()),
@@ -129,7 +287,8 @@ fn parse_options(options: &Value, monitors: &[(u32, u32)], window_exists: impl F
         }
         _ => return Err(invalid()),
     };
-    Ok(Options { source, mic, mic_device, system, fps, height })
+    let fps = if game { 60 } else { fps };
+    Ok(Options { source, mic, mic_device, system, fps, height, clicks: clicks && !game, zoom: zoom && !game, game, app: app.filter(|_| system) })
 }
 
 // GPU mipmaps halve the size per level: the smallest level k at or under the height limit, as (k, width, height), all even.
@@ -302,6 +461,12 @@ struct Recorder {
     // The target-size frame, BGRA rows bottom to top as the encoder takes them.
     buffer: Vec<u8>,
     keys: Keys,
+    clicks: bool,
+    game: bool,
+    window: Option<isize>,
+    // The capture's screen top-left.
+    origin: (i32, i32),
+    zoom: Option<Zoom>,
 }
 
 impl Recorder {
@@ -329,16 +494,54 @@ impl Recorder {
             for (r, out) in self.buffer.chunks_exact_mut(row).rev().enumerate() { out.copy_from_slice(&pixels[r * pitch..r * pitch + row]); }
             context.Unmap(&gpu.staging, 0);
         }
+        if !self.game { self.overlay(); }
         let timestamp = frame.timestamp().map_err(text)?.Duration;
         if let Some(encoder) = self.shared.encoder.lock().unwrap().as_mut() { encoder.send_frame_buffer(&self.buffer, timestamp).map_err(text)?; }
         self.key_frame(start);
         Ok(())
     }
 
+    // Click highlights, then the zoom, so highlights zoom with the content.
+    fn overlay(&mut self) {
+        if let Some(origin) = self.window.and_then(window_origin) { self.origin = origin; }
+        let now = self.shared.origin.elapsed().as_millis() as u64;
+        let (pos, press, recent, active) = {
+            let mut pointer = self.shared.pointer.lock().unwrap();
+            pointer.origin = self.origin;
+            (pointer.pos, pointer.press, pointer.recent.clone(), pointer.active)
+        };
+        let (origin, levels, size) = (self.origin, self.levels, (self.target.0 as usize, self.target.1 as usize));
+        let target = |(x, y): (i32, i32)| ((x - origin.0) >> levels, (y - origin.1) >> levels);
+        if self.clicks {
+            let width = (2 >> levels).max(1);
+            for p in recent.iter().filter(|p| now.saturating_sub(p.ms) < RING_MS) {
+                let t = now.saturating_sub(p.ms) as f32 / RING_MS as f32;
+                ring(&mut self.buffer, size, target(p.at), ((12.0 + 14.0 * t) / (1 << levels) as f32).max(8.0), width as f32, color(p.button), 0.9 * (1.0 - t));
+            }
+            let dragged = |p: &Press| (pos.0 - p.at.0).pow(2) + (pos.1 - p.at.1).pow(2) > 64;
+            if let Some(p) = press.filter(dragged) { rect(&mut self.buffer, size, target(p.at), target(pos), width, color(p.button), 0.9, 0.15); }
+        }
+        let Some(zoom) = self.zoom.as_mut() else { return };
+        // frugal: upscaling the target-size frame loses detail; cropping the full-resolution work texture on the GPU is the upgrade.
+        // frugal: WGC sends frames only on change, so a zoom-out on a static screen waits for the next change.
+        let at = Instant::now();
+        let dt = zoom.last.map_or(0.0, |last| (at - last).as_secs_f32());
+        zoom.last = Some(at);
+        let goal = if active.is_some_and(|a| now.saturating_sub(a) < 3000) { 2.0 } else { 1.0 };
+        zoom.z = smooth(zoom.z, goal, dt, 0.25).clamp(1.0, 2.0);
+        let (px, py) = target(pos);
+        let (w, h) = (size.0 as f32, size.1 as f32);
+        zoom.center = (clamp_center(smooth(zoom.center.0, px as f32, dt, 0.2), w, zoom.z), clamp_center(smooth(zoom.center.1, py as f32, dt, 0.2), h, zoom.z));
+        if zoom.z > 1.01 {
+            zoom.copy.clone_from(&self.buffer);
+            zoom_frame(&zoom.copy, &mut self.buffer, size, zoom.z, zoom.center);
+        }
+    }
+
     fn key_frame(&mut self, start: Instant) {
         let (shared, keys) = (&self.shared, &mut self.keys);
         let now = shared.origin.elapsed().as_millis() as u64;
-        if keys.saved >= MAX_KEY_FRAMES || (keys.saved > 0 && now < keys.last_check + 500) { return; }
+        if keys.saved >= MAX_KEY_FRAMES || (self.game && keys.saved > 0) || (keys.saved > 0 && now < keys.last_check + 500) { return; }
         keys.last_check = now;
         let (tw, th) = (self.target.0 as usize, self.target.1 as usize);
         let signature = signature(&self.buffer, tw, th);
@@ -409,34 +612,60 @@ impl GraphicsCaptureApiHandler for Snapshot {
 }
 
 fn watch_clicks(shared: &Shared) {
-    use windows::Win32::UI::Input::KeyboardAndMouse::{GetAsyncKeyState, VK_LBUTTON, VK_RBUTTON};
-    let mut was_down = false;
+    use windows::Win32::UI::Input::KeyboardAndMouse::{GetAsyncKeyState, VIRTUAL_KEY, VK_LBUTTON, VK_RBUTTON};
+    let down = |key: VIRTUAL_KEY| unsafe { GetAsyncKeyState(i32::from(key.0)) } < 0;
     while !shared.stop.load(Ordering::Relaxed) {
-        let down = unsafe { GetAsyncKeyState(i32::from(VK_LBUTTON.0)) | GetAsyncKeyState(i32::from(VK_RBUTTON.0)) } < 0;
-        if down && !was_down { shared.click.store(shared.origin.elapsed().as_millis() as u64 + 1, Ordering::Relaxed); }
-        was_down = down;
+        let button = if down(VK_LBUTTON) { Some("left") } else if down(VK_RBUTTON) { Some("right") } else { None };
+        let now = shared.origin.elapsed().as_millis() as u64;
+        let mut pos = windows::Win32::Foundation::POINT::default();
+        let mut pointer = shared.pointer.lock().unwrap();
+        if unsafe { windows::Win32::UI::WindowsAndMessaging::GetCursorPos(&mut pos) }.is_ok() { pointer.pos = (pos.x, pos.y); }
+        if pointer.update(button, now) { shared.click.store(now + 1, Ordering::Relaxed); }
+        drop(pointer);
         thread::sleep(Duration::from_millis(15));
     }
 }
 
-// The microphone, or the default output in loopback, as 48 kHz stereo f32.
-fn record_audio(shared: &Shared, queue: &Queue, device: Option<String>, loopback: bool) {
+fn format() -> wasapi::WaveFormat { wasapi::WaveFormat::new(32, 32, wasapi::SampleType::Float, RATE as usize, 2, None) }
+
+// One process tree's output; process loopback takes only event-driven shared mode.
+fn app_loopback(pid: u32) -> std::result::Result<wasapi::AudioClient, wasapi::WasapiError> {
+    let mut client = wasapi::AudioClient::new_application_loopback_client(pid, true)?;
+    client.initialize_client(&format(), wasapi::Direction::Capture, wasapi::StreamMode::EventsShared { autoconvert: true, buffer_duration_hns: 0 }, None)?;
+    Ok(client)
+}
+
+// The microphone, the default output in loopback, or one app's output, as 48 kHz stereo f32.
+fn record_audio(shared: &Shared, queue: &Queue, device: Option<String>, loopback: bool, app: Option<u32>) {
     let result = (|| -> std::result::Result<(), Box<dyn std::error::Error>> {
         wasapi::initialize_mta().ok()?;
-        let enumerator = wasapi::DeviceEnumerator::new()?;
-        let device = match device {
-            Some(id) => enumerator.get_device(&id)?,
-            None => enumerator.get_default_device(if loopback { wasapi::Direction::Render } else { wasapi::Direction::Capture })?,
+        let (client, event) = match app {
+            Some(pid) => { let client = app_loopback(pid)?; let event = client.set_get_eventhandle()?; (client, Some(event)) }
+            None => {
+                let enumerator = wasapi::DeviceEnumerator::new()?;
+                let device = match device {
+                    Some(id) => enumerator.get_device(&id)?,
+                    None => enumerator.get_default_device(if loopback { wasapi::Direction::Render } else { wasapi::Direction::Capture })?,
+                };
+                let mut client = device.get_iaudioclient()?;
+                client.initialize_client(&format(), wasapi::Direction::Capture, wasapi::StreamMode::PollingShared { autoconvert: true, buffer_duration_hns: 2_000_000 }, None)?;
+                (client, None)
+            }
         };
-        let mut client = device.get_iaudioclient()?;
-        let format = wasapi::WaveFormat::new(32, 32, wasapi::SampleType::Float, RATE as usize, 2, None);
-        client.initialize_client(&format, wasapi::Direction::Capture, wasapi::StreamMode::PollingShared { autoconvert: true, buffer_duration_hns: 2_000_000 }, None)?;
         let capture = client.get_audiocaptureclient()?;
         client.start_stream()?;
         let mut bytes = VecDeque::new();
         while !shared.stop.load(Ordering::Relaxed) {
-            thread::sleep(Duration::from_millis(10));
-            capture.read_from_device_to_deque(&mut bytes)?;
+            match &event {
+                Some(event) => {
+                    if event.wait_for_event(100).is_err() { continue; }
+                    while capture.get_next_packet_size()?.unwrap_or(0) > 0 { capture.read_from_device_to_deque(&mut bytes)?; }
+                }
+                None => {
+                    thread::sleep(Duration::from_millis(10));
+                    capture.read_from_device_to_deque(&mut bytes)?;
+                }
+            }
             let mut queue = queue.lock().unwrap();
             while bytes.len() >= 4 {
                 let sample: Vec<u8> = bytes.drain(..4).collect();
@@ -530,7 +759,7 @@ fn launch(app: AppHandle, options: &Options, monitors: &[Monitor], folder: &Path
     fs::create_dir(folder.join("frames")).map_err(text)?;
     let encoder = VideoEncoder::new(VideoSettingsBuilder::new(tw, th).sub_type(VideoSettingsSubType::H264).frame_rate(options.fps)
             // About 0.125 bits per pixel: 1080p30 at 7.8 Mbps instead of the crate's fixed 15.
-            .bitrate((tw * th * options.fps / 8).max(1_000_000)),
+            .bitrate((tw * th * options.fps / 8).max(1_000_000) * if options.game { 2 } else { 1 }),
         AudioSettingsBuilder::default().disabled(!options.mic && !options.system), ContainerSettingsBuilder::default(), folder.join("recording.mp4")).map_err(text)?;
     let wav = if options.mic {
         let mut out = BufWriter::new(File::create(folder.join("mic.wav")).map_err(text)?);
@@ -540,24 +769,32 @@ fn launch(app: AppHandle, options: &Options, monitors: &[Monitor], folder: &Path
     let (send, receive) = mpsc::channel();
     let thumb = folder.join("thumb.png");
     let writer = thread::spawn(move || write_frames(receive, thumb));
+    let (window, origin) = match options.source {
+        Source::Window(hwnd) => (Some(hwnd), window_origin(hwnd).unwrap_or_default()),
+        Source::Monitor(index) | Source::Region(index, _) => { let (x, y) = monitor_origin(&monitors[index]); (None, (x + crop.0 as i32, y + crop.1 as i32)) }
+    };
     let shared = Arc::new(Shared {
         app, folder: folder.to_path_buf(), origin: Instant::now(), video_start: OnceLock::new(), stop: AtomicBool::new(false), ended: AtomicBool::new(false),
         click: AtomicU64::new(0), encoder: Mutex::new(Some(encoder)), frames: Mutex::new(Vec::new()), writer: Mutex::new(Some(send)),
+        pointer: Mutex::new(Pointer { origin, ..Pointer::default() }), levels, game: options.game,
     });
-    let mut threads = vec![{ let shared = shared.clone(); thread::spawn(move || watch_clicks(&shared)) }];
+    let mut threads = Vec::new();
+    if !options.game { let shared = shared.clone(); threads.push(thread::spawn(move || watch_clicks(&shared))); }
     if options.mic || options.system {
         let mut sources = Vec::new();
         for (on, is_mic) in [(options.mic, true), (options.system, false)] {
             if !on { continue; }
             let queue = Queue::default();
             sources.push((is_mic, queue.clone()));
-            let (shared, device) = (shared.clone(), options.mic_device.clone().filter(|_| is_mic));
-            threads.push(thread::spawn(move || record_audio(&shared, &queue, device, !is_mic)));
+            let (shared, device, app) = (shared.clone(), options.mic_device.clone().filter(|_| is_mic), options.app.filter(|_| !is_mic));
+            threads.push(thread::spawn(move || record_audio(&shared, &queue, device, !is_mic, app)));
         }
         let shared = shared.clone();
         threads.push(thread::spawn(move || mix(&shared, sources, wav)));
     }
-    let recorder = Recorder { shared: shared.clone(), crop, size, levels, target: (tw, th), gpu: None, buffer: Vec::new(), keys: Keys::default() };
+    let zoom = options.zoom.then(|| Zoom { z: 1.0, center: (tw as f32 / 2.0, th as f32 / 2.0), last: None, copy: Vec::new() });
+    let recorder = Recorder { shared: shared.clone(), crop, size, levels, target: (tw, th), gpu: None, buffer: Vec::new(), keys: Keys::default(),
+        clicks: options.clicks, game: options.game, window, origin, zoom };
     let control = match options.source {
         Source::Window(hwnd) => capture(Window::from_raw_hwnd(hwnd as _), options.fps, recorder),
         Source::Monitor(index) | Source::Region(index, _) => capture(monitors[index], options.fps, recorder),
@@ -583,6 +820,8 @@ fn start(app: AppHandle, options: &Value) -> Result<Value> {
     let sizes = monitors.iter().map(|m| Ok((m.width().map_err(text)?, m.height().map_err(text)?))).collect::<Result<Vec<_>>>()?;
     let options = parse_options(options, &sizes, |hwnd| unsafe { windows::Win32::UI::WindowsAndMessaging::IsWindow(Some(HWND(hwnd as _))).as_bool() })?;
     if let Some(id) = &options.mic_device { wasapi::DeviceEnumerator::new().and_then(|e| e.get_device(id)).map_err(text)?; }
+    // The client is not Send: tried here to fail early, opened again on the audio thread.
+    if let Some(pid) = options.app { app_loopback(pid).map_err(text)?; }
     let (kind, crop, size) = match options.source {
         Source::Monitor(index) => ("monitor", (0, 0), sizes[index]),
         Source::Region(_, [x, y, w, h]) => ("region", (x, y), (w, h)),
@@ -622,6 +861,11 @@ fn stop(only: Option<&Arc<Shared>>) -> Option<Result<Value>> {
         let _ = parts.writer.join();
         let frames = shared.frames.lock().unwrap().clone();
         fs::write(shared.folder.join("frames.json"), serde_json::to_vec(&frames).map_err(text)?).map_err(text)?;
+        if !shared.game {
+            let start = shared.video_start.get().map_or(0, |s| s.duration_since(shared.origin).as_millis() as u64);
+            let clicks = click_events(&shared.pointer.lock().unwrap().events, start, shared.levels);
+            fs::write(shared.folder.join("clicks.json"), serde_json::to_vec(&clicks).map_err(text)?).map_err(text)?;
+        }
         fs::write(shared.folder.join("meta.json"), json!({"started": started, "duration": duration, "kind": kind, "hasMic": mic}).to_string()).map_err(text)?;
         encoded?;
         item(&shared.folder).ok_or_else(|| t("error.recorder-not-found"))
@@ -672,8 +916,8 @@ pub async fn recorder_sources() -> Value {
         let own = std::process::id();
         let windows: Vec<Value> = Window::enumerate().map_err(text)?.into_iter().filter_map(|w| {
             let title = w.title().ok().filter(|t| !t.trim().is_empty())?;
-            if w.process_id().ok()? == own { return None; }
-            Some(json!({"hwnd": w.as_raw_hwnd() as isize, "title": title, "process": w.process_name().unwrap_or_default()}))
+            let pid = w.process_id().ok().filter(|&pid| pid != own)?;
+            Some(json!({"hwnd": w.as_raw_hwnd() as isize, "title": title, "process": w.process_name().unwrap_or_default(), "pid": pid}))
         }).collect();
         let devices = wasapi::DeviceEnumerator::new().and_then(|e| e.get_device_collection(wasapi::Direction::Capture)).map_err(text)?;
         let mics: Vec<Value> = (&devices).into_iter().filter_map(|d| {
@@ -827,12 +1071,26 @@ mod tests {
         let monitors = [(1920, 1080), (2560, 1440)];
         let ok = |options: Value| parse_options(&options, &monitors, |hwnd| hwnd == 42);
         let base = json!({"kind": "monitor", "monitor": 1, "mic": true, "micDevice": null, "system": false, "fps": 60, "height": 1080});
-        assert_eq!(ok(base.clone()).unwrap(), Options { source: Source::Monitor(1), mic: true, mic_device: None, system: false, fps: 60, height: 1080 });
+        assert_eq!(ok(base.clone()).unwrap(), Options { source: Source::Monitor(1), mic: true, mic_device: None, system: false, fps: 60, height: 1080,
+            clicks: false, zoom: false, game: false, app: None });
         let with = |key: &str, value: Value| { let mut o = base.clone(); o[key] = value; ok(o) };
         assert_eq!(with("micDevice", json!("{0.0.1}")).unwrap().mic_device.as_deref(), Some("{0.0.1}"));
-        for (key, value) in [("fps", json!(24)), ("height", json!(480)), ("kind", json!("tab")), ("mic", json!("yes")), ("micDevice", json!(3)), ("monitor", json!(-1))] {
+        for height in [720, 1440, 2160] { assert_eq!(with("height", json!(height)).unwrap().height, height); }
+        assert!(with("clicks", json!(true)).unwrap().clicks);
+        assert!(with("zoom", json!(true)).unwrap().zoom);
+        for (key, value) in [("fps", json!(24)), ("height", json!(480)), ("kind", json!("tab")), ("mic", json!("yes")), ("micDevice", json!(3)), ("monitor", json!(-1)),
+            ("clicks", json!("yes")), ("zoom", json!(1)), ("game", json!("on")), ("app", json!(0)), ("app", json!(-4)), ("app", json!("12")), ("app", json!(1u64 << 33))] {
             assert_eq!(with(key, value).unwrap_err(), "Invalid request.", "{key}");
         }
+        let mut game = base.clone();
+        game["fps"] = json!(30);
+        (game["game"], game["clicks"], game["zoom"]) = (json!(true), json!(true), json!(true));
+        let game = ok(game).unwrap();
+        assert_eq!((game.fps, game.clicks, game.zoom, game.game), (60, false, false, true));
+        assert_eq!(with("app", json!(1234)).unwrap().app, None);
+        let mut app = base.clone();
+        (app["system"], app["app"]) = (json!(true), json!(1234));
+        assert_eq!(ok(app).unwrap().app, Some(1234));
         assert_eq!(with("monitor", json!(2)).unwrap_err(), "The screen or window to record is no longer available.");
         let mut window = base.clone();
         window["kind"] = json!("window");
@@ -855,5 +1113,83 @@ mod tests {
         assert_eq!(key_reason(false, false, 1000, 10.5), Some("change"));
         assert_eq!(key_reason(false, false, 9999, 10.0), None);
         assert_eq!(key_reason(false, false, 10_000, 0.0), Some("interval"));
+    }
+
+    // BGRA of top-down (x, y) in a bottom-to-top image.
+    fn pixel(bgra: &[u8], (w, h): (usize, usize), x: usize, y: usize) -> [u8; 4] {
+        let i = ((h - 1 - y) * w + x) * 4;
+        bgra[i..i + 4].try_into().unwrap()
+    }
+
+    #[test]
+    fn pointer_records_presses() {
+        let mut p = Pointer { pos: (500, 300), origin: (100, 50), ..Pointer::default() };
+        assert!(!p.update(None, 10));
+        assert_eq!(p.active, None);
+        assert!(p.update(Some("left"), 20));
+        p.pos = (700, 301);
+        assert!(!p.update(Some("left"), 35));
+        assert!(!p.update(None, 50));
+        assert_eq!(p.active, Some(50));
+        assert!(p.press.is_none());
+        assert_eq!(p.recent, [Press { button: "left", at: (500, 300), ms: 20 }]);
+        assert!(p.update(Some("right"), 600));
+        assert_eq!(p.recent.len(), 1);
+        let events = click_events(&p.events, 15, 1);
+        assert_eq!(events[0], ClickEvent { ms: 5, button: "left", x: 200, y: 125, up_ms: 35, up_x: 300, up_y: 125, origin: (100, 50) });
+        assert_eq!((events[1].ms, events[1].button, events[1].up_ms), (585, "right", 585));
+        assert_eq!(serde_json::to_value(&events[0]).unwrap(), json!({"ms": 5, "button": "left", "x": 200, "y": 125, "up_ms": 35, "up_x": 300, "up_y": 125}));
+    }
+
+    #[test]
+    fn drawing_is_bottom_to_top() {
+        let size = (3, 2);
+        let mut bgra = vec![0u8; 3 * 2 * 4];
+        blend(&mut bgra, size, 0, 0, [200, 100, 50], 1.0);
+        blend(&mut bgra, size, 2, 1, [200, 100, 50], 0.5);
+        blend(&mut bgra, size, 3, 0, [255; 3], 1.0);
+        blend(&mut bgra, size, -1, 0, [255; 3], 1.0);
+        assert_eq!(&bgra[12..16], &[50, 100, 200, 0]);
+        assert_eq!(&bgra[8..12], &[25, 50, 100, 0]);
+        assert_eq!(bgra.iter().map(|&b| u32::from(b)).sum::<u32>(), 350 + 175);
+    }
+
+    #[test]
+    fn ring_and_rect() {
+        let size = (40, 40);
+        let mut bgra = vec![0u8; 40 * 40 * 4];
+        ring(&mut bgra, size, (20, 10), 8.0, 2.0, [245, 184, 61], 1.0);
+        assert_eq!(pixel(&bgra, size, 28, 10), [61, 184, 245, 0]);
+        assert_eq!(pixel(&bgra, size, 20, 2), [61, 184, 245, 0]);
+        assert_eq!(pixel(&bgra, size, 20, 10), [0; 4]);
+        assert_eq!(pixel(&bgra, size, 20, 30), [0; 4]);
+        let mut bgra = vec![0u8; 40 * 40 * 4];
+        rect(&mut bgra, size, (30, 35), (10, 5), 2, [100, 200, 0], 1.0, 0.5);
+        assert_eq!(pixel(&bgra, size, 10, 5), [0, 200, 100, 0]);
+        assert_eq!(pixel(&bgra, size, 29, 34), [0, 200, 100, 0]);
+        assert_eq!(pixel(&bgra, size, 20, 20), [0, 100, 50, 0]);
+        assert_eq!(pixel(&bgra, size, 9, 20), [0; 4]);
+        rect(&mut bgra, size, (-50, -50), (100, 100), 2, [1, 1, 1], 1.0, 1.0);
+    }
+
+    #[test]
+    fn zoom_math() {
+        assert_eq!(smooth(1.0, 2.0, 0.0, 0.25), 1.0);
+        assert!((smooth(0.0, 1.0, 0.25, 0.25) - (1.0 - (-1.0f32).exp())).abs() < 1e-6);
+        assert!((smooth(1.0, 2.0, 10.0, 0.25) - 2.0).abs() < 1e-6);
+        assert_eq!(clamp_center(0.0, 100.0, 2.0), 25.0);
+        assert_eq!(clamp_center(100.0, 100.0, 2.0), 75.0);
+        assert_eq!(clamp_center(60.0, 100.0, 2.0), 60.0);
+        assert_eq!(clamp_center(10.0, 100.0, 1.0), 50.0);
+        let size = (4, 4);
+        let mut src = vec![0u8; 4 * 4 * 4];
+        for y in 0..4 { for x in 0..4 { let i = ((3 - y) * 4 + x) * 4; src[i] = x as u8 * 20; src[i + 1] = y as u8 * 20; src[i + 3] = 255; } }
+        let mut out = vec![0u8; src.len()];
+        zoom_frame(&src, &mut out, size, 1.0, (2.0, 2.0));
+        assert_eq!(out, src);
+        zoom_frame(&src, &mut out, size, 2.0, (2.0, 2.0));
+        assert_eq!(pixel(&out, size, 0, 0), [15, 15, 0, 255]);
+        assert_eq!(pixel(&out, size, 3, 0), [45, 15, 0, 255]);
+        assert_eq!(pixel(&out, size, 0, 3), [15, 45, 0, 255]);
     }
 }
