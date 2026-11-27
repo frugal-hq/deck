@@ -125,7 +125,6 @@ pub fn create_status_bridge(
 ) -> std::io::Result<StatusBridge> {
     let listener = TcpListener::bind(("127.0.0.1", 0))?;
     let port = listener.local_addr()?.port();
-    listener.set_nonblocking(true)?;
     let clients = Arc::new(Mutex::new(HashMap::new()));
     let edits = Arc::new(Mutex::new(HashMap::new()));
     let (on_meters, on_edit): (OnMeters, OnEdit) = (Arc::new(on_meters), Arc::new(on_edit));
