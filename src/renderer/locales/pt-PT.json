@@ -1278,5 +1278,16 @@
   "settings.recorder.enable.hint": "Grava um ecrã, uma janela ou uma área com som. As gravações vão para Vídeos\\Frugal Deck.",
   "settings.recorder.open": "Abrir gravações",
   "recorder.area.size": "{width} × {height} px",
-  "recordings.meta": "{date} · {duration} · {size}"
+  "recordings.meta": "{date} · {duration} · {size}",
+  "recorder.quality.2k": "1440p (2K)",
+  "recorder.quality.4k": "2160p (4K)",
+  "recorder.quality.heavy": "4K a 60 fps precisa de uma placa gráfica rápida.",
+  "recorder.audio.app.label": "Som do sistema de",
+  "recorder.audio.app.all": "Todas as apps",
+  "recorder.clicks": "Mostrar cliques e arrastos",
+  "recorder.clicks.hint": "Os cliques ganham um anel e os arrastos uma moldura, desenhados no vídeo.",
+  "recorder.zoom": "Seguir o ponteiro",
+  "recorder.zoom.hint": "Aproxima após um clique, segue o ponteiro e depois afasta.",
+  "recorder.game": "Modo de jogo",
+  "recorder.game.hint": "60 fps e uma taxa de bits mais alta, sem fotogramas principais. Os jogos em ecrã inteiro exclusivo podem gravar a preto; use uma janela sem bordas."
 }

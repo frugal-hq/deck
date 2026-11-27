@@ -1278,5 +1278,16 @@
   "settings.recorder.enable.hint": "Neemt een scherm, venster of gebied op met geluid. Opnames gaan naar Video's\\Frugal Deck.",
   "settings.recorder.open": "Opnames openen",
   "recorder.area.size": "{width} × {height} px",
-  "recordings.meta": "{date} · {duration} · {size}"
+  "recordings.meta": "{date} · {duration} · {size}",
+  "recorder.quality.2k": "1440p (2K)",
+  "recorder.quality.4k": "2160p (4K)",
+  "recorder.quality.heavy": "4K bij 60 fps heeft een snelle videokaart nodig.",
+  "recorder.audio.app.label": "Systeemgeluid van",
+  "recorder.audio.app.all": "Alle apps",
+  "recorder.clicks": "Klikken en slepen tonen",
+  "recorder.clicks.hint": "Klikken krijgen een ring en slepen een kader, in de video getekend.",
+  "recorder.zoom": "Aanwijzer volgen",
+  "recorder.zoom.hint": "Zoomt in na een klik, volgt de aanwijzer en zoomt daarna weer uit.",
+  "recorder.game": "Gamemodus",
+  "recorder.game.hint": "60 fps en een hogere bitrate, zonder keyframes. Games in exclusief volledig scherm kunnen zwart opnemen; gebruik een randloos venster."
 }

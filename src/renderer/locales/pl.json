@@ -1378,5 +1378,16 @@
   "settings.recorder.enable.hint": "Nagrywa ekran, okno lub obszar z dźwiękiem. Nagrania trafiają do folderu Wideo\\Frugal Deck.",
   "settings.recorder.open": "Otwórz nagrania",
   "recorder.area.size": "{width} × {height} px",
-  "recordings.meta": "{date} · {duration} · {size}"
+  "recordings.meta": "{date} · {duration} · {size}",
+  "recorder.quality.2k": "1440p (2K)",
+  "recorder.quality.4k": "2160p (4K)",
+  "recorder.quality.heavy": "4K przy 60 fps wymaga szybkiej karty graficznej.",
+  "recorder.audio.app.label": "Dźwięk systemowy z",
+  "recorder.audio.app.all": "Wszystkie aplikacje",
+  "recorder.clicks": "Pokazuj kliknięcia i przeciągnięcia",
+  "recorder.clicks.hint": "Kliknięcia dostają pierścień, a przeciągnięcia ramkę, rysowane na wideo.",
+  "recorder.zoom": "Podążaj za wskaźnikiem",
+  "recorder.zoom.hint": "Przybliża po kliknięciu, podąża za wskaźnikiem, a potem oddala.",
+  "recorder.game": "Tryb gry",
+  "recorder.game.hint": "60 fps i wyższy bitrate, bez kluczowych klatek. Gry na wyłącznym pełnym ekranie mogą nagrywać na czarno; użyj okna bez ramki."
 }

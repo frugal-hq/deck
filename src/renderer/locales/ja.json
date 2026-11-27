@@ -1228,5 +1228,16 @@
   "settings.recorder.enable.hint": "画面、ウィンドウ、または領域を音声付きで録画します。録画は ビデオ\\Frugal Deck に保存されます。",
   "settings.recorder.open": "録画を開く",
   "recorder.area.size": "{width} × {height} px",
-  "recordings.meta": "{date} · {duration} · {size}"
+  "recordings.meta": "{date} · {duration} · {size}",
+  "recorder.quality.2k": "1440p (2K)",
+  "recorder.quality.4k": "2160p (4K)",
+  "recorder.quality.heavy": "60 fps の 4K には高速なグラフィックカードが必要です。",
+  "recorder.audio.app.label": "システムサウンドの取得元",
+  "recorder.audio.app.all": "すべてのアプリ",
+  "recorder.clicks": "クリックとドラッグを表示",
+  "recorder.clicks.hint": "クリックにはリング、ドラッグには枠が付き、ビデオに描き込まれます。",
+  "recorder.zoom": "ポインターに追従",
+  "recorder.zoom.hint": "クリック後にズームインし、ポインターを追い、その後ズームアウトします。",
+  "recorder.game": "ゲームモード",
+  "recorder.game.hint": "60 fps と高めのビットレートで、主要なフレームはありません。排他フルスクリーンのゲームは黒く録画されることがあります。ボーダーレスウィンドウを使ってください。"
 }

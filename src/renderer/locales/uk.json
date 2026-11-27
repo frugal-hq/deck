@@ -1378,5 +1378,16 @@
   "settings.recorder.enable.hint": "Записує екран, вікно або область зі звуком. Записи зберігаються в Відео\\Frugal Deck.",
   "settings.recorder.open": "Відкрити записи",
   "recorder.area.size": "{width} × {height} px",
-  "recordings.meta": "{date} · {duration} · {size}"
+  "recordings.meta": "{date} · {duration} · {size}",
+  "recorder.quality.2k": "1440p (2K)",
+  "recorder.quality.4k": "2160p (4K)",
+  "recorder.quality.heavy": "Для 4K при 60 fps потрібна швидка відеокарта.",
+  "recorder.audio.app.label": "Звук системи з",
+  "recorder.audio.app.all": "Усі застосунки",
+  "recorder.clicks": "Показувати натискання й перетягування",
+  "recorder.clicks.hint": "Натискання отримують кільце, а перетягування рамку, намальовані у відео.",
+  "recorder.zoom": "Стежити за вказівником",
+  "recorder.zoom.hint": "Наближає після натискання, стежить за вказівником, потім віддаляє.",
+  "recorder.game": "Ігровий режим",
+  "recorder.game.hint": "60 fps і вищий бітрейт, без ключових кадрів. Ігри в ексклюзивному повноекранному режимі можуть записуватися чорним; використовуйте вікно без рамки."
 }

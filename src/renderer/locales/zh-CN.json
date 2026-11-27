@@ -1228,5 +1228,16 @@
   "settings.recorder.enable.hint": "录制屏幕、窗口或区域并带声音。录制文件保存到 视频\\Frugal Deck。",
   "settings.recorder.open": "打开录制",
   "recorder.area.size": "{width} × {height} px",
-  "recordings.meta": "{date} · {duration} · {size}"
+  "recordings.meta": "{date} · {duration} · {size}",
+  "recorder.quality.2k": "1440p (2K)",
+  "recorder.quality.4k": "2160p (4K)",
+  "recorder.quality.heavy": "60 fps 的 4K 需要较快的显卡。",
+  "recorder.audio.app.label": "系统声音来自",
+  "recorder.audio.app.all": "所有应用",
+  "recorder.clicks": "显示点击和拖动",
+  "recorder.clicks.hint": "点击带圆环，拖动带框，画进视频。",
+  "recorder.zoom": "跟随指针",
+  "recorder.zoom.hint": "点击后放大，跟随指针，再缩回。",
+  "recorder.game": "游戏模式",
+  "recorder.game.hint": "60 fps 和更高的比特率，没有关键帧。独占全屏的游戏可能录成黑屏；请用无边框窗口。"
 }

@@ -948,12 +948,28 @@
       <div class="recorder__group" role="group" aria-labelledby="record-audio-label">
         <span id="record-audio-label" class="recorder__label" data-i18n="recorder.audio.label">Sound</span>
         <label class="organize__check" data-i18n="recorder.audio.mic"><input id="record-mic" type="checkbox"> Microphone</label>
-        <div class="organize__field"><select id="record-mic-device" aria-label="Microphone" data-i18n-aria-label="recorder.audio.mic"></select></div>
+        <div class="organize__field"><select id="record-mic-device" disabled aria-label="Microphone" data-i18n-aria-label="recorder.audio.mic"></select></div>
         <label class="organize__check" data-i18n="recorder.audio.system"><input id="record-system" type="checkbox"> System sound</label>
+        <label class="organize__field" data-i18n="recorder.audio.app.label">System sound from<select id="record-app" disabled>
+          <option value="" data-i18n="recorder.audio.app.all">All apps</option>
+        </select></label>
       </div>
       <div class="organize__pair">
-        <label class="organize__field" data-i18n="recorder.quality.label">Quality<select id="record-height"><option value="720">720p</option><option value="1080" selected>1080p</option></select></label>
+        <label class="organize__field" data-i18n="recorder.quality.label">Quality<select id="record-height"><option value="720">720p</option><option value="1080" selected>1080p</option><option value="1440" data-i18n="recorder.quality.2k">1440p (2K)</option><option value="2160" data-i18n="recorder.quality.4k">2160p (4K)</option></select></label>
         <label class="organize__field" data-i18n="recorder.fps.label">Frame rate<select id="record-fps"><option value="30" selected>30 fps</option><option value="60">60 fps</option></select></label>
+      </div>
+      <p id="record-quality-heavy" class="settings__hint" hidden data-i18n="recorder.quality.heavy">4K at 60 fps needs a fast graphics card.</p>
+      <div class="settings__row">
+        <label class="organize__check" data-i18n="recorder.clicks"><input id="record-clicks" type="checkbox" aria-describedby="record-clicks-hint" checked> Show clicks and drags</label>
+        <p id="record-clicks-hint" class="settings__hint" data-i18n="recorder.clicks.hint">Clicks get a ring and drags a frame, drawn into the video.</p>
+      </div>
+      <div class="settings__row">
+        <label class="organize__check" data-i18n="recorder.zoom"><input id="record-zoom" type="checkbox" aria-describedby="record-zoom-hint"> Follow the pointer</label>
+        <p id="record-zoom-hint" class="settings__hint" data-i18n="recorder.zoom.hint">Zooms in after a click, follows the pointer, then zooms back out.</p>
+      </div>
+      <div class="settings__row">
+        <label class="organize__check" data-i18n="recorder.game"><input id="record-game" type="checkbox" aria-describedby="record-game-hint"> Game mode</label>
+        <p id="record-game-hint" class="settings__hint" data-i18n="recorder.game.hint">60 fps and a higher bitrate, without key frames. Games in exclusive full screen can record black; use borderless window.</p>
       </div>
     </div>
     <p id="record-error" class="sort__status" data-failed="true" role="alert" hidden></p>

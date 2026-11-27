@@ -1228,5 +1228,16 @@
   "settings.recorder.enable.hint": "화면, 창 또는 영역을 소리와 함께 녹화합니다. 녹화 파일은 동영상\\Frugal Deck에 저장됩니다.",
   "settings.recorder.open": "녹화 열기",
   "recorder.area.size": "{width} × {height} px",
-  "recordings.meta": "{date} · {duration} · {size}"
+  "recordings.meta": "{date} · {duration} · {size}",
+  "recorder.quality.2k": "1440p (2K)",
+  "recorder.quality.4k": "2160p (4K)",
+  "recorder.quality.heavy": "60 fps의 4K에는 빠른 그래픽 카드가 필요합니다.",
+  "recorder.audio.app.label": "시스템 소리 출처",
+  "recorder.audio.app.all": "모든 앱",
+  "recorder.clicks": "클릭과 드래그 표시",
+  "recorder.clicks.hint": "클릭에는 고리, 드래그에는 테두리가 생기고 동영상에 그려집니다.",
+  "recorder.zoom": "포인터 따라가기",
+  "recorder.zoom.hint": "클릭 후 확대하고 포인터를 따라간 다음 다시 축소합니다.",
+  "recorder.game": "게임 모드",
+  "recorder.game.hint": "60 fps와 더 높은 비트레이트이며 주요 프레임은 없습니다. 독점 전체 화면 게임은 검게 녹화될 수 있으니 테두리 없는 창을 사용하세요."
 }

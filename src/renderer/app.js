@@ -5625,6 +5625,7 @@ const clock = (ms) => `${Math.floor(ms / 60000)}:${String(Math.floor(ms / 1000) 
 let recorder = { recording: false, started: null };
 let recorderTimer = null;
 let recordSources = null;
+let recordNormalOptions = null;
 let recordArea = null;
 let areaShot = null;
 let areaDraft = null;
@@ -5716,6 +5717,15 @@ async function loadSources() {
   $('record-monitor').replaceChildren(...result.monitors.map((monitor) => new Option(`${monitor.name} — ${monitor.width}×${monitor.height}`, monitor.index)));
   $('record-window').replaceChildren(...result.windows.map((window) => new Option(`${window.title} — ${window.process}`, window.hwnd)));
   $('record-mic-device').replaceChildren(new Option(t('recorder.audio.default-mic'), ''), ...result.mics.map((mic) => new Option(mic.name, mic.id)));
+  const app = $('record-app');
+  app.options.length = 1;
+  const pids = new Set();
+  for (const { pid, process, title } of result.windows) {
+    if (!Number.isInteger(pid) || pid <= 0 || pids.has(pid)) continue;
+    pids.add(pid);
+    app.append(new Option(`${process} — ${title}`, pid));
+  }
+  pickOption(app, saved.app);
   $('record-form').elements['record-kind'].value = ['monitor', 'window', 'region'].includes(saved.kind) ? saved.kind : 'monitor';
   pickOption($('record-monitor'), saved.monitor);
   pickOption($('record-window'), saved.hwnd);
@@ -5724,6 +5734,10 @@ async function loadSources() {
   pickOption($('record-fps'), saved.fps ?? 30);
   $('record-mic').checked = saved.mic === true;
   $('record-system').checked = saved.system === true;
+  $('record-clicks').checked = saved.clicks !== false;
+  $('record-zoom').checked = saved.zoom === true;
+  $('record-game').checked = saved.game === true;
+  recordNormalOptions = null;
   $('record-fields').hidden = false;
   drawRecordForm();
 }
@@ -5739,7 +5753,25 @@ function drawRecordForm() {
   $('record-area').disabled = !$('record-monitor').options.length;
   $('record-area-size').textContent = recordArea ? t('recorder.area.size', { width: recordArea.width, height: recordArea.height }) : t('recorder.area.none');
   $('record-mic-device').disabled = !$('record-mic').checked;
-  $('record-start').disabled = !recordSources || (kind === 'window' ? !windows : !$('record-monitor').options.length || (kind === 'region' && !recordArea));
+  $('record-app').disabled = !$('record-system').checked;
+  const game = $('record-game').checked;
+  const fps = $('record-fps');
+  const clicks = $('record-clicks');
+  const zoom = $('record-zoom');
+  fps.disabled = clicks.disabled = zoom.disabled = game;
+  if (game) {
+    recordNormalOptions ??= { fps: Number(fps.value), clicks: clicks.checked, zoom: zoom.checked };
+    fps.value = '60';
+    clicks.checked = zoom.checked = false;
+  } else if (recordNormalOptions) {
+    pickOption(fps, recordNormalOptions.fps);
+    clicks.checked = recordNormalOptions.clicks;
+    zoom.checked = recordNormalOptions.zoom;
+    recordNormalOptions = null;
+  }
+  $('record-quality-heavy').hidden = $('record-height').value !== '2160' || fps.value !== '60';
+  const start = $('record-start');
+  start.disabled = start.hasAttribute('aria-busy') || !recordSources || (kind === 'window' ? !windows : !$('record-monitor').options.length || (kind === 'region' && !recordArea));
 }
 
 $('record-form').onchange = (event) => {
@@ -5754,11 +5786,23 @@ $('record-recordings').onclick = () => {
 
 $('record-start').onclick = async () => {
   const kind = recordKind();
-  const options = { kind, mic: $('record-mic').checked, micDevice: $('record-mic-device').value || null, system: $('record-system').checked, fps: Number($('record-fps').value), height: Number($('record-height').value) };
+  const app = $('record-app').value;
+  const options = {
+    kind,
+    mic: $('record-mic').checked,
+    micDevice: $('record-mic-device').value || null,
+    system: $('record-system').checked,
+    app: app ? Number(app) : null,
+    fps: Number($('record-fps').value),
+    height: Number($('record-height').value),
+    clicks: $('record-clicks').checked,
+    zoom: $('record-zoom').checked,
+    game: $('record-game').checked,
+  };
   if (kind === 'window') options.hwnd = Number($('record-window').value);
   else options.monitor = Number($('record-monitor').value);
   if (kind === 'region') options.rect = recordArea;
-  localStorage.setItem('recorderOptions', JSON.stringify(options));
+  localStorage.setItem('recorderOptions', JSON.stringify({ ...options, ...recordNormalOptions }));
   const start = $('record-start');
   start.disabled = true;
   start.setAttribute('aria-busy', 'true');

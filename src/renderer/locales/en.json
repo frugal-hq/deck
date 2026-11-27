@@ -1278,5 +1278,16 @@
   "settings.recorder.enable.label": "Screen recorder",
   "settings.recorder.enable.tip": "Adds a record button to the toolbar",
   "settings.recorder.enable.hint": "Records a screen, a window or an area with sound. Recordings go to Videos\\Frugal Deck.",
-  "settings.recorder.open": "Open recordings"
+  "settings.recorder.open": "Open recordings",
+  "recorder.quality.2k": "1440p (2K)",
+  "recorder.quality.4k": "2160p (4K)",
+  "recorder.quality.heavy": "4K at 60 fps needs a fast graphics card.",
+  "recorder.audio.app.label": "System sound from",
+  "recorder.audio.app.all": "All apps",
+  "recorder.clicks": "Show clicks and drags",
+  "recorder.clicks.hint": "Clicks get a ring and drags a frame, drawn into the video.",
+  "recorder.zoom": "Follow the pointer",
+  "recorder.zoom.hint": "Zooms in after a click, follows the pointer, then zooms back out.",
+  "recorder.game": "Game mode",
+  "recorder.game.hint": "60 fps and a higher bitrate, without key frames. Games in exclusive full screen can record black; use borderless window."
 }

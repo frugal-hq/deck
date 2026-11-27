@@ -1278,5 +1278,16 @@
   "settings.recorder.enable.hint": "Nimmt einen Bildschirm, ein Fenster oder einen Bereich mit Ton auf. Aufnahmen werden in Videos\\Frugal Deck gespeichert.",
   "settings.recorder.open": "Aufnahmen öffnen",
   "recorder.area.size": "{width} × {height} px",
-  "recordings.meta": "{date} · {duration} · {size}"
+  "recordings.meta": "{date} · {duration} · {size}",
+  "recorder.quality.2k": "1440p (2K)",
+  "recorder.quality.4k": "2160p (4K)",
+  "recorder.quality.heavy": "4K bei 60 fps braucht eine schnelle Grafikkarte.",
+  "recorder.audio.app.label": "Systemton von",
+  "recorder.audio.app.all": "Alle Apps",
+  "recorder.clicks": "Klicks und Ziehen anzeigen",
+  "recorder.clicks.hint": "Klicks bekommen einen Ring und Ziehen einen Rahmen, ins Video gezeichnet.",
+  "recorder.zoom": "Dem Mauszeiger folgen",
+  "recorder.zoom.hint": "Zoomt nach einem Klick heran, folgt dem Mauszeiger und zoomt wieder heraus.",
+  "recorder.game": "Spielmodus",
+  "recorder.game.hint": "60 fps und eine höhere Bitrate, ohne Schlüsselbilder. Spiele im exklusiven Vollbild können schwarz aufnehmen; nutze ein randloses Fenster."
 }

@@ -1278,5 +1278,16 @@
   "settings.recorder.enable.hint": "Bir ekranı, pencereyi veya alanı sesle kaydeder. Kayıtlar Videolar\\Frugal Deck klasörüne gider.",
   "settings.recorder.open": "Kayıtları aç",
   "recorder.area.size": "{width} × {height} px",
-  "recordings.meta": "{date} · {duration} · {size}"
+  "recordings.meta": "{date} · {duration} · {size}",
+  "recorder.quality.2k": "1440p (2K)",
+  "recorder.quality.4k": "2160p (4K)",
+  "recorder.quality.heavy": "60 fps'de 4K hızlı bir ekran kartı gerektirir.",
+  "recorder.audio.app.label": "Sistem sesi şuradan",
+  "recorder.audio.app.all": "Tüm uygulamalar",
+  "recorder.clicks": "Tıklamaları ve sürüklemeleri göster",
+  "recorder.clicks.hint": "Tıklamalar bir halka, sürüklemeler bir çerçeve alır; videoya çizilir.",
+  "recorder.zoom": "İmleci izle",
+  "recorder.zoom.hint": "Tıklamadan sonra yakınlaştırır, imleci izler, sonra uzaklaştırır.",
+  "recorder.game": "Oyun modu",
+  "recorder.game.hint": "60 fps ve daha yüksek bit hızı, önemli kareler olmadan. Özel tam ekrandaki oyunlar siyah kaydedebilir; kenarlıksız pencere kullanın."
 }
