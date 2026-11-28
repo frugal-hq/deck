@@ -3,7 +3,7 @@ import { FitAddon } from '../../node_modules/@xterm/addon-fit/lib/addon-fit.mjs'
 import { matchSessions } from './palette.mjs';
 import { groupChats, buildTree } from './chats.mjs';
 import { trustPromptKey } from './trust.mjs';
-import { trimSilence, encodeWav, joinChunks, dictatedText } from './voice.mjs';
+import { trimSilence, encodeWav, joinChunks, dictatedText, promptRow } from './voice.mjs';
 import { loadLocale, applyI18n, t, tp, languages, currentLanguage } from './i18n.mjs';
 
 await loadLocale();
@@ -5769,7 +5769,7 @@ recordDialog.addEventListener('close', () => {
 let listener = null;
 let voiceSaving = null;
 const listenWait = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
-const promptReady = (rows) => rows.some((row, i) => i > 0 && row.trimStart().startsWith('❯') && rows[i - 1].startsWith('─'));
+const promptReady = (rows) => promptRow(rows) !== -1;
 
 // Viewport rows from cells; dim cells (the prompt's placeholder) are left out unless asked for.
 function screenRows(term, dim = false) {

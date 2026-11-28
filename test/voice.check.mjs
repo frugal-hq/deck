@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { trimSilence, encodeWav, joinChunks } from '../src/renderer/voice.mjs';
+import { trimSilence, encodeWav, joinChunks, dictatedText } from '../src/renderer/voice.mjs';
 
 const RATE = 16000;
 const tone = (seconds, level) => Float32Array.from({ length: seconds * RATE }, (_, i) => level * Math.sin((2 * Math.PI * 440 * i) / RATE));
@@ -20,4 +20,9 @@ assert.equal(String.fromCharCode(...new Uint8Array(wav.buffer, 0, 4)), 'RIFF');
 assert.equal(wav.getUint32(24, true), RATE);
 assert.equal(wav.getUint32(40, true), 8);
 assert.deepEqual([0, 1, 2, 3].map((i) => wav.getInt16(44 + i * 2, true)), [0, 32767, -32768, 32767]);
+// The prompt box reads with Claude Code's '❯' and with its ASCII '>' fallback.
+const rule = '─'.repeat(20);
+assert.equal(dictatedText([' logo', rule, '❯ hello', '  world', rule, '  ⏵⏵ auto']), 'hello world');
+assert.equal(dictatedText([' logo', rule, '> hola', rule]), 'hola');
+assert.equal(dictatedText(['no prompt', 'here']), '');
 console.log('voice ok');
